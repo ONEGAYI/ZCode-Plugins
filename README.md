@@ -1,21 +1,32 @@
-# ZCode-Plugins
+给 ZCode 做的插件集合。ZCode 是智谱推出的 Agentic Coding 工具（桌面端 + CLI），这个仓库放围绕它的自研插件：一个已经能用，一个在规划中。
 
-SUIAN 自维护的 ZCode 插件集合（monorepo）。每个子目录是一个独立插件，拥有自己的 AGENTS.md 与测试。
+## suian-zcode-title — 会话自动命名（可用）
 
-## 成员
+每轮对话结束后，自动把会话标题更新成「类别 emoji + 对象｜目标」，会话再多也一眼能找到：
 
-| 插件 | 说明 |
-|------|------|
-| [suian-zcode-title](./suian-zcode-title/) | ZCode 会话自动命名：Stop Hook 后台经官方远控通道调用当前窗口模型，生成「emoji 对象｜目标」标题写回，失败弹 Windows 原生 Toast |
-| [suian-zcode-app-mcp](./suian-zcode-app-mcp/) | ZCode 会话操控 MCP（待开发）：独立 MCP 经官方远控通道接入已有桌面窗口，实现会话列表、历史读取与跨会话操控 |
+| 原来的标题 | 自动命名后 |
+| --- | --- |
+| C:/Users/…/handoff-zcode-title-202610…（被截断的临时文件路径） | 🧩 远控 Hook 插件｜授权失效排查 |
+| 帮我看看这个报错 | 🧪 发布流水线｜超时排查 |
 
-`sources/` 以 git submodule 引用研究用的上游源码（官方 ZCode 公开快照与社区桥接项目），只读不入库，见 [sources/README.md](./sources/README.md)。
+它通过 ZCode 官方的 Web 远控通道连接当前窗口，用你自己账号里的模型生成标题，不往对话里插消息，也不直接改数据库；标题会跟随工作主线缓慢更新，手动改过的标题不会再被覆盖。安装时把一段话粘给 ZCode 就行，详见 [suian-zcode-title/README.md](./suian-zcode-title/README.md)。
 
-## 约定
+## suian-zcode-app-mcp — 会话操控 MCP（待开发）
 
-- 子目录即插件根，插件自身的约定、安装与测试见其 `AGENTS.md` / `README.md`。
-- 不入库内容（本机数据、密文、截图）由各插件目录的 `.gitignore` 声明；根级仅放通用规则。
+想让外部程序或别的 Agent 操控**已经开着**的 ZCode 窗口：列出会话、读取历史、派生任务、跨会话投递消息。源码研究与可行性验证已经完成（不改官方源码、走授权远控通道的路线已实测改名链路），立项依据和能力边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。
+
+## 找到你想要的
+
+- **直接用自动命名** → [suian-zcode-title](./suian-zcode-title/)，README 里有「让 ZCode 帮你安装」的一段话
+- **了解实现**（远控协议、Stop Hook、探活分层）→ [suian-zcode-title/AGENTS.md](./suian-zcode-title/AGENTS.md) 的技术参考
+- **做会话操控 / MCP** → [research-findings.md](./suian-zcode-app-mcp/docs/research-findings.md)，含已核实能力表与首批工具设计
+- **读 ZCode 源码** → [sources/](./sources/)，官方公开快照与社区桥接项目，submodule 引用、按需获取
+
+```bash
+git clone --recurse-submodules https://github.com/ONEGAYI/ZCode-Plugins.git
+# 不加 --recurse-submodules 时，sources 为空目录，按 sources/README.md 按需拉取
+```
 
 ## 许可证
 
-自有代码以 [MIT](./LICENSE) 发布；vendor/ 目录内的第三方代码保留其原始许可与来源声明（见各插件的 vendor/NOTICE.md）。
+自有代码以 [MIT](./LICENSE) 发布；`vendor/` 与 `sources/` 内的第三方代码保留其原始许可与来源声明（见各目录 NOTICE）。
