@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
-import {writeFile,readFile,unlink} from "node:fs/promises";
-import {join} from "node:path";
+import {writeFile,readFile,unlink,mkdir} from "node:fs/promises";
+import {join,dirname} from "node:path";
 import {fileURLToPath,pathToFileURL} from "node:url";
 
 export const PROTOCOL="suian-zcode-title";
 export const AUMID="SUIAN.SuianZcodeTitle.Toast";
+export const SKILL_ANCHOR="<!-- suian-zcode-title:plugin-root -->";
 const SHORTCUT_NAME="ZCode 自动命名插件.lnk";
 
 const powershell=async script=>{
@@ -20,8 +21,27 @@ const defaultShell={
   ps:powershell,
   writeText:(path,text)=>writeFile(path,text,"utf8"),
   readText:path=>readFile(path,"utf8"),
-  remove:async path=>{try{await unlink(path);}catch{}}
+  remove:async path=>{try{await unlink(path);}catch{}},
+  mkdir:async path=>{await mkdir(path,{recursive:true});}
 };
+
+// 技能副本部署：模板中的锚点注释替换为本机插件根绝对路径，
+// 让 Agent 从技能文档直接定位执行程序，不必依赖克隆位置约定
+export async function installSkill({pluginRoot,skillFile,shell=defaultShell,templateText}) {
+  const template=templateText??await shell.readText(join(pluginRoot,"SKILL.md"));
+  const deployed=template.split(SKILL_ANCHOR).join(`- **本机插件根**：\`${pluginRoot}\``);
+  if(deployed.includes(SKILL_ANCHOR))throw new Error("SKILL.md 模板缺少插件根锚点");
+  await shell.mkdir(dirname(skillFile));
+  const existing=await shell.readText(skillFile).catch(()=>null);
+  if(existing===deployed)return{action:"unchanged",skillFile};
+  await shell.writeText(skillFile,deployed);
+  return{action:"written",skillFile};
+}
+
+export async function removeSkill({skillFile,shell=defaultShell}) {
+  await shell.remove(skillFile);
+  return{action:"removed",skillFile};
+}
 
 export function buildVbsContent({nodeExe,toastActionPath,dataDir}) {
   return [
@@ -183,12 +203,14 @@ if(isMain) {
     ?async()=>{
       const hook=await removeStopHook({pluginRoot,configFile});
       const toast=await removeToastAssets({dataDir});
-      return{ok:true,actions:{hook:hook.action,toast:"removed"}};
+      const skill=await removeSkill({skillFile:join(homedir(),".zcode","skills",PROTOCOL,"SKILL.md")});
+      return{ok:true,actions:{hook:hook.action,toast:"removed",skill:skill.action}};
     }
     :async()=>{
       const toast=await installToastAssets({pluginRoot,dataDir});
       const hook=await installStopHook({pluginRoot,configFile});
-      return{ok:true,appId:toast.appId,actions:{...toast.actions,hook:hook.action}};
+      const skill=await installSkill({pluginRoot,skillFile:join(homedir(),".zcode","skills",PROTOCOL,"SKILL.md")});
+      return{ok:true,appId:toast.appId,actions:{...toast.actions,hook:hook.action,skill:skill.action}};
     };
   run()
     .then(result=>{console.log(JSON.stringify(result));})

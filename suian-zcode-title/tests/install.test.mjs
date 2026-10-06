@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {buildVbsContent,buildProtocolCommand,installToastAssets,removeToastAssets,ensureToastAppId,installStopHook,removeStopHook,buildHookCommand,AUMID,PROTOCOL} from "../install.mjs";
+import {buildVbsContent,buildProtocolCommand,installToastAssets,removeToastAssets,ensureToastAppId,installStopHook,removeStopHook,buildHookCommand,installSkill,removeSkill,AUMID,PROTOCOL} from "../install.mjs";
 
 const makeShell=()=>{
   const state={files:new Map(),reg:[],ps:[],removed:[]};
@@ -80,4 +80,19 @@ test("卸载移除协议键、vbs、AUMID 缓存与开始菜单快捷方式",asy
   assert.ok(shell.state.removed.includes("D:\\t\\.local\\toast-appid.txt"));
   assert.ok(shell.state.reg.some(r=>r.args[1]===`HKCU\\Software\\Classes\\${PROTOCOL}`&&r.args[0]==="delete"),"必须删除自有协议键");
   assert.ok(shell.state.ps.some(s=>s.includes("Remove-Item")),"必须删除开始菜单快捷方式");
+});
+test("技能副本由安装器部署：注入本机插件根，幂等，卸载清理",async()=>{
+  const shell=makeShell();shell.mkdir=async()=>{};
+  const template="# suian-zcode-title\n\n正文引用 <插件根> 占位。\n<!-- suian-zcode-title:plugin-root -->\n定位链说明。\n";
+  const skillFile="C:\\u\\.zcode\\skills\\suian-zcode-title\\SKILL.md";
+  const first=await installSkill({pluginRoot:"D:\\repo\\ZCode-Plugins\\suian-zcode-title",skillFile,shell,templateText:template});
+  assert.equal(first.action,"written");
+  const deployed=shell.state.files.get(skillFile);
+  assert.ok(deployed.includes("**本机插件根**：`D:\\repo\\ZCode-Plugins\\suian-zcode-title`"),"必须注入绝对路径");
+  assert.ok(!deployed.includes("suian-zcode-title:plugin-root"),"锚点注释必须被替换掉");
+  assert.ok(deployed.includes("正文引用"),"模板其余内容原样保留");
+  const second=await installSkill({pluginRoot:"D:\\repo\\ZCode-Plugins\\suian-zcode-title",skillFile,shell,templateText:template});
+  assert.equal(second.action,"unchanged","内容一致不得重写");
+  await removeSkill({skillFile,shell});
+  assert.ok(shell.state.removed.includes(skillFile));
 });
