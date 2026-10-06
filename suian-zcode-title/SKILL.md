@@ -9,7 +9,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 ## 入口与路径
 
-- 插件根：克隆仓库中 `ZCode-Plugins/suian-zcode-title` 的**绝对路径**（下称 `<插件根>`；把本技能装到 `~/.agents/skills` 时，将下文命令里的相对表述替换为你机器上的实际绝对路径）
+- 插件根：克隆仓库中 `ZCode-Plugins/suian-zcode-title` 的**绝对路径**（下称 `<插件根>`；把本技能装到 `~/.zcode/skills`（ZCode 专属技能目录，勿用跨工具的 `~/.agents/skills`）时，将下文命令里的相对表述替换为你机器上的实际绝对路径）
 - CLI 入口：`node <插件根>/cli.mjs <命令>`，stdin 传 JSON：`{"session_id":"sess_...","workspace_path":"<工作区绝对路径>"}`
 - 配置文件：`<插件根>/config.local.json`（所有命令加 `--config <插件根>/config.local.json`）
 - 数据目录：`<插件根>/.local`（逐会话状态、用量、授权密文、Toast 冷却与协议桥）
