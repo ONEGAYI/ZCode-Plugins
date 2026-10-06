@@ -1,0 +1,123 @@
+{
+  "verifiedAt": "2026-10-06T21:31:41+08:00",
+  "scope": "Stop 触发后的命名后端；未注册或启用 Hook",
+  "runtime": {
+    "desktop": "3.14.4.7912",
+    "asar": "3.14.4",
+    "cli": "0.16.9",
+    "node": "v24.15.0",
+    "hostPid": 39048,
+    "mainPid": 9104
+  },
+  "target": {
+    "sessionId": "sess_41e51a4…",
+    "workspacePath": "D:\\CODE\\Project\\_Extensions\\vscode-obsidian-like-editor"
+  },
+  "beforeTitle": "改名测试：双链联想",
+  "result": {
+    "status": "renamed",
+    "action": "rename",
+    "title": "🧩 双链联想｜批次功能实施",
+    "usage": {
+      "inputTokens": 3468,
+      "outputTokens": 133,
+      "totalTokens": 3601,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0
+    },
+    "selectedTurns": 3,
+    "sessionId": "sess_41e51a4…",
+    "selection": {
+      "providerId": "account:bigmodel-individual-coding-plan",
+      "modelId": "GLM-5.3-Flash",
+      "options": {
+        "reasoningLevel": "low"
+      }
+    }
+  },
+  "repeatedRun": {
+    "status": "unchanged",
+    "title": "🧩 双链联想｜批次功能实施",
+    "sessionId": "sess_41e51a4…",
+    "selection": {
+      "providerId": "account:bigmodel-individual-coding-plan",
+      "modelId": "GLM-5.3-Flash",
+      "options": {
+        "reasoningLevel": "low"
+      }
+    }
+  },
+  "doctor": {
+    "status": "ready",
+    "sessionId": "sess_41e51a4…",
+    "title": "改名测试：双链联想",
+    "turnCount": 6,
+    "selectedTurns": 3,
+    "configuredModel": {
+      "providerId": "account:bigmodel-individual-coding-plan",
+      "modelId": "GLM-5.3-Flash",
+      "options": {
+        "reasoningLevel": "low"
+      }
+    },
+    "providerCount": 4,
+    "hook": "not_configured"
+  },
+  "databaseReadback": {
+    "readonly": true,
+    "tasksIndex": [
+      {
+        "task_id": "sess_41e51a4…",
+        "title": "🧩 双链联想｜批次功能实施",
+        "title_overridden": 1,
+        "updated_at": 1791293501009,
+        "archived": 0,
+        "deleted": 0,
+        "task_status": "completed"
+      }
+    ],
+    "cliSession": [
+      {
+        "id": "sess_41e51a4…",
+        "title": "🧩 双链联想｜批次功能实施",
+        "title_source": "custom",
+        "time_title_updated": 1791293501005
+      }
+    ]
+  },
+  "hostLog": {
+    "path": "C:\\Users\\<user>\\.zcode\\v2\\logs\\2026-10-06.log",
+    "content": "59656:[2026-10-06 21:31:36.544] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 21:31:36.544] [pid:39048] [zcode-host] [rpc:call] zcode-task.getTaskMeta OK (0.5ms)\n59662:[2026-10-06 21:31:40.809] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 21:31:40.809] [pid:39048] [zcode-host] [rpc:call] zcode-agent.generateWorkspaceText OK (4189.4ms)\n59664:[2026-10-06 21:31:40.939] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 21:31:40.938] [pid:39048] [zcode-host] [rpc:call] zcode-task.getTaskMeta OK (0.4ms)\n59665:[2026-10-06 21:31:41.002] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 21:31:41.002] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask start {\"taskId\":\"sess_41e51a4…\",\"workspacePath\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"titleLength\":14}\n59667:[2026-10-06 21:31:41.004] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 21:31:41.004] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask index updated {\"taskId\":\"sess_41e51a4…\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"updatedAt\":1791293501002,\"titleLength\":14}\n59669:[2026-10-06 21:31:41.035] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 21:31:41.035] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask event emitted {\"taskId\":\"sess_41e51a4…\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\"}\n59670:[2026-10-06 21:31:41.036] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 21:31:41.035] [pid:39048] [zcode-host] [rpc:call] zcode-task.renameTask OK (32.7ms)\n59671:[2026-10-06 21:31:41.160] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 21:31:41.160] [pid:39048] [zcode-host] [rpc:call] zcode-task.getTaskMeta OK (0.5ms)",
+    "fromLine": 59656,
+    "toLine": 59671
+  },
+  "validation": {
+    "tests": 10,
+    "passed": 10,
+    "failed": 0,
+    "exitCode": 0,
+    "tddRedObserved": {
+      "remote": 1,
+      "history": 1,
+      "naming": 1,
+      "backend": 1,
+      "cli": 1
+    },
+    "liveExitCode": 0,
+    "repeatExitCode": 0,
+    "repeatWithoutAuthorization": true
+  },
+  "historyPath": {
+    "source": "SQLite readonly",
+    "projection": "固定官方可见消息规则；持久化 session.revert 当前分支；按 user/parentID 合并",
+    "selectedTurns": 3,
+    "legacyRpc": "readSessionMessages 实测因 messageId/sessionId 与 id/sessionID 字段校验不一致而失败"
+  },
+  "limits": [
+    "未安装或注册 Stop Hook",
+    "远控授权需要外部注入；未实现自动取得/续期",
+    "后台进程需要共享数据目录串行；尚未验证多窗口调度",
+    "首次观察历史标题无法判断是否手工设置；后续检测外部改名会锁定",
+    "本程序未记录聊天正文或远控凭据；ZCode 自身模型 I/O 日志遵循其已有策略"
+  ]
+}

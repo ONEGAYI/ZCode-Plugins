@@ -1,0 +1,130 @@
+{
+  "topic": "oil-zcode-title 第二轮实施（探活/Toast/冷却/Skill/Hook）",
+  "date": "2026-10-06T23:20:00+08:00",
+  "baselineBefore": {
+    "tests": 10,
+    "result": "pass",
+    "log": "handoff 基线复跑通过（zcode-title-handoff-baseline-20261006.log）"
+  },
+  "after": {
+    "tests": 50,
+    "result": "pass"
+  },
+  "redGreenLog": [
+    {
+      "feature": "probe 探活（probeRemote/remote.probe）",
+      "red": "probeRemote 未导出，14 项用例模块加载失败",
+      "green": "短超时 8s/分层 stage+reasonCode/ACK 新鲜度等待，14 项通过",
+      "tests": [
+        "tests/probe.test.mjs"
+      ]
+    },
+    {
+      "feature": "Toast 冷却与互斥（cooldown.mjs/toast.mjs）",
+      "red": "模块不存在",
+      "green": "7200s 冷却、原子写、并发单显、陈旧锁回收、显示失败不进冷却，7 项通过",
+      "tests": [
+        "tests/toast.test.mjs"
+      ]
+    },
+    {
+      "feature": "协议按钮动作（toast-action.mjs）",
+      "red": "模块不存在",
+      "green": "解析/拒绝未知动作/复制提示词+打开工作区（注入式）",
+      "tests": [
+        "tests/toast-action.test.mjs"
+      ]
+    },
+    {
+      "feature": "幂等安装（install.mjs）",
+      "red": "模块不存在",
+      "green": "vbs/协议/自建 AUMID/Stop Hook 追加式安装与卸载",
+      "tests": [
+        "tests/install.test.mjs"
+      ]
+    },
+    {
+      "feature": "cli probe/status/enable/disable/auth/unauth 与失败联动",
+      "red": "无 stage/reasonCode/toast 字段；catch 引用块外变量崩溃",
+      "green": "失败分层透出、静音变量、授权 DPAPI 落盘不回显",
+      "tests": [
+        "tests/cli.test.mjs"
+      ]
+    },
+    {
+      "feature": "授权 DPAPI 存储（auth-store.mjs）",
+      "red": "模块不存在",
+      "green": "当前用户加密往返、损坏报错、清除回到未配置",
+      "tests": [
+        "tests/auth-store.test.mjs"
+      ]
+    },
+    {
+      "feature": "Stop Hook 派发器（hook.mjs）",
+      "red": "模块不存在",
+      "green": "续跑保护/无效负载容错/无授权静默/后台派发注入",
+      "tests": [
+        "tests/hook.test.mjs"
+      ]
+    }
+  ],
+  "machineVerified": [
+    "Toast 横幅与双按钮渲染：来源应用名“ZCode 自动命名插件”、标题“ZCode 自动命名暂停”、正文含 reasonCode、按钮“复制排障提示词并打开 ZCode”+“忽略”（截图 notes/toast-button-evidence.png，image-reader-agent 逐字转录验收通过）",
+    "自建 AUMID SUIAN.OilZcodeTitle.Toast 通知计数 0→1（对照：外部进程借用 dev.zcode.app 发送被通知平台静默丢弃，计数不增）",
+    "协议按钮激活链路（wscript vbs → node toast-action）：剪贴板收到完整修复提示词；动作日志 ok:true；命名进程退出后按钮仍可点击（Shell 按注册表独立拉起）",
+    "剪贴板 PS 5.1 假失败（Set-Clipboard/SetText 抛异常但实际写入）：.NET Clipboard API + 回读比对 + 3 次重试处理，反斜杠/中文保真",
+    "冷却虚拟时钟边界：7199s 抑制、7200s 整点恢复；并发两路只显示一次；进程重启不清零",
+    "Stop Hook 安装：~/.zcode/cli/config.json 追加 Stop 条目（async:true），既有 SessionStart hook 原样保留；安装前备份 config.json.oil-zcode-title-backup",
+    "Hook 真实静默路径：stdin 喂真实会话事件 → skipped_no_auth、退出码 0、stdout 不以 { 开头",
+    "status 实测：enabled/selection/authorization/toast 三项资产/冷却状态/最近命名",
+    "DPI 陷阱记录：截屏需 SetProcessDPIAware，否则多屏物理像素不完整（4160x2560 vs 逻辑 2774x1707）",
+    "并发实验（2026-10-07 00:3x）：同一授权码两进程同时连接——先完成认证者持有席位（8 秒保持期 probe 正常），后来者 161ms 即被 KICKED；被踢后立即复测 probe 四层全绿、授权码完好",
+    "官方开源快照中无远控 relay 协议实现（无 pair_status/auth_init/wss 引用），device 侧通信为闭源模块；链接约两小时后失效的服务端行为无法从源码核实，只能实测",
+    {
+      "id": "hooks-config-snapshot",
+      "claim": "宿主对 hooks 配置做启动快照，无热重载：AgentRuntime 装配时以 runtime.config.hooks 建 InMemoryHookRunner（runtime-tools.ts createRuntimeHookRunner→createConfiguredHookRunner），此后不重读 config.json",
+      "evidence": "ZCode 主进程 10-04 19:00 启动、本会话 21:36 创建，Stop 条目 23:26:09 才写入 config.json（mtime+备份文件 23:11:37），故本会话 turn 结束（00:14）hook.log 无新行；23:55:13 的 dispatched 行系上轮手动验证触发",
+      "verifiedAt": "2026-10-06T16:28:44.368Z"
+    },
+    {
+      "id": "workspacekey-identity-fallback",
+      "claim": "vendor workspaceKey=e.workspaceIdentity?.trim()||e.workspacePath；宿主 bootstrap 的 workspace 对象仅含 kind/label/workspacePath/workspacePurpose，无 identity 字段时回退路径匹配",
+      "evidence": "node 导入 vendor/remote-shared.js 打印 S 函数源码 gO；直连 bootstrap 列出 13 个 local 工作区，含 D:CODEProject",
+      "verifiedAt": "2026-10-06T16:28:44.368Z"
+    },
+    {
+      "id": "stale-guard-correct",
+      "claim": "stale_result 是生成窗口内历史指纹漂移的正确防抖：读快照→模型生成→复查三段间本 turn 工具调用追加历史即放弃写入",
+      "evidence": "手动模拟 Stop（turn 进行中）worker 7183ms 返回 stale_result，usage 有值证明 generate 已真实完成；probe 四层全绿+bridge+候选校验全通过",
+      "verifiedAt": "2026-10-06T16:28:44.368Z"
+    },
+    {
+      "id": "stop-race-stale",
+      "claim": "宿主在 turn 收尾瞬间即调 Stop hook，此时边界持久化与状态落库未完成，worker 立即读快照必致复查指纹漂移（stale）；派发前让出 8 秒收尾窗口可消除",
+      "evidence": "新会话 sess_ba5bd9ad 宿主真实触发 hook（00:31:21 dispatched），worker 4669ms 生成 3076 tokens 后 stale_result 未改名；对照 90 秒静止窗口的手动触发成功 renamed。修复=hook.mjs WORKER_START_DELAY_MS=8000 + naming staleReason 诊断字段，54 项测试全绿",
+      "verifiedAt": "2026-10-06T16:36:31.480Z"
+    }
+  ],
+  "traps": [
+    "IPropertyStore IID 手抄错一位（CDBA1DBCF99→CDBA1DBDCF99）导致 csc 报“UUID 格式不正确”，曾被误判为编译器损坏",
+    "SHGetPropertyStoreFromParsingName 在 shell32.dll 且需 GPS_READWRITE(2) 才能写属性，默认只读打开报 STG_E_ACCESSDENIED",
+    "Toast 按钮元素是 <action>，写成嵌套 <toast> 会被平台静默丢弃（横幅照常显示但无按钮）",
+    "PS 5.1 Set-Clipboard 与 .NET SetText 在剪贴板锁竞争下抛假失败，必须回读核实",
+    "解构默认参数 now=Date.now() 是数字（调用结果）而非函数引用，注入 clock 的测试覆盖不到默认路径",
+    "zcode://workspace/open 对任意路径（含内部工作区）都弹官方确认框，自动化严禁触发",
+    "PowerShell -Command 经 argv 传含引号脚本会被转义破坏，一律改 -EncodedCommand(base64 UTF-16LE)",
+    "同一授权码任一时刻只容一个 terminal 连接：先完成认证者持有席位直到断开，后来者被 KICKED（不损授权码）；挂网页/手机保活期间 worker 是后来者会被踢，挂机保活与 worker 工作互斥",
+    {
+      "id": "bash-json-backslash",
+      "claim": "Git Bash 双引号内联 JSON 的路径反斜杠经 bash 与 JS 双重转义后丢失（D:CODEProject→D:CODEProject），跨层构造统一用 String.fromCharCode(92) 或 node 脚本写文件",
+      "evidence": "本轮 sim-stop.json 构造两次翻车实录",
+      "verifiedAt": "2026-10-06T16:28:44.368Z"
+    }
+  ],
+  "pendingUserAcceptance": [
+    "用户提供移动端远控链接 → cli auth 加密落盘 → 测试会话真实 Stop 触发后台命名（端到端唯一未实测环节）",
+    "有效授权下 probe_ok 实测",
+    "真实远控失败场景的 Toast 冷却体验（断开移动端后连续两轮 Stop 只弹一次）"
+  ],
+  "secrets": "无凭据；授权 blob 为 DPAPI 密文，链接明文未落任何文件或日志"
+}
