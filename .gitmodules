@@ -1,0 +1,6 @@
+[submodule "sources/official-zcode"]
+	path = sources/official-zcode
+	url = https://github.com/zai-org/ZCode.git
+[submodule "sources/zcode-open-bridge"]
+	path = sources/zcode-open-bridge
+	url = https://github.com/tizerluo/zcode-open-bridge.git

@@ -1,0 +1,382 @@
+{
+  "verifiedOn": "2026-10-05",
+  "cleanup": {
+    "temporaryProbesAndProfilesRemoved": true,
+    "retained": "最终报告、脱敏证据和两份未修改的源码克隆"
+  },
+  "installed": {
+    "desktopProductVersion": "3.14.4.7912",
+    "asarPackageVersion": "3.14.4",
+    "cliVersion": "0.16.9",
+    "nodeVersion": "v24.15.0",
+    "executable": "D:\\APP\\_ForCoder\\ZCode\\ZCode.exe",
+    "cliBundle": "D:\\APP\\_ForCoder\\ZCode\\resources\\glm\\zcode.cjs"
+  },
+  "sourceSnapshot": {
+    "url": "https://github.com/zai-org/ZCode",
+    "commit": "29628c9acdb81b703bbd4080c207a0e7ce5e276e",
+    "scope": "公开源码快照 3.14.3；不等同于本机 3.14.4 完整构建"
+  },
+  "appServerProbe": {
+    "bundle": "D:\\APP\\_ForCoder\\ZCode\\resources\\glm\\zcode.cjs",
+    "isolatedProfile": "D:\\CODE\\Project\\_ForExplore\\zcode-session-mcp-research\\probes\\.scratch\\isolated-profile-fixed",
+    "requests": [
+      {
+        "method": "runtime/capabilities",
+        "responseType": "dict",
+        "resultKeys": [
+          "independentPlanState"
+        ],
+        "result": {
+          "independentPlanState": true
+        }
+      },
+      {
+        "method": "session/list",
+        "responseType": "dict",
+        "resultKeys": [
+          "sessions"
+        ],
+        "listCounts": {
+          "sessions": 0
+        }
+      }
+    ],
+    "childExitCode": 0,
+    "stderrLineCount": 0,
+    "probeExitCode": 0,
+    "policy": "隔离配置、凭据路径和数据库；不调用模型、不创建或发送任务"
+  },
+  "metadataSchema": [
+    {
+      "path": "C:\\Users\\<user>\\.zcode\\v2\\tasks-index.sqlite",
+      "mode": "ro",
+      "tables": [
+        "automation_runs",
+        "automations",
+        "off_peak_tasks",
+        "task_group_members",
+        "task_group_view_node_orders",
+        "task_group_workspace_bootstraps",
+        "task_groups",
+        "tasks",
+        "tasks_schema_migration"
+      ],
+      "columns": {
+        "off_peak_tasks": [
+          "off_peak_task_id",
+          "server_ticket_id",
+          "title",
+          "conversation_id",
+          "session_id",
+          "prompt",
+          "permission_mode",
+          "model",
+          "thought_level",
+          "workspace_key",
+          "workspace_path",
+          "workspace_identity",
+          "status",
+          "queued_at",
+          "started_at",
+          "ended_at",
+          "failure_reason",
+          "files_changed",
+          "settled_at",
+          "history_deleted_at",
+          "registered_at",
+          "schedulable",
+          "queue_position",
+          "next_poll_at",
+          "claim_running",
+          "claimed_at",
+          "attempt_count",
+          "last_error",
+          "created_at",
+          "updated_at",
+          "model_selection"
+        ],
+        "task_group_members": [
+          "group_id",
+          "workspace_key",
+          "workspace_path",
+          "workspace_identity",
+          "task_id",
+          "sort_order",
+          "added_at",
+          "created_at",
+          "updated_at"
+        ],
+        "task_group_view_node_orders": [
+          "node_type",
+          "node_key",
+          "sort_order",
+          "created_at",
+          "updated_at"
+        ],
+        "task_group_workspace_bootstraps": [
+          "workspace_key",
+          "group_id",
+          "created_at",
+          "updated_at"
+        ],
+        "task_groups": [
+          "group_id",
+          "title",
+          "color",
+          "created_at",
+          "updated_at"
+        ],
+        "tasks": [
+          "workspace_key",
+          "workspace_path",
+          "workspace_identity",
+          "task_id",
+          "title",
+          "task_status",
+          "provider",
+          "mode",
+          "model",
+          "migration_source",
+          "forked_from_task_id",
+          "created_at",
+          "updated_at",
+          "unread_at",
+          "pinned",
+          "archived",
+          "deleted",
+          "title_overridden",
+          "meta_json",
+          "searchable_text",
+          "last_unread_at",
+          "cron_automation_id",
+          "off_peak_task_id"
+        ],
+        "tasks_schema_migration": [
+          "id",
+          "checksum",
+          "time_applied"
+        ]
+      }
+    },
+    {
+      "path": "C:\\Users\\<user>\\.zcode\\cli\\db\\db.sqlite",
+      "mode": "ro",
+      "tables": [
+        "dwf_actor",
+        "dwf_event",
+        "dwf_node",
+        "dwf_run",
+        "input_history",
+        "local_setting",
+        "message",
+        "model_usage",
+        "part",
+        "permission",
+        "schema_migration",
+        "session",
+        "session_entry",
+        "session_input",
+        "session_target",
+        "session_task_link",
+        "todo",
+        "tool_usage",
+        "turn_usage",
+        "workflow_activity",
+        "workflow_definition",
+        "workflow_event",
+        "workflow_run"
+      ],
+      "columns": {
+        "session": [
+          "id",
+          "project_id",
+          "workspace_id",
+          "parent_id",
+          "slug",
+          "directory",
+          "path",
+          "title",
+          "version",
+          "share_url",
+          "summary_additions",
+          "summary_deletions",
+          "summary_files",
+          "summary_diffs",
+          "revert",
+          "permission",
+          "time_created",
+          "time_updated",
+          "time_compacting",
+          "time_archived",
+          "task_type",
+          "title_source",
+          "title_message_id",
+          "time_title_updated",
+          "trace_id"
+        ],
+        "session_entry": [
+          "id",
+          "session_id",
+          "type",
+          "time_created",
+          "time_updated",
+          "data"
+        ],
+        "session_input": [
+          "id",
+          "session_id",
+          "kind",
+          "delivery",
+          "payload",
+          "admitted_sequence",
+          "promoted_sequence",
+          "promoted_message_id",
+          "status",
+          "status_reason",
+          "time_created",
+          "time_updated"
+        ],
+        "session_target": [
+          "session_id",
+          "target_id",
+          "objective",
+          "status",
+          "token_budget",
+          "tokens_used",
+          "time_used_seconds",
+          "time_created",
+          "time_updated",
+          "summary_title",
+          "active_input_id",
+          "active_run_started_at",
+          "active_run_last_seen_at"
+        ],
+        "session_task_link": [
+          "id",
+          "root_workflow_run_id",
+          "parent_link_id",
+          "activity_id",
+          "parent_session_id",
+          "child_session_id",
+          "role",
+          "depth",
+          "path",
+          "phase",
+          "label",
+          "agent_type",
+          "model",
+          "status",
+          "time_created",
+          "time_updated"
+        ]
+      }
+    }
+  ],
+  "observedDesktopTransport": {
+    "hostProcessId": 39048,
+    "mainProcessId": 9104,
+    "loopbackListener": {
+      "address": "127.0.0.1",
+      "port": 49571,
+      "purpose": "尚未核实；不能当作会话 RPC"
+    },
+    "commandControl": "源码中 Desktop Host 与 Renderer 使用 Electron MessagePort；MCP 没有自动取得此端口"
+  },
+  "shippedBundleStringChecks": {
+    "nativeMailbox": true,
+    "messageEnabledEnvironmentVariable": true,
+    "mcpRequestContextMeta": true,
+    "sessionMethodsAndV4": true
+  },
+  "limitations": [
+    "未向真实会话发信",
+    "未启用 ZCODE_MESSAGE_ENABLED 或修改 ZCode 设置",
+    "未验证空闲桌面会话的主动唤醒",
+    "未验证 CLI 会话自动进入桌面侧栏",
+    "源码快照与本机发行版不同版本，字符串存在不等于端到端行为验证"
+  ],
+  "webRemoteControl": {
+    "verifiedOn": "2026-10-05",
+    "asarSha256": "172D6F333E61642CE3882250949FAFE8180F75B5B8E5552244CA2C59CA05D14E",
+    "verification": "只读静态检查发行包；未发起任何远控连接或配对请求",
+    "extractionExitCode": 0,
+    "staticScanExitCode": 0,
+    "officialDocumentation": "https://zcode.z.ai/en/docs/remote-control",
+    "genericWebHost": {
+      "routes": [
+        "/api/server-info",
+        "/ws",
+        "/api/rpc-host-capability",
+        "/ws/host"
+      ],
+      "protocol": [
+        "WebSocket binary frames",
+        "SocketProtocol",
+        "ChannelClient/ChannelServer",
+        "ProxyChannel"
+      ],
+      "scope": "所属 Web Host 的服务，不自动附着到 Desktop"
+    },
+    "shippedEntries": [
+      {
+        "path": "out/main/index.js",
+        "indicators": [
+          "WebRemoteControlDeviceTransport",
+          "device_register_init",
+          "auth_challenge",
+          "auth_response",
+          "pair_status_query",
+          "bootstrap-request",
+          "workspace-list-request",
+          "workspace-bridge-open",
+          "workspace-bridge-ready",
+          "rpc-frame",
+          "rpc-frame-ack",
+          "attachLocalHostAttachment",
+          "AttachServicePort",
+          "web-remote-replayable"
+        ],
+        "finding": "远控桥向现有 window Host 转交 MessagePort；该附着操作没有 spawn 新 CLI"
+      },
+      {
+        "path": "out/main/chunk-Q4A6QLKZ.js",
+        "indicators": [
+          "AcknowledgedRelayProtocol",
+          "createAcknowledgedWebRemoteControlRelayProtocol",
+          "WebRemoteControlRelayPayloadSerializer"
+        ],
+        "finding": "转发消息有确认、缓存、流控和恢复处理"
+      },
+      {
+        "path": "out/main/chunk-SPTKPKUJ.js",
+        "indicators": [
+          "bridgeSessionId",
+          "bridgeGeneration",
+          "recoveryId",
+          "messageSeq",
+          "fragmentIndex",
+          "fragmentCount",
+          "rpc-frame-ack",
+          "workspace-bridge-open"
+        ],
+        "finding": "发行包包含严格的远控消息和工作区 bridge schema"
+      },
+      {
+        "path": "out/renderer/assets/styles-Qlp0Bew7.js",
+        "indicators": [
+          "isWebRemoteControl",
+          "RemoteControlSession"
+        ],
+        "finding": "桌面共享 UI 中存在远控状态与输入适配；不等于已经取得独立手机客户端代码"
+      }
+    ],
+    "limitations": [
+      "未获得或使用远控链接",
+      "未核实独立客户端配对与授权有效期",
+      "未向真实会话提交命令",
+      "官方公开 3.14.3 快照不包含相同的完整手机 relay 实现",
+      "文档规定窗口范围与一个手机页面；MCP并发行为仍需验证"
+    ]
+  }
+}

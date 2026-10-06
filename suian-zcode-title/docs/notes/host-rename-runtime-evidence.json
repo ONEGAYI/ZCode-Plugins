@@ -1,0 +1,48 @@
+{
+  "verifiedAt": "2026-10-06T20:28:35+08:00",
+  "scope": "用户明确授权将指定会话改名；通过现有 ZCode 界面触发官方服务",
+  "method": "Computer Use → 原 Renderer → 原 Host.renameTask → CLI 标题同步",
+  "sessionId": "sess_41e51a4…",
+  "previousTitle": "双链联想",
+  "requestedTitle": "改名测试：双链联想",
+  "workspacePath": "D:\\CODE\\Project\\_Extensions\\vscode-obsidian-like-editor",
+  "hostPid": 39048,
+  "mainPid": 9104,
+  "ui": {
+    "renameDialogClosed": true,
+    "headerTitleMatched": true,
+    "pinnedAndProjectListsMatched": true
+  },
+  "databaseReadback": {
+    "readonly": true,
+    "rows": [
+      {
+        "source": "tasks_index",
+        "session_id": "sess_41e51a4…",
+        "title": "改名测试：双链联想",
+        "custom_title": 1,
+        "updated_at": 1791289715261
+      },
+      {
+        "source": "cli_session",
+        "session_id": "sess_41e51a4…",
+        "title": "改名测试：双链联想",
+        "custom_title": 1,
+        "updated_at": 1791289715254
+      }
+    ]
+  },
+  "hostLog": {
+    "path": "C:\\Users\\<user>\\.zcode\\v2\\logs\\2026-10-06.log",
+    "fromLine": 54431,
+    "toLine": 54435,
+    "content": "[2026-10-06 20:28:35.234] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:28:35.234] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask start {\"taskId\":\"sess_41e51a4…\",\"workspacePath\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"titleLength\":9}\n[2026-10-06 20:28:35.235] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:28:35.234] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask overlay set {\"taskId\":\"sess_41e51a4…\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\"}\n[2026-10-06 20:28:35.237] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:28:35.237] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask index updated {\"taskId\":\"sess_41e51a4…\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"updatedAt\":1791289715234,\"titleLength\":9}\n[2026-10-06 20:28:35.284] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:28:35.284] [pid:39048] [zcode-host] [rpc:call] window-controller.listTaskList OK (0.1ms)\n[2026-10-06 20:28:35.284] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:28:35.284] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask event emitted {\"taskId\":\"sess_41e51a4…\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\"}\n"
+  },
+  "limitations": [
+    "未从独立 MCP 或外部 RPC 客户端发起改名",
+    "未建立新的 app-server",
+    "未直接写会话或任务数据库",
+    "未调用模型生成标题",
+    "此 PID、日志行和标题是本次测试的快照"
+  ]
+}

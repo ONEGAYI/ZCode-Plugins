@@ -1,0 +1,123 @@
+{
+  "verifiedAt": "2026-10-06T20:55:01+08:00",
+  "scope": "用户明确授权指定会话改名，提供当前窗口远控链接",
+  "method": "独立 Node WebSocket 客户端 → 官方 relay → workspace bridge → 原 Host zcode-task.renameTask",
+  "desktopVersion": "3.14.4.7912",
+  "asarVersion": "3.14.4",
+  "cliVersion": "0.16.9",
+  "nodeVersion": "v24.15.0",
+  "mainPid": 9104,
+  "hostPid": 39048,
+  "clientExitCode": 0,
+  "client": {
+    "startedAt": "2026-10-06T12:55:01.058Z",
+    "taskId": "sess_41e51a4…",
+    "workspacePath": "D:\\CODE\\Project\\_Extensions\\vscode-obsidian-like-editor",
+    "transport": "external Node WebSocket → original desktop workspace bridge",
+    "events": [
+      {
+        "event": "paired",
+        "at": "2026-10-06T12:55:01.243Z"
+      },
+      {
+        "event": "bootstrap-target-verified",
+        "title": "双链联想",
+        "at": "2026-10-06T12:55:01.308Z"
+      },
+      {
+        "event": "original-workspace-bridge-ready",
+        "at": "2026-10-06T12:55:01.372Z"
+      },
+      {
+        "event": "channel-initialized",
+        "at": "2026-10-06T12:55:01.374Z"
+      }
+    ],
+    "before": {
+      "taskId": "sess_41e51a4…",
+      "title": "双链联想",
+      "updatedAt": 1791290388430
+    },
+    "renameResponse": {
+      "taskId": "sess_41e51a4…",
+      "title": "改名测试：双链联想",
+      "updatedAt": 1791291301472
+    },
+    "after": {
+      "taskId": "sess_41e51a4…",
+      "title": "改名测试：双链联想",
+      "updatedAt": 1791291301505
+    },
+    "success": true,
+    "completedAt": "2026-10-06T12:55:01.623Z"
+  },
+  "request": {
+    "channel": "zcode-task",
+    "command": "renameTask",
+    "argument": [
+      {
+        "taskId": "sess_41e51a4…",
+        "workspacePath": "D:\\CODE\\Project\\_Extensions\\vscode-obsidian-like-editor",
+        "title": "改名测试：双链联想"
+      }
+    ]
+  },
+  "databaseReadback": {
+    "readonly": true,
+    "pragmaQueryOnly": true,
+    "tasksIndex": [
+      {
+        "task_id": "sess_41e51a4…",
+        "title": "改名测试：双链联想",
+        "title_overridden": 1,
+        "updated_at": 1791291301505,
+        "archived": 0,
+        "deleted": 0
+      }
+    ],
+    "cliSession": [
+      {
+        "id": "sess_41e51a4…",
+        "title": "改名测试：双链联想",
+        "title_source": "custom",
+        "time_title_updated": 1791291301500,
+        "time_updated": 1791291316448
+      }
+    ]
+  },
+  "hostLog": {
+    "path": "C:\\Users\\<user>\\.zcode\\v2\\logs\\2026-10-06.log",
+    "lines": [
+      55580,
+      55581,
+      55629,
+      55630,
+      55631,
+      55632,
+      55634,
+      55635,
+      55636
+    ],
+    "redacted": true,
+    "content": "55580:[2026-10-06 20:55:01.342] [info] [pid:9104] [main] [web-remote-control] attaching workspace bridge window=1 session=[redacted] bridgeSession=3077c73c-295e-4add-8f85-cf4a1f92764e workspace=D:\\CODE\\Project\\_Extensions\\vscode-obsidian-like-editor\n55581:[2026-10-06 20:55:01.343] [info] [pid:9104] [main] [web-remote-control] workspace bridge active window=1 session=[redacted] bridgeSession=3077c73c-295e-4add-8f85-cf4a1f92764e\n55629:[2026-10-06 20:55:01.410] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:55:01.409] [pid:39048] [zcode-host] [rpc:call] zcode-task.getTaskMeta OK (1.1ms)\n55630:[2026-10-06 20:55:01.472] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:55:01.472] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask start {\"taskId\":\"sess_41e51a4…\",\"workspacePath\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"titleLength\":9}\n55631:[2026-10-06 20:55:01.473] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:55:01.472] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask overlay set {\"taskId\":\"sess_41e51a4…\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\"}\n55632:[2026-10-06 20:55:01.477] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:55:01.476] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask index updated {\"taskId\":\"sess_41e51a4…\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\",\"updatedAt\":1791291301472,\"titleLength\":9}\n55634:[2026-10-06 20:55:01.531] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:55:01.530] [pid:39048] [zcode-task-service] [ZCodeTaskService] renameTask event emitted {\"taskId\":\"sess_41e51a4…\",\"workspaceKey\":\"D:\\\\CODE\\\\Project\\\\_Extensions\\\\vscode-obsidian-like-editor\"}\n55635:[2026-10-06 20:55:01.532] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:55:01.531] [pid:39048] [zcode-host] [rpc:call] zcode-task.renameTask OK (58.9ms)\n55636:[2026-10-06 20:55:01.595] [info] [pid:9104] [main] [host-log] (local-1) [host] [2026-10-06 20:55:01.594] [pid:39048] [zcode-host] [rpc:call] zcode-task.getTaskMeta OK (0.5ms)\n"
+  },
+  "contractCheck": {
+    "officialEncoderAndAssembler": true,
+    "inputBytes": 900000,
+    "fragmentCount": 2,
+    "roundTripPassed": true,
+    "physicalFrameLimit": 1048576
+  },
+  "publicProtocolAssets": {
+    "entry": "https://zcode.z.ai/remote/v4/latest/assets/index-B-ilXaCQ.js",
+    "shared": "https://zcode.z.ai/remote/v4/latest/assets/src-wmk2orCZ.js",
+    "sharedSha256": "239ddb6707e80303e61c414bd82f6b2a1ef650c0a066149583463b02442039f9"
+  },
+  "limitations": [
+    "此次只有改名是已授权并已实测的真实业务变更",
+    "尚未封装生产 MCP",
+    "尚未测试真实发信、归档、模型生成、断线恢复或并发客户端",
+    "授权链接和 HMAC 只用于进程内存；未保存凭据和聊天正文",
+    "外部验证未进行界面点击；未单独检查本次桌面视觉显示"
+  ]
+}

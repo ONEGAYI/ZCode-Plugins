@@ -5,4 +5,4 @@ config.local.json
 *.log
 
 # 桌面截图等含本机环境信息的验证物料不入库
-docs/*.png
+docs/**/*.png
