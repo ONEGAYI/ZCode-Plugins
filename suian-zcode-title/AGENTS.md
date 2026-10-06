@@ -56,7 +56,7 @@ node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
 |---|---|
 | preview / renamed / kept | 候选、已写入并核验、模型决定保留 |
 | unchanged | 同一内容已处理，跳过模型 |
-| manual_title / locked | 成功命名后标题被外部修改，停止覆盖（删 `.local/<session_id>.json` 解锁） |
+| manual_title / locked | 成功命名后标题被改为非宿主生成来源（`title_source!=="generated"`），停止覆盖；宿主自动改名视为竞争，照常重新命名（删 `.local/<session_id>.json` 解锁） |
 | stale_result / outdated_event | 内容已更新或事件过期，丢弃结果 |
 | archived / running / empty / disabled / busy | 不适合命名或已暂停，不调用模型 |
 | failed | 连接、模型或核验失败，退出码 1（附 `stage/reasonCode/toast`） |

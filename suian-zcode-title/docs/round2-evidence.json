@@ -89,7 +89,7 @@
     {
       "id": "workspacekey-identity-fallback",
       "claim": "vendor workspaceKey=e.workspaceIdentity?.trim()||e.workspacePath；宿主 bootstrap 的 workspace 对象仅含 kind/label/workspacePath/workspacePurpose，无 identity 字段时回退路径匹配",
-      "evidence": "node 导入 vendor/remote-shared.js 打印 S 函数源码 gO；直连 bootstrap 列出 13 个 local 工作区，含 D:\CODE\Project",
+      "evidence": "node 导入 vendor/remote-shared.js 打印 S 函数源码 gO；直连 bootstrap 列出 13 个 local 工作区，含 D:\\CODE\\Project",
       "verifiedAt": "2026-10-06T16:28:44.368Z"
     },
     {
@@ -103,6 +103,18 @@
       "claim": "宿主在 turn 收尾瞬间即调 Stop hook，此时边界持久化与状态落库未完成，worker 立即读快照必致复查指纹漂移（stale）；派发前让出 8 秒收尾窗口可消除",
       "evidence": "新会话 sess_ba5bd9ad 宿主真实触发 hook（00:31:21 dispatched），worker 4669ms 生成 3076 tokens 后 stale_result 未改名；对照 90 秒静止窗口的手动触发成功 renamed。修复=hook.mjs WORKER_START_DELAY_MS=8000 + naming staleReason 诊断字段，54 项测试全绿",
       "verifiedAt": "2026-10-06T16:36:31.480Z"
+    },
+    {
+      "id": "workspace-authority-session-dir",
+      "claim": "宿主 Stop 事件的 cwd 是窗口当前目录，与会话归属工作区可能不一致；命名以 session.directory 为权威，索引行 workspace_path 次之，payload 兜底；索引行未写入（新会话首轮）不应导致失败",
+      "evidence": "sess_584be… 两次 21ms 失败于任务索引中没有目标工作区的会话：hook cwd=…_CLITools\\\\ripwire 而索引行归属 D:\\\\CODE\\\\Project；修复后 backend 以 session.directory 解析，56 项测试全绿",
+      "verifiedAt": "2026-10-06T17:46:54.469Z"
+    },
+    {
+      "id": "host-generated-no-lock",
+      "claim": "宿主自带自动命名 title_source=generated，renameTask 与用户手改均为 custom；标题变化仅当来源非 generated 才视为用户手动并锁定，否则重新命名覆盖；unchanged 需指纹与标题都一致",
+      "evidence": "db.sqlite 对照：目标会话 generated，五个已命名会话均 custom；naming 新增 generated 竞争与标题漂移两组用例",
+      "verifiedAt": "2026-10-06T17:46:54.469Z"
     }
   ],
   "traps": [
@@ -116,7 +128,7 @@
     "同一授权码任一时刻只容一个 terminal 连接：先完成认证者持有席位直到断开，后来者被 KICKED（不损授权码）；挂网页/手机保活期间 worker 是后来者会被踢，挂机保活与 worker 工作互斥",
     {
       "id": "bash-json-backslash",
-      "claim": "Git Bash 双引号内联 JSON 的路径反斜杠经 bash 与 JS 双重转义后丢失（D:\CODE\Project→D:\CODE\Project），跨层构造统一用 String.fromCharCode(92) 或 node 脚本写文件",
+      "claim": "Git Bash 双引号内联 JSON 的路径反斜杠经 bash 与 JS 双重转义后丢失（D:\\CODE\\Project→D:\\CODE\\Project），跨层构造统一用 String.fromCharCode(92) 或 node 脚本写文件",
       "evidence": "本轮 sim-stop.json 构造两次翻车实录",
       "verifiedAt": "2026-10-06T16:28:44.368Z"
     }

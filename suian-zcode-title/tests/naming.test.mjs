@@ -69,3 +69,15 @@ test("stale_result 记录具体漂移原因：fingerprint/running/title",async()
   await drift(s=>{s.running=true;},"running");
   await drift(s=>{s.title="他方改写";},"title");
 });
+test("宿主自动改名（generated）不锁定并重新命名；unchanged 需指纹与标题都一致",async()=>{
+  const box=fixture();box.snapshot.title="宿主生成标题";box.snapshot.titleSource="generated";
+  box.snapshot.fingerprint="content-v1";
+  const result=await runNaming({backend:box.backend,selection,state:{lastFingerprint:"content-v1",lastTitle:"🧩 旧标题｜已过时"},apply:true});
+  assert.equal(result.status,"renamed","generated 来源的标题变化是宿主竞争，不是用户手动");
+  assert.equal(box.snapshot.title,candidate.title);
+  const again=await runNaming({backend:box.backend,selection,state:box.state,apply:true});
+  assert.equal(again.status,"unchanged");
+  const box2=fixture();box2.snapshot.title="宿主又改回问题式";box2.snapshot.titleSource="generated";box2.snapshot.fingerprint="content-v1";
+  const drift=await runNaming({backend:box2.backend,selection,state:{lastFingerprint:"content-v1",lastTitle:"🧩 旧标题｜已过时"},apply:true});
+  assert.equal(drift.status,"renamed","指纹未变但标题被宿主改动，也应重新命名而非 unchanged");
+});

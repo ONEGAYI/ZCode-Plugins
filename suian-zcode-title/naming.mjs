@@ -26,11 +26,13 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
     if(apply)await backend.saveState(state);
   }
   if(state.locked)return{status:"locked",title:before.title};
-  if(state.lastFingerprint&&state.lastTitle!==before.title) {
+  // 标题变化且非宿主自动生成（generated）才视为用户手动改名并锁定；
+  // 宿主自带的首轮/后续自动命名与我们存在竞争，视为待覆盖的旧标题
+  if(state.lastFingerprint&&state.lastTitle!==before.title&&before.titleSource!=="generated") {
     if(apply)await backend.saveState({...state,locked:true,lastTitle:before.title});
     return{status:"manual_title",title:before.title};
   }
-  if(state.lastFingerprint===before.fingerprint)return{status:"unchanged",title:before.title};
+  if(state.lastFingerprint===before.fingerprint&&state.lastTitle===before.title)return{status:"unchanged",title:before.title};
   const generated=await backend.generate(before.context,selection);
   const candidate=candidateFrom(generated,before.title);
   const result={status:"preview",action:candidate.action,title:candidate.title,usage:generated.usage,selectedTurns:before.context.recent_turns.length};
