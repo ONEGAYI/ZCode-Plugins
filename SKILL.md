@@ -1,6 +1,6 @@
 ---
 name: suian-zcode-title
-description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初始化安装、配置移动端远控授权链接、检查与修复 Stop 自动命名、暂停恢复命名、诊断 Windows 通知提醒。当用户要求"初始化/安装自动命名插件"、"更换远控链接"、"命名插件检查/修复"、"暂停/恢复自动命名"、"命名通知总是弹/不弹"时使用；不用于普通对话内容处理，也不用于手动改标题。
+description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初始化安装、配置移动端远控授权链接、更换命名模型与思考档位、检查与修复 Stop 自动命名、暂停恢复命名、诊断 Windows 通知提醒。当用户要求"初始化/安装自动命名插件"、"更换远控链接"、"命名插件换模型/思考档"、"命名插件检查/修复"、"暂停/恢复自动命名"、"命名通知总是弹/不弹"时使用；不用于普通对话内容处理，也不用于手动改标题。
 ---
 
 # suian-zcode-title
@@ -26,7 +26,18 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 ### "更换远控链接"
 
-用户提供新链接后：probe 验证 → 引导通过 Hook 事件的 stdin/env 注入使用。不落盘。模型与档位保持 `GLM-5.3-Flash / low`，除非用户明确要求更换；更换前用 `node cli.mjs models` 查询可用目录，不猜模型名。
+用户提供新链接后：probe 验证 → 引导通过 Hook 事件的 stdin/env 注入使用。不落盘。
+
+### "更换命名模型 / 思考档位"
+
+1. `node cli.mjs models --config config.local.json`（stdin 传会话）列出原 Host 实际可用的 provider / model / reasoningLevel 清单——**生成走当前窗口的远控通道，只能选清单内的组合，不猜模型名**。
+2. 编辑 `config.local.json` 的 `selection`：`{"providerId":"...","modelId":"...","options":{"reasoningLevel":"..."}}`；档位必须在该模型清单的 reasoningLevels 里，否则 worker 报"指定思考档位不可用"。
+3. 改完即生效（hook 派发自动读取），下一轮 Stop 用新配置；想立即验证用 `doctor` 走一次本地链路。
+
+### 标题策略速览（用户问起时据此回答）
+
+- **滚动更新**：每轮 Stop 触发，但会话内容指纹没变就不调模型（`unchanged`）；内容变了模型对照现有标题输出 keep 或 rename，标题跟随主线缓慢演进，不逐轮翻新。
+- **手动改名即锁定**：用户手动改过标题后该会话永久退出自动命名（防覆盖用户意愿）；解锁 = 删除 `.local/<session_id>.json` 状态文件。
 
 ### "检查 / 修复命名插件"
 
@@ -75,7 +86,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 ## Hook 配置
 
-**配置位置**（源码核实）：用户级 `~/.zcode/cli/config.json` 的 `hooks.events.Stop`；用户级 hooks 无信任门槛、写入即生效；条目 `async:true` 后台执行，不阻塞对话。
+**配置位置**（源码核实）：用户级 `~/.zcode/cli/config.json` 的 `hooks.events.Stop`；用户级 hooks 无信任门槛。**快照语义（实测）**：宿主在会话创建时快照 hooks 配置、此后不重读——**新写入的 Stop 条目只对之后新建的会话生效，存量会话永不触发**；验证真实触发必须用新会话（或重启 ZCode 后的任意会话）。条目 `async:true` 后台执行，不阻塞对话。
 
 **安装**：`node <插件根>/install.mjs <插件根>/.local` 已自动完成（幂等追加，保留既有 hooks，含他人条目）。结构示例：
 
@@ -83,7 +94,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 {"hooks":{"enabled":true,"events":{"Stop":[{"hooks":[{"type":"command","command":"node D:\\...\\hook.mjs","async":true,"timeout":30}]}]}}}
 ```
 
-**链路**：宿主 Stop → `hook.mjs`（stdin 收 `session_id`/`cwd`/`stop_hook_active`）→ `stop_hook_active:true` 跳过（防续跑重复）→ 无授权 blob 静默退出 → 有授权则解密并后台派发 `cli.mjs run --apply`（worker.lock 串行，busy 让位下轮）。
+**链路**：宿主 Stop → `hook.mjs`（stdin 收 `session_id`/`cwd`/`stop_hook_active`）→ `stop_hook_active:true` 跳过（防续跑重复）→ 无授权 blob 静默退出 → 有授权则**延迟 8 秒**（等宿主完成 turn 收尾持久化，规避快照漂移竞态）后派发 `cli.mjs run --apply`（worker.lock 串行，busy 让位下轮）。排障时 `hook.log.jsonl` 出现 `dispatched` 后约 8–10 秒才会有对应的 `runner.log.jsonl` 记录，属正常时序。
 
 **验证顺序**（分别验证，不合并断言）：
 1. 已写配置：`config.json` 中存在本插件 Stop 条目。
