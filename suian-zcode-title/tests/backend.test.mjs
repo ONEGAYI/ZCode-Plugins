@@ -7,7 +7,7 @@ import {join} from "node:path";
 import {tmpdir} from "node:os";
 test("后端读取双库状态，指定模型辅助生成，原 Host 改名后校验读回",async()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-backend-")),sessionDb=join(root,"session.sqlite"),indexDb=join(root,"index.sqlite");
-  const sqliteBin="D:/APP/_ForCoder/SQLite/sqlite3.exe",workspacePath="D:\\fixture",sessionId="sess_fixture";
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3",workspacePath="D:\\fixture",sessionId="sess_fixture";
   execFileSync(sqliteBin,[sessionDb,[
     "CREATE TABLE session(id,title,directory,path,revert,title_source);",
     "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",

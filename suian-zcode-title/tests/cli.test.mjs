@@ -8,7 +8,7 @@ import {fileURLToPath} from "node:url";
 const cli=fileURLToPath(new URL("../cli.mjs",import.meta.url));
 test("CLI 接收会话事件，无正文时跳过；非法事件不回显凭据",()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-cli-")),db=join(root,"session.sqlite"),index=join(root,"index.sqlite"),config=join(root,"config.json");
-  const sqliteBin="D:/APP/_ForCoder/SQLite/sqlite3.exe";
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
   try {
     execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');"]);
     execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','原名',0,0,'completed');"]);
@@ -68,7 +68,7 @@ test("status 汇总本地状态，enable/disable 原子修改 enabled 且写前�
 });
 test("run 无可用授权失败时给出分层原因且可静音 Toast",()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-clip-")),db=join(root,"session.sqlite"),index=join(root,"index.sqlite"),config=join(root,"config.json");
-  const sqliteBin="D:/APP/_ForCoder/SQLite/sqlite3.exe";
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
   const env={...process.env};delete env.OIL_ZCODE_REMOTE_URL;env.OIL_ZCODE_TITLE_DISABLE_TOAST="1";
   try {
     execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);INSERT INTO part VALUES('p1','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"改进编辑体验"})+"',1);"]);

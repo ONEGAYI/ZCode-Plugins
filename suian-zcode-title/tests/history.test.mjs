@@ -21,7 +21,7 @@ test("按真实用户输入合并多条助手，取三轮并排除内部提醒�
   assert.notEqual(changed.fingerprint,snap.fingerprint);
 });
 test("SQLite 只读读取按 sequence 重建文本分片，工作区不匹配时拒绝",async()=>{
-  const root=mkdtempSync(join(tmpdir(),"z-title-fixture-")),db=join(root,"fixture.sqlite"),sqliteBin="D:/APP/_ForCoder/SQLite/sqlite3.exe";
+  const root=mkdtempSync(join(tmpdir(),"z-title-fixture-")),db=join(root,"fixture.sqlite"),sqliteBin=process.env.SQLITE_BIN||"sqlite3";
   try {
     const sql=[
       "CREATE TABLE session(id,title,directory,path,revert,title_source);",

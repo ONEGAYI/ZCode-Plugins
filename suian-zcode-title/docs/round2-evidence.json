@@ -89,7 +89,7 @@
     {
       "id": "workspacekey-identity-fallback",
       "claim": "vendor workspaceKey=e.workspaceIdentity?.trim()||e.workspacePath；宿主 bootstrap 的 workspace 对象仅含 kind/label/workspacePath/workspacePurpose，无 identity 字段时回退路径匹配",
-      "evidence": "node 导入 vendor/remote-shared.js 打印 S 函数源码 gO；直连 bootstrap 列出 13 个 local 工作区，含 D:CODEProject",
+      "evidence": "node 导入 vendor/remote-shared.js 打印 S 函数源码 gO；直连 bootstrap 列出 13 个 local 工作区，含 D:\CODE\Project",
       "verifiedAt": "2026-10-06T16:28:44.368Z"
     },
     {
@@ -116,7 +116,7 @@
     "同一授权码任一时刻只容一个 terminal 连接：先完成认证者持有席位直到断开，后来者被 KICKED（不损授权码）；挂网页/手机保活期间 worker 是后来者会被踢，挂机保活与 worker 工作互斥",
     {
       "id": "bash-json-backslash",
-      "claim": "Git Bash 双引号内联 JSON 的路径反斜杠经 bash 与 JS 双重转义后丢失（D:CODEProject→D:CODEProject），跨层构造统一用 String.fromCharCode(92) 或 node 脚本写文件",
+      "claim": "Git Bash 双引号内联 JSON 的路径反斜杠经 bash 与 JS 双重转义后丢失（D:\CODE\Project→D:\CODE\Project），跨层构造统一用 String.fromCharCode(92) 或 node 脚本写文件",
       "evidence": "本轮 sim-stop.json 构造两次翻车实录",
       "verifiedAt": "2026-10-06T16:28:44.368Z"
     }

@@ -1,8 +1,4 @@
-# 运行日志与本机数据（授权密文、会话状态、Toast 资产均在其中）
-.local/
-config.local.json
-.scratch/
+node_modules/
+.DS_Store
+Thumbs.db
 *.log
-
-# 桌面截图等含本机环境信息的验证物料不入库
-docs/*.png

@@ -1,10 +1,20 @@
-# suian-zcode-title — ZCode 会话自动命名插件
+# ZCode-Plugins — ZCode 插件 monorepo 根
 
-- 插件目录即项目根；官方源码探查等研究材料留在 `_ForExplore/zcode-session-mcp-research`，此处只留脱敏证据（docs/）。
-- 用户已授权自动命名的搭建、验证与 Stop Hook 自动配置；真实改名操作限定明确指定的测试会话或用户会话的自动触发。
-- 不修改 ZCode 官方源码，不直接写 ZCode 会话数据库；改名仅走官方远控 RPC。
-- 远控授权链接仅以当前用户 DPAPI 密文（`.local/remote.blob`）保存；配置、日志、Toast、提示词均不携带链接明文或其 sid/hash/mid 片段。
-- Toast 按钮的打开动作固定指向用户自带默认工作区 `%USERPROFILE%\.zcode\workspace\default`，不随插件位置变化。
-- 自动化测试与脚本严禁触发 `suian-zcode-title://` 协议激活链路（会弹 ZCode 官方确认模态框，无人值守时无限阻塞）。
-- vendor 是固定来源的协议与投影库；版本信息见 vendor/NOTICE.md，不自动更新。
-- 新行为先写契约测试，记录红绿验证日志（docs/round2-evidence.json）；不添加无关功能。
+`ZCode-Plugins/` 是多个相互独立的 ZCode 插件的集总仓库；每个一级子目录是一个插件根，插件内部约定由其自身 `AGENTS.md` 维护，本文件只负责导航与仓库级约定。
+
+## 仓库级约定
+
+- 新增插件必须在本文件文件树登记，并拥有自己的 `AGENTS.md`；通用规则写这里，插件专属规则写插件内。
+- 开源发布前完成个人信息脱敏（用户名、会话标识、本机路径、授权凭据），由插件各自 `.gitignore` 挡住运行时数据。
+- 提交信息用中文，`类型: 简述` 格式，正文分条说明做了什么、为什么做。
+
+## 文件树
+
+```
+ZCode-Plugins/
+├── AGENTS.md               # 本文件：仓库导航与约定（单一事实源）
+├── CLAUDE.md               # 通过 @AGENTS.md 导入主文件，仅附加 Claude 专属补充
+├── README.md               # 面向开源读者的仓库简介
+├── .gitignore              # 仓库级通用忽略规则
+└── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 远控命名 + Toast 通知）
+```

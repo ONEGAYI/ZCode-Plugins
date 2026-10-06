@@ -6,7 +6,7 @@
       "reasoningLevel": "low"
     }
   },
-  "sqliteBin": "D:\\APP\\_ForCoder\\SQLite\\sqlite3.exe",
+  "sqliteBin": "sqlite3",
   "dataDir": ".local",
   "timeoutMs": 120000,
   "maxOutputTokens": 2048
