@@ -12,3 +12,7 @@ SUIAN 自维护的 ZCode 插件集合（monorepo）。每个子目录是一个�
 
 - 子目录即插件根，插件自身的约定、安装与测试见其 `AGENTS.md` / `README.md`。
 - 不入库内容（本机数据、密文、截图）由各插件目录的 `.gitignore` 声明；根级仅放通用规则。
+
+## 许可证
+
+自有代码以 [MIT](./LICENSE) 发布；vendor/ 目录内的第三方代码保留其原始许可与来源声明（见各插件的 vendor/NOTICE.md）。
