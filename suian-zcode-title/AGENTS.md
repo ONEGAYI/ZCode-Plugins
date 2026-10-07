@@ -75,9 +75,9 @@ node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
 | toast.mjs / toast-action.mjs / cooldown.mjs | Toast 编排与冷却、协议按钮动作、跨进程互斥锁 |
 | install.mjs | 幂等安装：协议桥、快捷方式 AUMID、Stop Hook 配置、技能副本（注入本机插件根）与卸载 |
 | prompt.md | 命名规则（沿用自 oil-codex-title 并按本项目调整） |
-| SKILL.md | 自然语言操作入口（由 install.mjs 部署到 `~/.zcode/skills/suian-zcode-title/` 并注入绝对路径；内含三级插件根定位链） |
+| SKILL.md | 自然语言操作入口、插件根定位与授权/Hook；公共网关配置委托同级 `suian-zcode-gateway` skill |
 | vendor/ | 固定来源的协议与投影库，见 NOTICE.md |
-| tests/ | 54 项契约与 CLI 集成测试（`node --test tests/*.test.mjs`） |
+| tests/ | 命名、Hook、授权与通知契约及 CLI 集成测试（`node --test tests/*.test.mjs`） |
 
 ### 已验证与边界
 

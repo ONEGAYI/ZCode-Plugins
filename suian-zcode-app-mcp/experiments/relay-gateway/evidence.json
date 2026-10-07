@@ -1,0 +1,113 @@
+{
+  "scope": "initial prototype before real Desktop rerouting; later live evidence is in docs/relay-gateway-coexistence-evidence.json",
+  "baselineCommit": "3165d0829e1b7d8cfb94b49779f45855ad2a34a5",
+  "nodeVersion": "24.15.0",
+  "wsVersion": "8.22.0",
+  "desktopStaticEvidence": {
+    "version": "3.14.4",
+    "asarSha256": "172D6F333E61642CE3882250949FAFE8180F75B5B8E5552244CA2C59CA05D14E",
+    "officialRelay": "wss://zcode.z.ai/ws",
+    "alternateEndpointRelay": "wss://zcode.chatglm.site/ws",
+    "environmentVariable": "ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL",
+    "offsetsAre": "UTF-16 character offsets in compiled files",
+    "locations": [
+      {
+        "file": "out/main/chunk-SPTKPKUJ.js",
+        "line": 1,
+        "offset": 1223,
+        "fact": "production default relay"
+      },
+      {
+        "file": "out/main/chunk-SPTKPKUJ.js",
+        "line": 1,
+        "offset": 3332,
+        "fact": "overrideUrl takes precedence"
+      },
+      {
+        "file": "out/main/index.js",
+        "line": 1367,
+        "offset": 708268,
+        "fact": "startup environment variable read"
+      },
+      {
+        "file": "out/main/index.js",
+        "line": 408,
+        "offset": 375751,
+        "fact": "mid query parameter"
+      },
+      {
+        "file": "out/main/index.js",
+        "line": 408,
+        "offset": 376219,
+        "fact": "X-Device-ID header"
+      },
+      {
+        "file": "out/main/index.js",
+        "line": 408,
+        "offset": 378433,
+        "fact": "Desktop sends computed auth proof"
+      },
+      {
+        "file": "out/main/index.js",
+        "line": 408,
+        "offset": 380558,
+        "fact": "data reception requires paired state"
+      }
+    ]
+  },
+  "contractTests": {
+    "initialTransportRed": {
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 1,
+      "reason": "unimplemented gateway"
+    },
+    "transportGreen": {
+      "exitCode": 0,
+      "passed": 1,
+      "failed": 0
+    },
+    "routingRed": {
+      "exitCode": 1,
+      "passed": 1,
+      "failed": 3,
+      "reason": "bootstrap API absent"
+    },
+    "routingGreen": {
+      "exitCode": 0,
+      "passed": 4,
+      "failed": 0
+    },
+    "cases": [
+      "device auth message bytes, text/binary type, mid and X-Device-ID preserved; second Desktop refused",
+      "two local bootstrap requests answered out of order and phone requests kept on sole upstream",
+      "waiting rejects injection and in-flight requests",
+      "timeout/disconnect reject; late local response is consumed instead of leaking to phone"
+    ],
+    "fixtures": "loopback WebSocket relay and Desktop simulators; no real phone or Desktop"
+  },
+  "publicRelayProbe": {
+    "checkedAt": "2026-10-07T05:46:55.912Z",
+    "target": "wss://zcode.z.ai/ws",
+    "syntheticIdentity": true,
+    "userCredentialsUsed": false,
+    "authResponseSent": false,
+    "authenticated": false,
+    "gatewayFaults": [],
+    "response": {
+      "type": "auth_challenge",
+      "code": null,
+      "pairStatus": null
+    },
+    "protocolResponseReceived": true
+  },
+  "userRuntimeModified": false,
+  "notValidated": [
+    "real Desktop authentication through gateway",
+    "official phone and local caller simultaneous operation",
+    "virtual matched state with phone offline",
+    "V4 bridge / numeric RPC IDs / subscriptions multiplexing",
+    "sending a prompt or renaming a real conversation"
+  ],
+  "productionMcpChanged": false
+}

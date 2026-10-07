@@ -1,6 +1,6 @@
 ---
 name: suian-zcode-title
-description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初始化安装、配置移动端远控授权链接、更换命名模型与思考档位、检查与修复 Stop 自动命名、暂停恢复命名、诊断 Windows 通知提醒。当用户要求"初始化/安装自动命名插件"、"更换远控链接"、"命名插件换模型/思考档"、"命名插件检查/修复"、"暂停/恢复自动命名"、"命名通知总是弹/不弹"时使用；不用于普通对话内容处理，也不用于手动改标题。
+description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初始化安装并配置公共网关、配置移动端远控授权链接、更换命名模型与思考档位、检查与修复 Stop 自动命名、暂停恢复命名、诊断 Windows 通知提醒。当用户要求"初始化/安装自动命名插件"、"更换远控链接"、"命名插件换模型/思考档"、"命名插件检查/修复"、"暂停/恢复自动命名"、"命名通知总是弹/不弹"时使用；不用于普通对话内容处理，也不用于手动改标题。
 ---
 
 # suian-zcode-title
@@ -23,14 +23,16 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 ### "初始化 / 安装自动命名插件"
 
 1. `node <插件根>/install.mjs <插件根>/.local`——幂等安装协议桥、开始菜单快捷方式、自建通知标识（AUMID）。重复执行安全；输出 `ok:true` 即安装完成。
-2. `node cli.mjs doctor --config config.local.json`（stdin 传会话）验证本地链路。
-3. 远控授权：请用户从 ZCode 桌面当前窗口"移动端远程控制"取得新链接，以 stdin `authorization_url` 字段传入**单次**使用；链接含凭据，**不写入任何文件、不回显、不进日志**。
-4. `node cli.mjs probe` 验证授权（见下方分层结果）。
-5. Stop Hook 配置（见"Hook 配置"节），完成后在测试会话验证一次真实触发。
+2. **配置公共网关**：读取已安装的 `~/.zcode/skills/suian-zcode-gateway/SKILL.md`；尚未安装时读取插件根同级 `../suian-zcode-gateway/SKILL.md`。按其流程完成依赖、Status → Install 和分层验证。后台启动、Desktop 用户级环境变量、重启方法及恢复流程只维护在公共 skill，不在本插件复制脚本。缺少该子项目时先补齐同一版本的完整仓库。
+3. `node cli.mjs doctor --config config.local.json`（stdin 传会话）验证本地链路。
+4. 按公共 skill 指导用户择时重开 Desktop。明确提醒：**运行中的 Agent 任务和未保存工作可能被重启中断，先完成或保存，再完整退出重开**。不要在承载初始化的 ZCode 中自行退出宿主；分别报告配置已写入与用户重启后已生效。
+5. 远控授权：从重开后的当前窗口"移动端远程控制"取得链接，按下方"配置授权"以 stdin 交给 `auth`，仅保存当前用户 DPAPI 密文，不保存明文、不回显、不进日志。
+6. `node cli.mjs probe` 验证授权（见下方分层结果）。若手机正在占用 terminal，说明当前命名 RPC 尚未接入网关分流，本地初始化可以继续，远端验证需在用户暂停手机远控后进行；不要强行抢占连接或声称配置网关就已完成命名共存。
+7. Stop Hook 配置（见"Hook 配置"节），完成后在用户选定的测试会话验证一次真实触发。
 
 ### "更换远控链接"
 
-用户提供新链接后：probe 验证 → 引导通过 Hook 事件的 stdin/env 注入使用。不落盘。
+用户提供新链接后，以 stdin 交给 `auth` 保存 DPAPI 密文，再 probe 验证。不要把明文写入配置或日志。
 
 ### "更换命名模型 / 思考档位"
 
@@ -55,14 +57,16 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 |---|---|---|
 | `network_timeout` / `network_error` | 网络不通或 relay 无响应 | 检查网络后重试 probe |
 | `auth_failed` | 授权被拒绝 | 需要新链接 |
-| `device_offline` / `kicked` | 原窗口远控未开启 / 被新连接取代 | 重新开启窗口远程控制 |
+| `device_offline` | 原窗口远控未开启或已离线 | 确认原窗口远控已开启，并按公共 skill 检查设备与上游连接 |
+| `kicked` | terminal 槽位已被其他客户端占用，本次连接被拒绝 | 暂停手机远控后重试；不要仅据此更换授权 |
 | `pair_waiting` | 远控配对未就绪 | 确认窗口远程控制已开启 |
 | `host_unreachable` | 原 ZCode 窗口不可达 | 确认原窗口存活 |
 | `workspace_missing` / `session_missing` | 原窗口没开目标工作区/会话 | 打开对应工作区会话 |
 | `auth_link_rejected` | 链接被服务端拒绝（已失效） | 窗口里重新开启远程控制并生成新链接，重新 auth |
 | `missing_authorization` / `invalid_url` | 未提供链接/链接格式错误 | 用户提供新链接 |
 
-4. 检查 Stop Hook：是否已配置、已启用、已信任、真实触发过（分别验证，不能只看一项）。
+4. 网关问题交给公共 `suian-zcode-gateway` skill，先区分配置、任务、Desktop、上游及配对状态；不要把网关变量只写到 Hook 或 MCP 子进程中。
+5. 检查 Stop Hook：是否已配置、已启用、已信任、真实触发过（分别验证，不能只看一项）。
 
 ### "暂停 / 恢复自动命名"
 
@@ -76,13 +80,13 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 ## 安全与边界
 
-- 远控授权链接仅在当次进程内使用（stdin 字段或 `OIL_ZCODE_REMOTE_URL`），任何输出、日志、Toast、提示词不携带 `sid/hash/mid`。
+- 远控授权明文只在使用它的进程内解密或注入（stdin 字段或 `OIL_ZCODE_REMOTE_URL`）；持久保存只用当前用户 DPAPI 密文，任何输出、日志、Toast、提示词不携带 `sid/hash/mid`。
 - 不直接写 ZCode 会话数据库；改名仅走官方远控 RPC。
 - 本地跳过路径（unchanged/disabled/empty/archived）不建立远控连接，不弹通知。
 - `run --apply` 失败分层（`stage/reasonCode`）时保留原标题并按冷却弹 Toast；`toast:"disabled"` 表示用户设了 `OIL_ZCODE_TITLE_DISABLE_TOAST=1`。
 - 自动化测试与脚本严禁调用协议激活链路（`suian-zcode-title://`）——其打开动作会弹 ZCode 官方确认模态框，无人值守时会无限阻塞。
 
-## 配置授权（初始化第 3 步的落地）
+## 配置授权
 
 1. 请用户在 ZCode 窗口开启"移动端远程控制"，复制生成的链接；以 stdin `authorization_url` 传给 `node cli.mjs auth --config config.local.json`——链接经当前用户 DPAPI 加密写入 `.local/remote.blob`，输出 `auth_saved`，**任何环节不回显**。
 2. 清除授权：`node cli.mjs unauth`；查看状态：`status` 的 `authorization` 字段（`configured`/`missing`）。
@@ -107,3 +111,5 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 4. 真实触发：配置授权后，在**用户选定的测试会话**完成一轮对话停止，观察标题变化与 `usage.jsonl` 新记录。
 
 **卸载**：`node install.mjs <插件根>/.local --remove`（移除自己的 Stop 条目、协议、快捷方式与缓存）。
+
+公共网关同时服务两个插件，卸载命名插件时保留它。用户明确要求恢复直连或一并移除公共工具时，再读取公共 skill 执行 Remove；不在命名安装器中删除公共任务或改回网关变量。
