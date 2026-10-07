@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import WebSocket, { WebSocketServer } from 'ws';
+import { createRpcBroker } from './rpc-broker.mjs';
 
 export const OFFICIAL_RELAY = 'wss://zcode.z.ai/ws';
 
@@ -16,7 +17,7 @@ function envelope(data, isBinary) {
 }
 
 // 只接受一个 Desktop，消息体及文本/二进制类型原样转发。
-export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, instanceId = 'standalone', controlToken, onError = (error) => console.error('gateway socket error:', error.code ?? error.name), onTraffic = () => {} } = {}) {
+export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, instanceId = 'standalone', controlToken, bridgeTimeoutMs = 5000, onError = (error) => console.error('gateway socket error:', error.code ?? error.name), onTraffic = () => {} } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid gateway port');
   let active;
   const http = createServer(async (request, response) => {
@@ -34,14 +35,43 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, ins
       desktop_connected: active?.desktop.readyState === WebSocket.OPEN,
       upstream_connected: active?.upstream.readyState === WebSocket.OPEN,
       paired: active?.paired ?? false,
+      upstream_paired: active?.phonePaired ?? false,
+      local_clients: active?.localClients.size ?? 0,
+      rpc_protocol_version: 1,
     }));
   });
-  const server = new WebSocketServer({ server: http, path: '/ws', verifyClient: (info, done) => done(info.req.headers.origin === undefined, 403) });
+  const server = new WebSocketServer({ noServer: true });
+  const rpcServer = new WebSocketServer({ noServer: true });
+  http.on('upgrade', (request, socket, head) => {
+    const path = request.url.split('?')[0];
+    const rpc = path === '/rpc';
+    if (request.headers.origin !== undefined || (rpc && (!controlToken || request.headers.authorization !== `Bearer ${controlToken}`))) { socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return; }
+    if (path !== '/ws' && !rpc) { socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n'); return; }
+    const target = rpc ? rpcServer : server;
+    target.handleUpgrade(request, socket, head, ws => target.emit('connection', ws, request));
+  });
+  rpcServer.on('connection', socket => {
+    if (!active?.authenticated) { socket.close(1013, 'Desktop is not authenticated'); return; }
+    const connection = active;
+    connection.localClients.add(socket);
+    connection.paired = true;
+    if (!connection.phonePaired) connection.desktop.send(JSON.stringify({ ...connection.lastPairAck, pair_status: 'matched' }));
+    socket.on('error', onError);
+    connection.broker.acceptLocal(socket);
+    socket.on('close', () => {
+      connection.localClients.delete(socket);
+      if (active !== connection) return;
+      connection.paired = connection.authenticated && (connection.phonePaired || connection.localClients.size > 0);
+      if (!connection.paired && connection.authenticated) connection.desktop.send(JSON.stringify(connection.lastPairAck));
+    });
+  });
   const closeGateway = async () => {
     active?.desktop.terminate();
     active?.upstream.terminate();
+    for (const socket of rpcServer.clients) socket.terminate();
     await Promise.all([
       new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+      new Promise((resolve, reject) => rpcServer.close((error) => error ? reject(error) : resolve())),
       new Promise((resolve, reject) => http.close((error) => error ? reject(error) : resolve())),
     ]);
   };
@@ -55,7 +85,10 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, ins
     if (mid !== null) address.searchParams.set('mid', mid);
     const deviceId = request.headers['x-device-id'];
     const upstream = new WebSocket(address, { headers: deviceId ? { 'X-Device-ID': deviceId } : {} });
-    const connection = { desktop, upstream, paired: false, pending: new Map(), localIds: new Set() };
+    const connection = { desktop, upstream, paired: false, phonePaired: false, authenticated: false, localClients: new Set(), pending: new Map(), localIds: new Set() };
+    const sendData = (socket, payload) => socket.send(JSON.stringify({ type: 'data', payload, client_ts: Date.now() }));
+    connection.broker = createRpcBroker({ bootstrap: () => requestBootstrap(connection), bridgeTimeoutMs,
+      sendDesktop: payload => sendData(desktop, payload), sendPhone: payload => { if (upstream.readyState === WebSocket.OPEN) sendData(upstream, payload); } });
     active = connection;
     const queued = [];
     const rejectPending = (error) => {
@@ -68,6 +101,8 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, ins
     const disconnect = () => {
       connection.paired = false;
       rejectPending(new Error('连接断开'));
+      connection.broker.close(new Error('Desktop disconnected'));
+      for (const socket of rpcServer.clients) socket.close(1011, 'Desktop disconnected');
       desktop.terminate();
       upstream.terminate();
       if (active === connection) active = undefined;
@@ -87,6 +122,13 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, ins
         // 超时、配对结束后的迟到回复也属于本地请求，不发往手机。
         return;
       }
+      if (message?.type === 'data' && payload) {
+        try { if (connection.broker.desktopPayload(payload)) return; }
+        catch (error) {
+          const failed = Object.assign(new Error('原 Host RPC 协议错误，已提交操作结果可能未知', { cause: error }), { code: 'gateway_rpc_protocol_error' });
+          connection.broker.close(failed); onError(failed); return;
+        }
+      }
       if (upstream.readyState === WebSocket.OPEN) upstream.send(data, { binary: isBinary });
       else queued.push([data, isBinary]);
     });
@@ -98,13 +140,25 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, ins
       const message = envelope(data, isBinary);
       onTraffic({ from: 'upstream', type: message?.type ?? null, zcodeType: message?.payload?.zcode_type ?? null, pairStatus: message?.pair_status ?? null, local: false });
       if (message?.type === 'auth_ack' || message?.type === 'pair_status_ack') {
-        connection.paired = message.pair_status === 'matched';
+        if (message.type === 'auth_ack') connection.authenticated = true;
+        connection.lastPairAck = message;
+        connection.phonePaired = message.pair_status === 'matched';
+        if (!connection.phonePaired) connection.broker.phoneDisconnected();
+        connection.paired = connection.authenticated && (connection.phonePaired || connection.localClients.size > 0);
         if (!connection.paired) rejectPending(new Error('配对结束'));
+        if (connection.authenticated && !connection.phonePaired && connection.localClients.size > 0) { desktop.send(JSON.stringify({ ...message, pair_status: 'matched' })); return; }
       }
-      if (message?.type === 'error') {
+      // 3.14.4 已鉴权状态下 WRONG_PARAM 非致命，INTERNAL 等待重新配对但不重做鉴权。
+      if (message?.type === 'error' && !(connection.authenticated && message.code === 'WRONG_PARAM')) {
+        connection.authenticated = connection.authenticated && message.code === 'INTERNAL';
+        connection.phonePaired = false;
         connection.paired = false;
+        if (connection.authenticated) connection.lastPairAck = { ...connection.lastPairAck, pair_status: 'waiting' };
         rejectPending(new Error(`relay error: ${message.code}`));
+        connection.broker.close(new Error(`relay error: ${message.code}`));
       }
+      if (message?.type === 'data' && message.payload?.zcode_type === 'workspace-bridge-open') { void connection.broker.phoneOpen(message.payload); return; }
+      if (message?.type === 'data' && ['rpc-frame', 'rpc-frame-ack'].includes(message.payload?.zcode_type)) { connection.broker.phoneFrame(message.payload); return; }
       desktop.send(data, { binary: isBinary });
     });
     for (const socket of [desktop, upstream]) {
@@ -114,21 +168,21 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, ins
   });
   http.listen(port, '127.0.0.1');
   await once(http, 'listening');
+  function requestBootstrap(connection, timeoutMs = 5000) {
+    if (!connection.paired) throw new Error('Desktop 尚未配对');
+    const requestId = randomUUID();
+    connection.localIds.add(requestId);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { connection.pending.delete(requestId); reject(new Error('bootstrap 超时')); }, timeoutMs);
+      connection.pending.set(requestId, { resolve, reject, timer });
+      connection.desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId }, client_ts: Date.now() }));
+    });
+  }
   return {
     url: `ws://127.0.0.1:${http.address().port}/ws`,
     async bootstrap({ timeoutMs = 5000 } = {}) {
       if (!active?.paired) throw new Error('Desktop 尚未配对');
-      const connection = active;
-      const requestId = randomUUID();
-      connection.localIds.add(requestId);
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          connection.pending.delete(requestId);
-          reject(new Error('bootstrap 超时'));
-        }, timeoutMs);
-        connection.pending.set(requestId, { resolve, reject, timer });
-        connection.desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId }, client_ts: Date.now() }));
-      });
+      return requestBootstrap(active, timeoutMs);
     },
     close: closeGateway,
   };

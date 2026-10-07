@@ -33,7 +33,7 @@ test("后端读取双库状态，指定模型辅助生成，原 Host 改名后�
     },close:()=>{}
   };
   try {
-    const backend=createBackend({event:{session_id:sessionId,workspace_path:workspacePath},config:{sessionDb,indexDb,sqliteBin},authorizationUrl:"fixture",connect:async()=>remote,saveState:async()=>{},prompt:"命名规则"});
+    const backend=createBackend({event:{session_id:sessionId,workspace_path:workspacePath},config:{sessionDb,indexDb,sqliteBin},connect:async()=>remote,saveState:async()=>{},prompt:"命名规则"});
     const before=await backend.read();
     assert.equal(before.turnCount,1);assert.equal(before.archived,false);
     await backend.generate(before.context,selection);

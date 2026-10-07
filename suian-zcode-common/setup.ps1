@@ -61,12 +61,19 @@ if ($Action -eq 'Status') {
         $health = Read-GatewayHealth -AllowUnavailable
         if ($null -ne $health -and ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url)) { throw 'Gateway health does not match the installed configuration' }
     }
+    $rpcAvailable = $false; $upstreamPaired = $null; $localClients = $null
+    if ($null -ne $health) {
+        if ($health.PSObject.Properties['rpc_protocol_version']) { $rpcAvailable = $health.rpc_protocol_version -eq 1 }
+        if ($health.PSObject.Properties['upstream_paired']) { $upstreamPaired = $health.upstream_paired }
+        if ($health.PSObject.Properties['local_clients']) { $localClients = $health.local_clients }
+    }
     [ordered]@{
         ok=$true; action='status'; configured=($null -ne $config); relay_url=$relayUrl; health_url=$healthUrl
         user_env_matches=($null -ne $config -and $userRelay -eq $relayUrl); gateway_running=($null -ne $health)
         task_running=$taskRunning; health_status=$(if ($null -eq $config) { 'not_configured' } elseif ($null -eq $health) { 'unreachable' } else { 'reachable' })
         vbs_launcher=$vbsLauncher; launcher_update_required=($null -ne $config -and (-not $vbsLauncher -or -not $taskRunning))
         desktop_connected=($null -ne $health -and $health.desktop_connected); upstream_connected=($null -ne $health -and $health.upstream_connected)
+        rpc_available=$rpcAvailable; upstream_paired=$upstreamPaired; local_clients=$localClients
         paired=($null -ne $health -and $health.paired); restart_required=($null -ne $config -and ($null -eq $health -or -not $health.desktop_connected -or $userRelay -ne $relayUrl -or -not $vbsLauncher -or -not $taskRunning))
     } | ConvertTo-Json -Compress
     return

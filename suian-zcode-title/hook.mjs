@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ZCode Stop Hook 派发器：宿主 Stop 事件 → 静默校验 → 解密授权 → 后台启动命名 worker。
+// ZCode Stop Hook 派发器：宿主 Stop 事件 → 静默校验 → 后台启动网关命名 worker。
 // 约定（源码核实）：用户级 config.json 的 Stop hook 无信任门槛；async:true 后台执行不阻塞对话；
 // stop_hook_active=true 表示本轮由 Stop 续跑产生，跳过以防重复命名；stdout 不得以 { 开头。
 import {spawn} from "node:child_process";
@@ -7,7 +7,6 @@ import {join,dirname,resolve} from "node:path";
 import {homedir} from "node:os";
 import {readFile,appendFile} from "node:fs/promises";
 import {fileURLToPath,pathToFileURL} from "node:url";
-import {loadAuthorization} from "../suian-zcode-common/auth-store.mjs";
 
 const pluginRoot=dirname(fileURLToPath(import.meta.url));
 
@@ -20,20 +19,18 @@ async function resolveDataDir(configPath) {
 
 export const WORKER_START_DELAY_MS=8000;
 
-export async function dispatchStopEvent({payload,dataDir,pluginRoot,configPath,loadAuth=loadAuthorization,spawnWorker=defaultSpawnWorker,startDelayMs=WORKER_START_DELAY_MS}) {
+export async function dispatchStopEvent({payload,dataDir,pluginRoot,configPath,spawnWorker=defaultSpawnWorker,startDelayMs=WORKER_START_DELAY_MS}) {
   if(!payload||typeof payload!=="object")return{action:"ignored_invalid"};
   if(payload.stop_hook_active===true)return{action:"skipped_stale"};
   const sessionId=payload.session_id??payload.sessionId;
   const workspacePath=payload.workspace_path??payload.cwd;
   if(!/^sess_[A-Za-z0-9_-]+$/.test(sessionId??"")||!workspacePath)return{action:"ignored_invalid"};
-  const url=await loadAuth({dataDir}).catch(()=>null);
-  if(!url)return{action:"skipped_no_auth"};
   // Stop 触发瞬间宿主仍在持久化 turn 边界与任务状态，立即读快照必然指纹漂移成 stale；
   // 让出收尾窗口后再派发，保证 worker 读到的基线与复查一致。
   if(startDelayMs>0)await new Promise(resolve=>setTimeout(resolve,startDelayMs));
   const args=["run","--apply"];
   if(configPath)args.push("--config",configPath);
-  await spawnWorker({script:join(pluginRoot,"cli.mjs"),args,event:{session_id:sessionId,workspace_path:workspacePath,authorization_url:url},dataDir});
+  await spawnWorker({script:join(pluginRoot,"cli.mjs"),args,event:{session_id:sessionId,workspace_path:workspacePath},dataDir});
   return{action:"dispatched"};
 }
 

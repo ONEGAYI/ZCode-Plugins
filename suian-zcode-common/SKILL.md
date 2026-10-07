@@ -15,7 +15,7 @@ description: 管理 ZCode 插件共用的基础能力。当用户初始化或升
 
 初始化或升级优先读取仓库中的最新 skill，保留所选插件与公共层的同一版本。稀疏检出须补齐公共层，保留其他已安装插件目录；缺少公共层时先按根 README 获取代码。
 
-**共存范围**：网关原样转发 Desktop 与官方 relay；同进程 bootstrap 与手机已实测共存。完整 V4 RPC 尚未接入网关分流。命名模块与 MCP 写工具仍开独立 terminal；MCP 两个读取工具仍查本机 SQLite，可与手机共存。
+**共存范围**：命名与 MCP 的原 Host 调用统一走网关本地 RPC，不再新建官方 terminal。本地工作区共享窗口 Host 的一个物理桥，隔离请求、回复与订阅；隔离契约已验证，真实手机验收以当前证据为准。手机独用远端工作区仍走原通道；此时本地 RPC 返回 remote_workspace_busy，不切走手机。两个 SQLite 读取工具继续独立运行。
 
 ## 首次安装
 
@@ -38,6 +38,8 @@ Install 注册当前用户登录任务，由 `wscript.exe` 执行公共数据目
 **更新文件和加载新代码是两件事**。网关模块在进程中缓存，更新 Git 文件不会自动重载。Windows 隔离实验已验证运行中可替换 JS 与重命名源码目录，但不能据此保证其他进程、文件权限或原生扩展不会占用文件。避免在插件处理运行中工作时更新实际安装目录；先安排完成或保存工作，按用户选择的升级窗口操作。
 
 更新源码后，在公共根安装锁定依赖并执行 Status。旧任务和数据目录仍沿用网关身份；不要新建 `suian-zcode-common` 的第二个任务或清空配置。需要加载更新后的代码、迁移旧根路径或将旧 PowerShell 任务切换为 VBS 时执行 Restart，保留端口、上游、停止令牌和原环境备份。
+
+RPC 升级还要检查 `rpc_available:true`。文件已更新但该字段为 false，说明旧进程尚未提供 RPC；按下述流程重载，不能让插件退回官方直连。两个插件与公共层一起更新，随后刷新 MCP 服务与 skill。默认使用公共数据目录的 config.json；自定义目录时把同一文件路径配置为命名插件的 gatewayConfigPath 和 MCP args 的 --gateway-config，不传令牌到 args/env。
 
 ```powershell
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{common_root}}/setup.ps1" -Action Restart
@@ -69,7 +71,9 @@ Start-Process -FilePath "{{zcode_exe}}" -WindowStyle Hidden
 - `task_running`：计划任务是否正在监督启动链。Ready 不代表网关进程已停止。
 - `vbs_launcher` / `launcher_update_required`：任务是否配置为 VBS、入口或监督链是否需要恢复。
 - `desktop_connected`：是否有 Desktop 连入网关；这才是生效证据。
-- `upstream_connected` / `paired`：上游和手机配对；未开远控或手机未连时可正常为 false。
+- `upstream_connected`：官方上游是否连接；`rpc_available`：运行中的网关是否提供 RPC。
+- `upstream_paired`：官方链路是否配对，不标识具体客户端身份；`local_clients`：本地 RPC 客户端数。旧网关缺少后两字段时为 null。
+- `paired`：Desktop 的有效配对状态，包含本地调用期间的虚拟配对，不能据此宣称手机仍在线。共存验收需用户实际确认手机还能操作。
 
 健康检查默认单次 5 秒，仅超时重试一次；连续超时报运行状态未知，不据此断言网关停止。必要时可给 Status 指定 `-HealthTimeoutSec {{seconds}}`（1–30）。不把历史 `LastTaskResult` 当作当前进程状态；分别读取本次健康结果和任务状态。
 
@@ -79,7 +83,7 @@ Start-Process -FilePath "{{zcode_exe}}" -WindowStyle Hidden
 
 公共 DPAPI 与 Toast 实现按调用方 `dataDir` 存储状态：命名插件的授权密文、冷却、协议桥与 AUMID 仍在原位置，通知标题和排障提示词由命名插件提供。无需为代码迁移重新取得链接。MCP 仅在用户使用写工具时配置自己的授权，不增加 Toast。诊断通知时读取调用方 skill，公共配置不承担业务文案或自动 Hook 配置。
 
-不要回显 `sid/hash/mid`、授权链接、消息正文或整个网关 config。config 中的 `control_token` 只控制本地网关停止，定位只解析必要字段。
+不要回显 `sid/hash/mid`、授权链接、消息正文或整个网关 config。config 中的 `control_token` 用于本地 RPC 与停止接口鉴权；只由当前用户客户端读取并放入本地请求头，不放到 args/env/日志。插件无需手机远控链接，Desktop 的官方认证仍由宿主负责。
 
 ## 恢复原 relay / 移除
 

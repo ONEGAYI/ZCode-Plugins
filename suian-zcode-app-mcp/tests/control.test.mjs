@@ -10,7 +10,7 @@ async function fixture(overrides = {}) {
   const { createSessionController } = await import('../control.mjs');
   const controller = createSessionController({
     reader: { readSession: () => ({ session: { workspace_path: workspace } }), listSessions: () => ({ sessions: [{ session_id: 'sess_new', archived }] }) },
-    loadAuthorization: async () => 'fixture-secret',
+    loadAuthorization: async () => { throw new Error('网关调用不得读取旧远控凭据'); },
     setTitlePolicy: async args => { policies.push(args); },
     connect: async args => {
       const connection = { args, closed: false }; connections.push(connection);

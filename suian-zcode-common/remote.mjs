@@ -4,6 +4,7 @@ import {ChannelClient} from "./vendor/channelClient.js";
 import {Emitter} from "./vendor/foundation.js";
 import {VSBuffer} from "./vendor/buffer.js";
 import {Hs as encode,Bs as Assembler,Ws as parse,S as workspaceKey} from "./vendor/remote-shared.js";
+export { connectHost, probeHost } from './gateway-client.mjs';
 
 const samePath=(a,b)=>win32.normalize(String(a)).toLowerCase()===win32.normalize(String(b)).toLowerCase();
 const relayErrorClass={AUTH_FAILED:"auth_failed",DEVICE_OFFLINE:"device_offline",KICKED:"kicked"};

@@ -1,4 +1,4 @@
-const FIX_PROMPT_TEMPLATE=`请帮我检查并修复 ZCode 自动命名插件的远控配置。先读取插件 Skill 和 README，再运行 status/doctor/probe，区分网络、授权、原 Host 与工作区问题。需要时指导我取得当前窗口"移动端远程控制"的新链接，并安全更新配置，不回显或写入日志。保持已选 GLM-5.3-Flash / low，核对 Stop Hook 是否安装、启用、受信任及实际触发。只处理命名插件的配置与诊断；按当前授权验证修复结果。
+const FIX_PROMPT_TEMPLATE=`请帮我检查并修复 ZCode 自动命名插件的公共网关 RPC。先读取插件与公共层的 Skill 和 README，再运行公共 Status 与插件 status/probe/doctor，区分配置、运行版本、后台任务、Desktop、上游和工作区问题。旧网关缺少 RPC 时，先提醒我保存工作并完整退出 ZCode，再安全重载；不要自动退出宿主，不回退官方直连，不索取手机远控链接。配置中的本地令牌不得回显或写入日志。保持已选 GLM-5.3-Flash / low，核对 Stop Hook 是否安装、启用、受信任及实际触发。只处理命名插件与依赖网关的配置诊断，按当前授权验证结果。
 插件目录：{{plugin_root}}
 数据目录：{{data_dir}}`;
 
@@ -9,6 +9,18 @@ export function buildFixPrompt({pluginRoot,dataDir}) {
 }
 
 export const reasonMessages={
+  gateway_not_configured:"公共网关尚未配置",
+  gateway_invalid_config:"公共网关配置无效",
+  gateway_upgrade_required:"运行中的网关需要重载才能支持 RPC",
+  gateway_unreachable:"公共网关健康接口不可达",
+  gateway_desktop_offline:"Desktop 或官方上游未连接网关",
+  gateway_connection_failed:"公共网关 RPC 连接失败",
+  gateway_connection_closed:"公共网关连接中断，先检查操作结果",
+  gateway_timeout:"原 Host 调用超时，先检查操作结果",
+  gateway_bridge_timeout:"原 Host 桥初始化超时",
+  gateway_rpc_protocol_error:"原 Host RPC 协议错误",
+  gateway_rpc_failed:"公共网关 RPC 不可用",
+  remote_workspace_busy:"手机当前使用远端工作区，本地命名暂让位",
   network_timeout:"远控网络超时",
   network_error:"远控连接中断",
   auth_failed:"远控授权被拒绝",

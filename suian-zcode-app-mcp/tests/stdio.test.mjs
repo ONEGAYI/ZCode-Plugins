@@ -17,7 +17,7 @@ test('独立 stdio 进程完成握手、分页、消息读取与错误反馈，�
   const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex');
   const before = [digest(f.indexDbPath), digest(f.sessionDbPath)];
   const transport = new StdioClientTransport({ command: process.execPath,
-    args: [fileURLToPath(new URL('../cli.mjs', import.meta.url)), '--index-db', f.indexDbPath, '--session-db', f.sessionDbPath, '--auth-data-dir', join(dirname(f.indexDbPath), 'auth')],
+    args: [fileURLToPath(new URL('../cli.mjs', import.meta.url)), '--index-db', f.indexDbPath, '--session-db', f.sessionDbPath, '--gateway-config', join(dirname(f.indexDbPath), 'missing-gateway.json')],
     stderr: 'pipe' });
   let stderr = '';
   transport.stderr.on('data', chunk => { stderr += chunk; });
@@ -40,7 +40,7 @@ test('独立 stdio 进程完成握手、分页、消息读取与错误反馈，�
   assert.equal(extra.isError, true);
   const unauthorized = await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_alpha', message: 'hello', workspace_path: 'D:/fixture' } });
   assert.equal(unauthorized.isError, true);
-  assert.match(unauthorized.content[0].text, /authorization_required/);
+   assert.match(unauthorized.content[0].text, /公共网关尚未配置/);
   assert.deepEqual([digest(f.indexDbPath), digest(f.sessionDbPath)], before);
   await client.close();
   assert.equal(stderr, '');

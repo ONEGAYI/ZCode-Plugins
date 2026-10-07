@@ -2,23 +2,23 @@
 
 目标：做独立的 MCP 服务，让 ZCode 与外部 Agent 查询会话，并逐步沿官方授权原 Host 链路增加控制能力。公共层提供协议、授权与通知模块；suian-zcode-title（会话自动命名）使用它完成命名业务。
 
-当前状态：公开九个工具。`list_sessions` 与 `read_session` 保持本机 SQLite 只读连接；五个会话写工具及 `get_glm_balance`、`reset_glm_quota` 使用已授权的独立远控连接调用原 Host。契约见 `docs/readonly-tools.md`、`docs/write-tools.md` 与 `docs/glm-balance-design.md`。
+当前状态：公开九个工具。list_sessions 与 read_session 保持本机 SQLite 只读连接；其余工具通过公共网关 connectHost 调用原 Host，不新增官方 terminal。契约见 docs/readonly-tools.md、docs/write-tools.md 与 docs/glm-balance-design.md。
 
 ## 守则（沿自研究期，开发期继续适用）
 
 - 使用中文记录结论；区分已核实事实、推断和待验证条件。
 - `../sources/` 中的第三方仓库只读（submodule 引用，不入库源码），不 fork、不修改原源码、不安装其依赖。
-- 本机探针优先只读；用户明确授权写工具验收后，仅对新建测试会话创建、发信和改名，不干扰其他会话。插件不直接写会话数据库；授权明文只在内存，持久化仅使用公共当前用户 DPAPI，不进日志。
+- 本机探针优先只读；用户明确授权写工具验收后，仅对新建测试会话创建、发信和改名，不干扰其他会话。插件不直接写会话数据库；旧授权凭据持久化仅使用公共当前用户 DPAPI，默认网关调用不读取它。网关 control_token 与授权明文均不进日志。
 - 探针、日志和诊断数据只在项目子目录内运行，验证后清理，只保留脱敏的最终证据。
 - 引用具体版本、源码行和本机产物路径。不能把同一数据目录视作同一运行中会话。
 - 本目录的规则以本文件为准，`CLAUDE.md` 仅导入。
 
 ## 边界与维护
 
-- 两个读取工具只查本机持久化数据，不连接远控。五个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在授权窗口打开。
+- 两个读取工具只查本机持久化数据，不连接远控。五个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在网关连接的 Desktop 窗口打开。
 - 两个 GLM 工具也连接原 Host。重置每次必须真实用户明确许可和客户端 form elicitation，不接受 Agent 自填 confirmed；不自动重试消耗。只读查询不发卡、不消耗、不标记历史已读。
 - 创建开局由服务包装 created-by-other-session 与可选 creator，后续发信包装 delivered-by-other-session 与可选 deliverer。来源 ID 是调用方声明，不认证发起方身份。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
-- 独立 terminal 仍占官方单设备席位，不把公共网关的 bootstrap 共存验收扩大为写 RPC 已共存；跨插件争用与手机占用明确报失败，不强行踢出设备。
+- 原 Host 调用统一走公共网关；缺少 RPC 时明确要求升级，不回退官方直连。隔离测试与真实手机验收分别记录，paired 不代表手机身份；手机使用远端工作区时本地调用让位。
 - 不将 `getTaskSnapshot` 当作无副作用读接口；公开源码中它会恢复会话并同步索引。
 - 不扩展为 SQL 执行工具。数据库缺失、schema 不兼容、历史不存在等错误明确返回，不创建空库或静默回退。
 - `../suian-zcode-common/vendor/projection.js` 与许可文件保持原样；更新前核查固定来源和可见性契约。
@@ -29,7 +29,7 @@
 
 | 路径 | 职责 |
 | --- | --- |
-| cli.mjs | stdio 入口、数据库/授权目录参数与 stdin DPAPI 授权配置 |
+| cli.mjs | stdio 入口、数据库/公共网关配置路径；旧 stdin DPAPI 保存入口兼容 |
 | server.mjs | MCP 工具注册、参数校验与结构化响应 |
 | control.mjs | 原 Host 改名读回、指定模型创建、消息包装、归档保护与复原；按调用释放连接 |
 | glm.mjs | GLM 个人套餐额度/卡片投影、确认后重置与同次尝试回执；共用 controller 远控互斥 |

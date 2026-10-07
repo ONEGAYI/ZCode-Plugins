@@ -1,6 +1,6 @@
 ---
 name: suian-zcode-title
-description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初始化安装并配置公共网关、配置移动端远控授权链接、更换命名模型与思考档位、检查与修复 Stop 自动命名、暂停恢复命名、诊断 Windows 通知提醒。当用户要求"初始化/安装自动命名插件"、"更换远控链接"、"命名插件换模型/思考档"、"命名插件检查/修复"、"暂停/恢复自动命名"、"命名通知总是弹/不弹"时使用；不用于普通对话内容处理，也不用于手动改标题。
+description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初始化安装并配置公共网关 RPC、更换命名模型与思考档位、检查与修复 Stop 自动命名、暂停恢复命名、诊断 Windows 通知提醒及管理旧授权。当用户要求"初始化/安装自动命名插件"、"更换远控链接"、"命名插件换模型/思考档"、"命名插件检查/修复"、"暂停/恢复自动命名"、"命名通知总是弹/不弹"时使用；不用于普通对话内容处理，也不用于手动改标题。
 ---
 
 # suian-zcode-title
@@ -24,15 +24,15 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 1. `node <插件根>/install.mjs <插件根>/.local`——幂等安装协议桥、开始菜单快捷方式、自建通知标识（AUMID）。重复执行安全；输出 `ok:true` 表示本地安装完成，远控与生效状态仍要分别验证。
 2. **配置公共网关**：优先读取仓库同级的最新 `../suian-zcode-common/SKILL.md`；源码尚未定位时用已安装的 `~/.zcode/skills/suian-zcode-common/SKILL.md` 定位。按其流程完成依赖、Status → Install 和分层验证。后台启动、Desktop 用户级环境变量、重启方法及恢复流程只维护在公共 skill，不在本插件复制脚本。缺少该子项目时先补齐同一版本的公共层目录。
-3. `node cli.mjs status --config config.local.json`（stdin 传会话）检查已有配置与授权状态；未完成远控授权前，不用会调模型清单的 doctor 判断本地安装失败。
+3. `node cli.mjs status --config config.local.json`（stdin 传会话）检查本地配置；公共 Status 要有 rpc_available:true。旧网关缺少 RPC 时先安全重载，不能以安装器成功代替运行版本验证。
 4. 按公共 skill 指导用户择时重开 Desktop。明确提醒：**运行中的 Agent 任务和未保存工作可能被重启中断，先完成或保存，再完整退出重开**。不要在承载初始化的 ZCode 中自行退出宿主；分别报告配置已写入与用户重启后已生效。
-5. 远控授权：从重开后的当前窗口"移动端远程控制"取得链接，按下方"配置授权"以 stdin 交给 `auth`，仅保存当前用户 DPAPI 密文，不保存明文、不回显、不进日志。
-6. `node cli.mjs probe` 验证授权（见下方分层结果）。若手机正在占用 terminal，说明当前命名 RPC 尚未接入网关分流，本地初始化可以继续，远端验证需在用户暂停手机远控后进行；不要强行抢占连接或声称配置网关就已完成命名共存。
-7. 授权与模型就绪后运行 doctor，再完成 Stop Hook 配置（见"Hook 配置"节），在用户选定的测试会话验证一次真实触发。
+5. 用户在当前窗口开启"移动端远程控制"，确认 Desktop 连入网关。插件无需手机链接，不复制旧 blob，不把公共 control_token 放入配置、args/env 或输出。公共目录非默认时，config.local.json 的 gatewayConfigPath 指向同一公共 config.json。
+6. `node cli.mjs probe` 验证网关、原 Host、目标工作区与会话。手机在本地工作区时可继续连接；远端工作区返回 remote_workspace_busy，等用户主动切回本地再验证，不切走手机。隔离测试不等于真实手机验收。
+7. 网关与模型就绪后运行 doctor，再完成 Stop Hook 配置（见"Hook 配置"节），在用户选定的测试会话验证一次真实触发。
 
 ### "更换远控链接"
 
-用户提供新链接后，以 stdin 交给 `auth` 保存 DPAPI 密文，再 probe 验证。不要把明文写入配置或日志。
+先说明新版默认 RPC 不需要链接；排障转公共网关 skill。只有用户明确管理旧凭据时才以 stdin 交给 auth 保存密文，保留旧文件不等于新版使用它。不要把明文写入配置或日志。
 
 ### "更换命名模型 / 思考档位"
 
@@ -52,19 +52,17 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 1. `node cli.mjs status --config config.local.json`：enabled、模型选择、Toast 资产（协议/快捷方式/冷却）、最近一次命名结果。
 2. `node cli.mjs doctor --config config.local.json`：双库与目标会话。
-3. 有授权时 `node cli.mjs probe`：输出分层结果——
+3. `node cli.mjs probe`：无需链接，输出分层结果——
 
 | reasonCode | 含义 | 处理方向 |
 |---|---|---|
-| `network_timeout` / `network_error` | 网络不通或 relay 无响应 | 检查网络后重试 probe |
-| `auth_failed` | 授权被拒绝 | 需要新链接 |
-| `device_offline` | 原窗口远控未开启或已离线 | 确认原窗口远控已开启，并按公共 skill 检查设备与上游连接 |
-| `kicked` | terminal 槽位已被其他客户端占用，本次连接被拒绝 | 暂停手机远控后重试；不要仅据此更换授权 |
-| `pair_waiting` | 远控配对未就绪 | 确认窗口远程控制已开启 |
-| `host_unreachable` | 原 ZCode 窗口不可达 | 确认原窗口存活 |
-| `workspace_missing` / `session_missing` | 原窗口没开目标工作区/会话 | 打开对应工作区会话 |
-| `auth_link_rejected` | 链接被服务端拒绝（已失效） | 窗口里重新开启远程控制并生成新链接，重新 auth |
-| `missing_authorization` / `invalid_url` | 未提供链接/链接格式错误 | 用户提供新链接 |
+| `gateway_not_configured` / `gateway_invalid_config` | 公共配置缺失或无效 | 按公共 skill 修复，不回显完整配置 |
+| `gateway_upgrade_required` | 文件与运行中网关版本不同 | 保存工作、完整退出 Desktop 后 Restart |
+| `gateway_unreachable` / `gateway_connection_failed` | 网关未运行或 RPC 连接失败 | 分别检查健康、任务与本地鉴权 |
+| `gateway_desktop_offline` | 原窗口或官方上游未连接 | 确认远控开启、Desktop 环境与网络 |
+| `remote_workspace_busy` | 手机当前使用远端工作区 | 本地调用让位，不切走手机 |
+| `gateway_bridge_timeout` / `gateway_rpc_protocol_error` | 原 Host 桥超时或协议不符 | 查版本与原窗口状态，不重试已提交写操作 |
+| `gateway_connection_closed` / `gateway_timeout` | 连接中断或执行超时 | 结果可能未知，先检查标题与运行日志 |
 
 4. 网关问题交给公共 `suian-zcode-common` skill，先区分配置、任务、Desktop、上游及配对状态；不要把网关变量只写到 Hook 或 MCP 子进程中。
 5. 检查 Stop Hook：是否已配置、已启用、已信任、真实触发过（分别验证，不能只看一项）。
@@ -81,16 +79,16 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 ## 安全与边界
 
-- 远控授权明文只在使用它的进程内解密或注入（stdin 字段或 `OIL_ZCODE_REMOTE_URL`）；持久保存只用当前用户 DPAPI 密文，任何输出、日志、Toast、提示词不携带 `sid/hash/mid`。
+- 默认网关调用不读取远控链接。旧凭据管理只在进程内使用明文、持久保存只用当前用户 DPAPI 密文；网关 control_token、远控链接及其 `sid/hash/mid` 均不进入输出、日志、Toast 或提示词。
 - 不直接写 ZCode 会话数据库；改名仅走官方远控 RPC。
 - 本地跳过路径（unchanged/disabled/empty/archived）不建立远控连接，不弹通知。
 - `run --apply` 失败分层（`stage/reasonCode`）时保留原标题并按冷却弹 Toast；`toast:"disabled"` 表示用户设了 `OIL_ZCODE_TITLE_DISABLE_TOAST=1`。
 - 自动化测试与脚本严禁调用协议激活链路（`suian-zcode-title://`）——其打开动作会弹 ZCode 官方确认模态框，无人值守时会无限阻塞。
 
-## 配置授权
+## 旧凭据兼容
 
-1. 请用户在 ZCode 窗口开启"移动端远程控制"，复制生成的链接；以 stdin `authorization_url` 传给 `node cli.mjs auth --config config.local.json`——链接经当前用户 DPAPI 加密写入 `.local/remote.blob`，输出 `auth_saved`，**任何环节不回显**。
-2. 清除授权：`node cli.mjs unauth`；查看状态：`status` 的 `authorization` 字段（`configured`/`missing`）。
+1. 默认初始化不索取链接。仅管理旧凭据时，以 stdin `authorization_url` 传给 `node cli.mjs auth --config config.local.json`；写入当前用户 DPAPI 密文，输出 auth_saved，任何环节不回显。
+2. 清除授权：`node cli.mjs unauth`；`status` 的 `legacyAuthorizationFilePresent` 仅报告旧密文文件存在，不读取正文或验证授权，也不表示网关就绪。
 3. 授权链接是远控会话凭据，仅在当前用户账户下可解密；不要把 blob 或链接写入文档、提交或聊天。
 
 ## Hook 配置
@@ -103,13 +101,13 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 {"hooks":{"enabled":true,"events":{"Stop":[{"hooks":[{"type":"command","command":"node D:\\...\\hook.mjs","async":true,"timeout":30}]}]}}}
 ```
 
-**链路**：宿主 Stop → `hook.mjs`（stdin 收 `session_id`/`cwd`/`stop_hook_active`）→ `stop_hook_active:true` 跳过（防续跑重复）→ 无授权 blob 静默退出 → 有授权则**延迟 8 秒**（等宿主完成 turn 收尾持久化，规避快照漂移竞态）后派发 `cli.mjs run --apply`（worker.lock 串行，busy 让位下轮）。排障时 `hook.log.jsonl` 出现 `dispatched` 后约 8–10 秒才会有对应的 `runner.log.jsonl` 记录，属正常时序。
+**链路**：宿主 Stop → hook.mjs（stdin 收 session_id/cwd/stop_hook_active）→ stop_hook_active:true 跳过 → 延迟 8 秒等持久化收尾 → 派发 cli.mjs run --apply → 公共网关 RPC。worker.lock 串行，busy 让位下轮；不解密或注入远控链接。hook.log.jsonl 出现 dispatched 后约 8–10 秒才有 runner.log.jsonl，属正常时序。
 
 **验证顺序**（分别验证，不合并断言）：
 1. 已写配置：`config.json` 中存在本插件 Stop 条目。
 2. 已启用：`hooks.enabled` 为 true。
-3. 静默路径：`{"session_id":"sess_...","cwd":"..."} | node <插件根>/hook.mjs` 输出 `skipped_no_auth`（或配置后 `dispatched`）且退出码 0。
-4. 真实触发：配置授权后，在**用户选定的测试会话**完成一轮对话停止，观察标题变化与 `usage.jsonl` 新记录。
+3. 静默路径：`'{"session_id":"sess_...","cwd":"...","stop_hook_active":true}' | node <插件根>/hook.mjs` 输出 `skipped_stale` 且退出码 0，不派发命名。不要用有效会话事件冒充静默探针。
+4. 真实触发：网关就绪后，在用户选定的测试会话完成一轮对话停止，观察标题与 usage.jsonl；共存验收还要确认手机持续可操作。
 
 **卸载**：`node install.mjs <插件根>/.local --remove`（移除自己的 Stop 条目、协议、快捷方式与缓存）。
 
