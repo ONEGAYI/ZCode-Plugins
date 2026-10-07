@@ -1,30 +1,40 @@
 # suian-zcode-app-mcp
 
-让 ZCode 或其他 MCP 客户端查询和操作 ZCode 会话，并管理 GLM 套餐额度。**两个本机读取工具，五个会话写工具，两个 GLM 工具**。
+给 Agent 一组管理 ZCode 会话的工具：找回之前的聊天、整理会话名称、在不同会话之间传递信息，也能查询 GLM 套餐额度。
 
-| 工具 | 用途 |
-| --- | --- |
-| `list_sessions` | 最近 N 条、指定工作区或所有工作区；按标题或 ID 搜索；支持归档项和分页 |
-| `read_session` | 指定会话最近消息及向前翻页；完整正文、可见消息过滤和持久化回退分支 |
-| `rename_session` | 通过原 Host 改名并读回确认 |
-| `start_session` | 在已打开工作区创建会话，指定可选名称和模型，提交必填开局信息 |
-| `send_message` | 向指定会话提交信息，可使用刚创建的会话 ID |
-| `archive_session` | 检查活跃状态；发现活跃项时须用户授权 force 才归档 |
-| `restore_session` | 取消归档并确认索引状态 |
-| `get_glm_balance` | 只读查询 GLM 个人套餐的模型、两组工具额度及未过期重置卡 |
-| `reset_glm_quota` | 经本次用户许可和客户端确认表单，消耗一张对应卡重置 5h 或周模型额度 |
+安装到 ZCode 或其他支持 MCP 的客户端后，直接告诉 Agent 想完成什么，它会调用相应工具。
 
-当前读取本机 SQLite 持久化历史，无需远控授权链接。结果不包含未持久化的流式字符；远端工作区正文暂不支持。设计依据、参数和读取边界见 [只读工具设计](./docs/readonly-tools.md)。
+## 日常可以怎么用
 
-五个写工具通过公共网关调用原 Host，不直接写数据库，不另建官方 terminal。目标本地工作区必须已在网关连接的窗口打开。完整形状、来源包装、部分失败与验收见 [写工具设计](./docs/write-tools.md)。
+- 「列出这个项目最近十个会话，找一下讨论网关的那段聊天。」
+- 「读取那段会话最近的回复，告诉我进展。」
+- 「在这个项目里新建一个会话，选择指定模型，把测试任务交给它。」
+- 「把这段说明发给刚创建的会话，再读取它的回复。」
+- 「整理已经完成的会话，需要归档时先检查有没有工作还在进行。」
+- 「查看我的 GLM 套餐额度，还有几张可用重置卡。」
 
-**手机共存已实测**：本地工作区的发信、改名和固定回复读取成功，用户确认手机无需刷新或重连仍可操作。命名插件的 probe、doctor 也通过；完整 Stop Hook 命名与手机同用尚未实测。手机在远端工作区时本地请求明确让位，手机离线调用另有隔离契约覆盖。验证范围与历史失败记录见 [共存验证记录](./docs/relay-gateway-coexistence.md)。
+跨会话发送的信息会附上来源说明，接收方可以区分它与本人输入。新建会话可以指定初始名称，也可以让自动命名插件继续调整；想固定名称时，告诉 Agent 不要自动更名。
 
-两个 GLM 工具同样通过公共网关调用原 Host。额度查询不消耗重置卡；重置需要客户端声明并实际展示 MCP form elicitation，未支持时明确拒绝。一次只消耗一张，不能指定卡片 ID。数据口径、许可与幂等边界见 [GLM 工具契约](./docs/glm-balance-design.md)，历史一次重置对账见 [验收证据](./docs/glm-balance-evidence.json)。
+## 基于官方 Web 远控通道
 
-## 接入
+查询会话和聊天记录时，插件直接读取本机已经保存的内容。更名、创建会话、发送消息、归档和查询套餐额度，则通过 ZCode 自带的「移动端远程控制」操作当前窗口，账号仍由 ZCode 管理。
 
-### 让 Agent 安装或升级
+安装时，Agent 会配置公共网关，它是供插件和手机共用的后台连接程序。按提示开启 ZCode 的远控功能即可，不需要把手机远控链接交给插件。如果同时安装自动命名插件，两者会共用这项服务。
+
+### 会不会影响手机远程控制
+
+**手机可以继续连接**，插件不会用另一个设备的身份接管手机连接。已经实际验证：在本地工作区里发送消息、更名和读取回复的时候，手机仍能正常操作，不需要刷新或重新连接。
+
+手机正在操作远端工作区的时候，本地插件会暂时让位，不会抢回连接。从旧版升级时，需要重新启动后台连接程序，Agent 会提示先保存工作并完整退出 ZCode。详细验证范围见 [共存验证记录](./docs/relay-gateway-coexistence.md)。
+
+## 操作边界
+
+- 聊天记录以本机已经保存的内容为准，正在生成但尚未保存的文字不会立即出现；暂不支持读取远端工作区的聊天正文。
+- 创建会话或执行更名等操作时，目标项目需要已在当前 ZCode 窗口打开，并启用远控。只查询本机会话和历史时，可以不启用远控。
+- 有任务还在运行的会话，归档前需要你明确同意。归档只是从列表中收起会话，不会停止后台工作；之后可以恢复。
+- 额度查询不会使用重置卡。每次重置都需要你明确许可，并在客户端的确认界面中同意；不支持确认界面的客户端无法执行。一次使用一张对应卡片，不能挑选具体哪张。
+
+## 让 Agent 安装或升级
 
 直接把下面这段粘给 ZCode，**无需先手动克隆**。同一提示词支持首次安装和升级，由 Agent 先询问操作、检查已有安装，再获取代码。
 
@@ -45,9 +55,28 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 和从正确环境重开的方法，不要自行重启 ZCode。
 ```
 
-本插件的获取范围是 **MCP 目录 + 公共层 + 仓库根文件**，可以不检出命名插件。克隆命令与已有稀疏检出的扩展方式统一见 [根 README 的代码获取范围](../README.md#代码获取范围)。如果两个插件都要，可使用根 README 的组合提示词，由 Agent 询问插件选择。
+只安装本插件时，Agent 会获取 **MCP 目录 + 公共层 + 仓库根文件**，无需下载自动命名插件。想同时安装两个插件，可以使用 [根 README](../README.md) 中的组合提示词。安装流程由 [本插件 skill](./SKILL.md) 和 [公共网关 skill](../suian-zcode-common/SKILL.md) 提供。
 
-[本插件 skill](./SKILL.md) 负责服务注册和验证，[公共网关 skill](../suian-zcode-common/SKILL.md) 统一负责启动、Desktop 环境变量、本地 RPC 鉴权与恢复。无需提供手机远控链接；只用两个 SQLite 工具时可独立运行。会话写验收使用经用户授权的新建测试会话，GLM 真实重置需要单独的具体授权。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`，不会自动注册 MCP 服务。
+## 手动接入与工具参考
+
+通常交给 Agent 安装即可。需要自己配置客户端、查看工具名称或调整数据位置时，可以展开下面的说明。
+
+<details>
+<summary>查看工具列表、配置和调用示例</summary>
+
+### 工具列表
+
+| 工具 | 用途 |
+| --- | --- |
+| `list_sessions` | 按项目、名称或 ID 查找会话，列出最近会话，也可以包含归档项 |
+| `read_session` | 读取指定会话最近的聊天，向前翻阅更早内容 |
+| `rename_session` | 将指定会话改为新的名称 |
+| `start_session` | 在已打开的项目中新建会话，可选名称和模型，并交代开局任务 |
+| `send_message` | 给指定会话发送信息，包括刚创建的会话 |
+| `archive_session` | 归档会话；如果仍有工作在进行，先取得用户的强制归档许可 |
+| `restore_session` | 将归档会话恢复到列表 |
+| `get_glm_balance` | 查询 GLM 个人套餐的模型、工具额度和可用重置卡 |
+| `reset_glm_quota` | 经本次用户许可和客户端确认表单，消耗一张对应卡重置 5h 或周模型额度 |
 
 ### 手动接入 MCP
 
@@ -77,7 +106,7 @@ npm ci --ignore-scripts --no-fund --no-audit
 
 默认读取当前系统用户的 `~/.zcode/v2/tasks-index.sqlite` 和 `~/.zcode/cli/db/db.sqlite`。自定义数据路径可在 args 后追加 `--index-db {{index_db_path}} --session-db {{session_db_path}}`，或设置环境变量 `ZCODE_APP_MCP_INDEX_DB`、`ZCODE_APP_MCP_SESSION_DB`。优先级是命令参数 > 环境变量 > 默认路径。
 
-## 调用示例
+### 调用示例
 
 ```json
 {"name":"list_sessions","arguments":{"limit":10}}
@@ -90,12 +119,18 @@ npm ci --ignore-scripts --no-fund --no-audit
 
 测试命令为 `npm test`。实测与契约测试汇总见 [验收证据](./docs/readonly-tools-evidence.json)。
 
-写工具示例与创建→发信→读回复闭环见 [写工具设计](./docs/write-tools.md)。公共配置目录非默认时，给 args 添加 `--gateway-config {{gateway_config_path}}`，指向公共 config.json；不把其中令牌复制到 MCP 配置。
+创建会话、发送信息和读取回复的示例见 [会话操作说明](./docs/write-tools.md)。公共配置目录非默认时，给 args 添加 `--gateway-config {{gateway_config_path}}`，指向公共 config.json；不把其中令牌复制到 MCP 配置。
 
 查询 GLM 额度使用 `get_glm_balance({"workspace_path":"D:/work/example"})`。重置输入为 `{"workspace_path":"D:/work/example","reset_type":"FIVE_HOUR"}`，周窗口用 `WEEK`；没有用户许可和确认表单时不得调用。完整形状见 [GLM 工具契约](./docs/glm-balance-design.md)。
 
-## 研究与许可
+</details>
 
-早期原 Host 接入研究见 [research-findings.md](./docs/research-findings.md)；同仓库 [suian-zcode-title](../suian-zcode-title/) 已实现自动命名。本版的读取能力独立运行，不加载命名插件或启动 CLI app-server。
+## 进一步了解
+
+- [只读工具说明](./docs/readonly-tools.md)：检索、聊天内容与翻页。
+- [会话操作说明](./docs/write-tools.md)：更名、创建、发信和归档。
+- [GLM 额度说明](./docs/glm-balance-design.md)：额度口径、重置确认和异常处理。
+- [接入研究](./docs/research-findings.md)：官方通道与能力调查。
+- [自动命名插件](../suian-zcode-title/)：根据聊天内容自动整理会话名称。
 
 自有代码沿用仓库 [MIT 许可](../LICENSE)。消息可见性投影库来自固定版本 ZCode，原样保留其 Apache-2.0 许可与 [来源声明](./vendor/NOTICE.md)。
