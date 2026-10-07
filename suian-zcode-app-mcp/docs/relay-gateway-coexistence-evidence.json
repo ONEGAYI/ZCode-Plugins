@@ -1,6 +1,6 @@
 {
-  "checkedDate": "2026-10-07",
-  "scope": "real Desktop gateway authentication and bootstrap coexistence with official phone",
+  "checkedDate": "2026-10-08",
+  "scope": "staged bootstrap experiments and real local Host MCP RPC coexistence with official phone",
   "desktopVersion": "3.14.4",
   "gatewayDependencies": {
     "node": "24.15.0",
@@ -150,13 +150,64 @@
     "review": {
       "standards": "no remaining verified findings after fixes",
       "spec": "no remaining verified findings after fixes",
-      "userAcceptance": "pending live phone test"
+      "userAcceptance": "passed for tested local MCP phone coexistence; full naming Hook not tested"
     },
     "remoteWorkspacePolicy": "phone-only passthrough; concurrent local Host requests explicitly yield",
-    "liveDeployment": false,
-    "livePhoneCoexistence": "pending",
+    "liveDeployment": true,
+    "livePhoneCoexistence": "passed for local MCP send, rename and fixed reply readback",
     "realResetCallsThisRound": 0,
     "successCriterion": "phone remains usable during MCP send/rename and fixed reply readback"
+  },
+  "rpcGatewayDeployment": {
+    "checkedDate": "2026-10-08",
+    "clientTimezone": "Asia/Shanghai",
+    "masterCommit": "40d0b632c78f14ce3c382b28b0a642e69c1667e8",
+    "pullRequest": "https://github.com/ONEGAYI/ZCode-Plugins/pull/6",
+    "userConfirmedFullExit": true,
+    "desktopDisconnectedBeforeRestart": true,
+    "restartExitCode": 0,
+    "rpcAvailable": true,
+    "vbsLauncher": true,
+    "gatewayTaskRunning": true,
+    "userEnvironmentMatches": true,
+    "skillsUpdated": ["suian-zcode-common", "suian-zcode-title", "suian-zcode-app-mcp"],
+    "preserved": {
+      "port": true,
+      "upstream": true,
+      "controlToken": true,
+      "gatewayConfiguration": true,
+      "mcpAndHookConfiguration": true,
+      "namingConfiguration": true
+    },
+    "mcpSmoke": { "exitCode": 0, "toolCount": 9, "listSucceeded": true, "readSucceeded": true },
+    "liveCalls": {
+      "startedAtUtc": "2026-10-07T23:41:09.863Z",
+      "completedAtUtc": "2026-10-07T23:41:19.573Z",
+      "durationSeconds": 9.71,
+      "sendRequests": 1,
+      "sendAccepted": true,
+      "renameRequests": 1,
+      "renameHostReadBack": true,
+      "fixedReplyReadBack": true,
+      "exitCode": 0,
+      "testClientExited": true
+    },
+    "phone": {
+      "userConfirmedConnectedBeforeCalls": true,
+      "userConfirmedUsableAfterCallsWithoutRefreshOrReconnect": true,
+      "coexistencePassed": true
+    },
+    "healthAfterCalls": {
+      "desktopConnected": true,
+      "upstreamConnected": true,
+      "upstreamPaired": true,
+      "localClients": 0,
+      "rpcProtocolVersion": 1
+    },
+    "titleSmoke": { "exitCode": 0, "probe": "probe_ok", "doctor": "ready" },
+    "realResetCalls": 0,
+    "notValidated": ["full Stop Hook naming with phone", "real phone-offline RPC", "real remote workspace coexistence", "long-running stress"],
+    "privacy": { "credentialUrlsUsed": false, "credentialsRecorded": false, "identifiersRecorded": false, "chatBodiesRecorded": false }
   },
   "phoneTrafficComparison": {
     "before": {

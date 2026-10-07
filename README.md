@@ -66,7 +66,7 @@ git -C "{{repo_dir}}" sparse-checkout set suian-zcode-title suian-zcode-common
 
 统一维护网关、远控协议与探活、DPAPI 授权存取、Toast 通知和消息投影。公共层包含可导入的模块，只有网关是常驻后台进程；命名规则和 MCP 工具契约留在各插件。网关的 Windows 启动、环境变量与恢复也只维护一份。两个插件的初始化 skill 都调用 [公共网关 skill](./suian-zcode-common/SKILL.md)，Agent 会完成配置并提示用户先处理运行中工作，再完整退出重开 ZCode。
 
-命名与 MCP 的原 Host 调用已接入网关本地 RPC，复用一个本地 Host 桥并隔离客户端编号，不另占官方席位。隔离测试已验证并行请求、订阅与手机离线调用，真实手机验收以当前证据为准；手机使用远端工作区时本地 RPC 让位。说明与配置入口见 [suian-zcode-common](./suian-zcode-common/)。
+命名与 MCP 的原 Host 调用已接入网关本地 RPC，复用一个本地 Host 桥并隔离客户端编号，不另占官方席位。已实测本地工作区的 MCP 发信、改名和回复读取与官方手机共存，用户确认无需重连仍可操作；完整 Stop Hook 命名与手机同用尚未实测。手机使用远端工作区时本地 RPC 让位。说明与配置入口见 [suian-zcode-common](./suian-zcode-common/)。
 
 ## 找到你想要的
 
