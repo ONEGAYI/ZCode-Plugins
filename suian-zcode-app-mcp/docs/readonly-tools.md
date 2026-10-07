@@ -46,7 +46,9 @@
 
 消息包含 ID、角色、父消息 ID、创建时间、完整 `text` 与附件文件名/类型。保留全部正文，不做单条文本截断。默认不返回工具执行内容、模型思考、隐藏通知、压缩摘要、附件二进制或 URL。超长聊天应使用较小 `limit` 翻页。
 
-排序优先使用数据库 `sequence`；缺失时按创建时间与持久化行顺序排列。可见性沿用固定版本的官方投影规则。`session.revert` 裁剪废弃分支，过滤内部 rewind 确认消息。分页游标必须属于当前可见分支，不能拿废弃或隐藏消息作游标。
+消息排序优先使用数据库 `sequence`；缺失时按创建时间与持久化行顺序排列。同一消息的片段按 `sequence`、创建时间和片段 ID 排序。可见性沿用固定版本的官方投影规则。
+
+`session.revert` 裁剪废弃分支：优先使用当前的 `branchCutAfterMessageID`，拼接截断点之后新增的消息；兼容旧 `createdMessageID`。这遵循[官方当前分支选择器](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/apps/zcode-cli/packages/contracts/src/rewind/index.ts#L176-L215)。内部 rewind 确认消息不作为聊天正文；分页游标必须属于当前可见分支。
 
 ## 明确的失败与边界
 
@@ -55,6 +57,7 @@
 - `remote_history_unavailable`：远端身份的历史不在本机，本版不读取。
 - `history_not_found`：元数据存在，但本机 CLI 历史不存在；其他 provider 的历史格式尚未适配。
 - `workspace_mismatch`：索引与本机历史的工作区归属不一致，不继续读取。
+- `history_format_error`：消息角色或片段正文结构不兼容，不当作空聊天。
 - 数据库或数据格式错误：原错误返回；不当作空会话。
 
 结果是已经提交到数据库的历史，不承诺包含正在流式生成的最新字符、当前运行实例的内存状态或所有桌面时间线事件。副作用边界是本服务不执行持久化写入；活跃 WAL 数据库的锁及共享内存由 SQLite 管理。

@@ -19,6 +19,45 @@ test('按更新时间跨工作区列出最近 N 条，包含置顶但排除删�
   assert.equal(f.index.prepare('SELECT COUNT(*) n FROM tasks').get().n, 5);
 });
 
+test('损坏的消息角色或 text 数据形状明确报错，不能当作空聊天', async t => {
+  const f = fixture(t);
+  f.task({ id: 'sess_alpha' }); f.session({ id: 'sess_alpha' });
+  f.message({ id: 'msg_user', sequence: 0 });
+  const { createSessionReader } = await import('../sessions.mjs');
+  const reader = createSessionReader(f);
+  f.history.prepare('UPDATE message SET data=? WHERE id=?').run('null', 'msg_user');
+  assert.throws(() => reader.readSession({ session_id: 'sess_alpha' }), /history_format_error/);
+  f.history.prepare('UPDATE message SET data=? WHERE id=?').run(JSON.stringify({ role: 'system' }), 'msg_user');
+  assert.throws(() => reader.readSession({ session_id: 'sess_alpha' }), /history_format_error/);
+  f.history.prepare('UPDATE message SET data=? WHERE id=?').run(JSON.stringify({ role: 'user' }), 'msg_user');
+  f.history.prepare('UPDATE part SET data=? WHERE message_id=?').run(JSON.stringify({ type: 'text' }), 'msg_user');
+  assert.throws(() => reader.readSession({ session_id: 'sess_alpha' }), /history_format_error/);
+  f.history.prepare('UPDATE part SET data=? WHERE message_id=?').run('null', 'msg_user');
+  assert.throws(() => reader.readSession({ session_id: 'sess_alpha' }), /history_format_error/);
+});
+
+test('当前 branchCutAfterMessageID 回退保留后续新消息，优先于旧 created 标记', async t => {
+  const f = fixture(t);
+  f.task({ id: 'sess_alpha' });
+  f.session({ id: 'sess_alpha', revert: { kind: 'conversation_rewind', branchGeneration: 1,
+    targetMessageID: 'msg_discard', keptMessageIDs: ['msg_kept'], branchCutAfterMessageID: 'msg_old_reply' } });
+  f.message({ id: 'msg_kept', sequence: 0 });
+  f.message({ id: 'msg_discard', sequence: 1 });
+  f.message({ id: 'msg_old_reply', sequence: 2, role: 'assistant', parent: 'msg_discard' });
+  f.message({ id: 'msg_new', sequence: 3 });
+  f.message({ id: 'msg_new_reply', sequence: 4, role: 'assistant', parent: 'msg_new' });
+  const { createSessionReader } = await import('../sessions.mjs');
+  const reader = createSessionReader(f);
+  const page = reader.readSession({ session_id: 'sess_alpha', limit: 2 });
+  assert.deepEqual(page.messages.map(m => m.message_id), ['msg_new', 'msg_new_reply']);
+  assert.equal(page.total, 3);
+  assert.equal(page.next_before_message_id, 'msg_new');
+  assert.deepEqual(reader.readSession({ session_id: 'sess_alpha', before_message_id: 'msg_new' }).messages.map(m => m.message_id), ['msg_kept']);
+  const revert = JSON.parse(f.history.prepare('SELECT revert FROM session WHERE id=?').get('sess_alpha').revert);
+  f.history.prepare('UPDATE session SET revert=? WHERE id=?').run(JSON.stringify({ ...revert, createdMessageID: 'msg_discard' }), 'sess_alpha');
+  assert.deepEqual(reader.readSession({ session_id: 'sess_alpha' }).messages.map(m => m.message_id), ['msg_kept', 'msg_new', 'msg_new_reply']);
+});
+
 test('没有回退时正常返回未记录父标识的可见助手消息', async t => {
   const f = fixture(t);
   f.task({ id: 'sess_alpha' }); f.session({ id: 'sess_alpha' });

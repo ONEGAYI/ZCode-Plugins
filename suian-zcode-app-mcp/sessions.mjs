@@ -63,21 +63,34 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
             'filename',json_extract(data,'$.filename'),'mime',json_extract(data,'$.mime')) END AS data
           FROM part WHERE session_id=?
           ORDER BY message_id, sequence IS NULL, sequence, time_created, id`).all(session_id)) {
+          const part = JSON.parse(row.data);
+          if (typeof part?.type !== 'string' || part.type === 'text' && typeof part.text !== 'string')
+            throw new Error('history_format_error: 消息片段缺少有效 type 或文本正文');
           const list = parts.get(row.message_id) ?? [];
-          list.push(JSON.parse(row.data));
+          list.push(part);
           parts.set(row.message_id, list);
         }
         let active = db.prepare(`SELECT id, time_created, json_remove(data,'$.contextSnapshot') AS data
           FROM message WHERE session_id=? ORDER BY sequence IS NULL, sequence, time_created, rowid`).all(session_id)
-          .map(row => ({ info: { ...JSON.parse(row.data), id: row.id }, createdAt: row.time_created, parts: parts.get(row.id) ?? [] }));
+          .map(row => {
+            const info = JSON.parse(row.data);
+            if (info?.role !== 'user' && info?.role !== 'assistant')
+              throw new Error('history_format_error: 消息缺少 user/assistant 角色');
+            return { info: { ...info, id: row.id }, createdAt: row.time_created, parts: parts.get(row.id) ?? [] };
+          });
         const revert = session.revert && JSON.parse(session.revert);
         if (revert?.targetMessageID) {
           const target = active.findIndex(m => m.info.id === revert.targetMessageID);
           if (!revert.keptMessageIDs && target < 0) throw new Error('回退目标不在持久化历史中');
           const byId = new Map(active.map(m => [m.info.id, m]));
           const kept = revert.keptMessageIDs ? revert.keptMessageIDs.map(id => byId.get(id)).filter(Boolean) : active.slice(0, target);
-          const created = active.findIndex(m => m.info.id === revert.createdMessageID);
-          active = created >= 0 ? [...kept, ...active.slice(created)] : kept;
+          if (revert.branchCutAfterMessageID) {
+            const cut = active.findIndex(m => m.info.id === revert.branchCutAfterMessageID);
+            active = cut >= 0 ? [...kept, ...active.slice(cut + 1)] : kept;
+          } else {
+            const created = active.findIndex(m => m.info.id === revert.createdMessageID);
+            active = created >= 0 ? [...kept, ...active.slice(created)] : kept;
+          }
         }
         const messages = [];
         for (const message of active) {
