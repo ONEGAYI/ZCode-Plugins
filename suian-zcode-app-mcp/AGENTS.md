@@ -34,3 +34,4 @@
 | vendor/ | 官方可见消息投影与原许可、来源声明 |
 | tests/ | 真实 SQLite fixture 与 MCP/stdio 契约测试 |
 | docs/ | 早期研究、首版设计与脱敏验收证据 |
+| experiments/relay-gateway/ | 设备侧 relay 网关实验、模拟契约与公网未鉴权证据；独立于正式 MCP |
