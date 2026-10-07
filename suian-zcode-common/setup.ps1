@@ -30,51 +30,57 @@ $healthUrl = "http://127.0.0.1:$Port/health"
 $launcherFile = Join-Path $DataDir 'gateway-launch.vbs'
 $scriptHost = Join-Path $env:SystemRoot 'System32\wscript.exe'
 $vbsLauncher = $null -ne $task -and @($task.Actions)[0].Execute -eq $scriptHost
+$taskRunning = $null -ne $task -and $task.State -eq 'Running'
 
 function Read-GatewayHealth {
+    param([switch]$AllowUnavailable)
     for ($queryAttempt = 0; $queryAttempt -lt 2; $queryAttempt++) {
         try { return Invoke-RestMethod -Uri $healthUrl -TimeoutSec $HealthTimeoutSec -UseBasicParsing }
         catch [Net.WebException] {
+            if ($AllowUnavailable -and $_.Exception.Status -eq [Net.WebExceptionStatus]::ConnectFailure) { return $null }
             if ($_.Exception.Status -ne [Net.WebExceptionStatus]::Timeout) { throw }
             if ($queryAttempt -eq 1) { throw "Gateway health check timed out twice ($HealthTimeoutSec seconds per attempt); running state is unknown" }
         }
     }
 }
 
-function Wait-GatewayLauncherExit {
+function Wait-GatewayExit {
     for ($stopAttempt = 0; $stopAttempt -lt 40; $stopAttempt++) {
         $exitingTask = Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName -and $_.TaskPath -eq '\' }
-        if ($exitingTask.State -ne 'Running') { return }
+        $remainingHealth = Read-GatewayHealth -AllowUnavailable
+        if ($null -eq $remainingHealth -and ($null -eq $exitingTask -or $exitingTask.State -ne 'Running')) { return }
         Start-Sleep -Milliseconds 250
     }
-    throw 'Gateway launcher did not exit; configuration was not changed'
+    throw 'Gateway or launcher did not exit; configuration was not changed'
 }
 
 if ($Port -lt 1 -or $Port -gt 65535) { throw 'Invalid gateway port' }
 if ($Action -eq 'Status') {
     $health = $null
-    if ($null -ne $config -and $null -ne $task -and $task.State -eq 'Running') {
-        $health = Read-GatewayHealth
-        if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url) { throw 'Gateway health does not match the installed configuration' }
+    if ($null -ne $config) {
+        $health = Read-GatewayHealth -AllowUnavailable
+        if ($null -ne $health -and ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url)) { throw 'Gateway health does not match the installed configuration' }
     }
     [ordered]@{
         ok=$true; action='status'; configured=($null -ne $config); relay_url=$relayUrl; health_url=$healthUrl
         user_env_matches=($null -ne $config -and $userRelay -eq $relayUrl); gateway_running=($null -ne $health)
-        vbs_launcher=$vbsLauncher; launcher_update_required=($null -ne $task -and -not $vbsLauncher)
+        task_running=$taskRunning; health_status=$(if ($null -eq $config) { 'not_configured' } elseif ($null -eq $health) { 'unreachable' } else { 'reachable' })
+        vbs_launcher=$vbsLauncher; launcher_update_required=($null -ne $config -and (-not $vbsLauncher -or -not $taskRunning))
         desktop_connected=($null -ne $health -and $health.desktop_connected); upstream_connected=($null -ne $health -and $health.upstream_connected)
-        paired=($null -ne $health -and $health.paired); restart_required=($null -ne $config -and ($null -eq $health -or -not $health.desktop_connected -or $userRelay -ne $relayUrl -or -not $vbsLauncher))
+        paired=($null -ne $health -and $health.paired); restart_required=($null -ne $config -and ($null -eq $health -or -not $health.desktop_connected -or $userRelay -ne $relayUrl -or -not $vbsLauncher -or -not $taskRunning))
     } | ConvertTo-Json -Compress
     return
 }
 if ($Action -eq 'Remove') {
     if ($null -eq $config) { @{ ok=$true; action='not_installed' } | ConvertTo-Json -Compress; return }
-    if ($null -ne $task -and $task.State -eq 'Running') {
-        $health = Read-GatewayHealth
+    $health = Read-GatewayHealth -AllowUnavailable
+    if ($taskRunning -and $null -eq $health) { throw 'Gateway task is running but health is unavailable; running state is unknown, configuration was not changed' }
+    if ($null -ne $health) {
         if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url) { throw 'Gateway health does not match the installed configuration' }
         if ($health.desktop_connected) { throw 'Finish running work and fully quit ZCode before removing the shared gateway' }
         $stopped = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/shutdown" -Method Post -Headers @{ Authorization=('Bearer ' + $config.control_token) } -TimeoutSec 5 -UseBasicParsing
         if (-not $stopped.ok) { throw 'Gateway did not accept shutdown' }
-        Wait-GatewayLauncherExit
+        Wait-GatewayExit
     }
     $environmentAction = 'preserved_external'
     if ($userRelay -eq $relayUrl) {
@@ -116,14 +122,15 @@ finally { $sha.Dispose() }
 
 # 复用在运行的实例。修改地址或安装位置时不能悄悄切断 Desktop。
 $health = $null
-if ($null -ne $task -and $task.State -eq 'Running') {
-    $health = Read-GatewayHealth
+if ($null -ne $config -or $null -ne $task) { $health = Read-GatewayHealth -AllowUnavailable }
+if ($taskRunning -and $null -eq $health) { throw 'Gateway task is running but health is unavailable; running state is unknown, configuration was not changed' }
+if ($null -ne $health) {
     if ($restarting) {
         if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url) { throw 'Gateway health does not match the installed configuration' }
         if ($health.desktop_connected) { throw 'Finish running work and fully quit ZCode before restarting the shared gateway' }
         $stopped = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/shutdown" -Method Post -Headers @{ Authorization=('Bearer ' + $config.control_token) } -TimeoutSec 5 -UseBasicParsing
         if (-not $stopped.ok) { throw 'Gateway did not accept shutdown' }
-        Wait-GatewayLauncherExit
+        Wait-GatewayExit
         $health = $null
     } elseif ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $instanceId -or $health.upstream_url -ne $UpstreamUrl) {
         throw 'Running gateway differs from requested configuration; finish work, quit ZCode and use Restart to load the updated code'
@@ -158,6 +165,7 @@ if ($null -eq $health) {
     }
     if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $instanceId -or $health.upstream_url -ne $UpstreamUrl) { throw 'Gateway health check returned a different instance; user environment was not changed' }
     $vbsLauncher = $true
+    $taskRunning = $true
 }
 $skillDir = Join-Path $SkillsDir 'suian-zcode-common'
 [IO.Directory]::CreateDirectory($skillDir) | Out-Null
@@ -169,4 +177,4 @@ if ($null -ne $config -and (Test-Path -LiteralPath $legacySkillFile)) {
 }
 # 仅写用户级值；当前 Desktop 主进程不会重新读取。
 New-ItemProperty -LiteralPath 'HKCU:\Environment' -Name $relayVariable -Value $relayUrl -PropertyType String -Force | Out-Null
-[ordered]@{ ok=$true; action=$(if ($restarting) { 'restarted' } else { 'installed' }); relay_url=$relayUrl; health_url=$healthUrl; gateway_running=$true; desktop_connected=$health.desktop_connected; paired=$health.paired; vbs_launcher=$vbsLauncher; launcher_update_required=(-not $vbsLauncher); restart_required=(-not $health.desktop_connected -or -not $vbsLauncher) } | ConvertTo-Json -Compress
+[ordered]@{ ok=$true; action=$(if ($restarting) { 'restarted' } else { 'installed' }); relay_url=$relayUrl; health_url=$healthUrl; gateway_running=$true; task_running=$taskRunning; health_status='reachable'; desktop_connected=$health.desktop_connected; paired=$health.paired; vbs_launcher=$vbsLauncher; launcher_update_required=(-not $vbsLauncher -or -not $taskRunning); restart_required=(-not $health.desktop_connected -or -not $vbsLauncher -or -not $taskRunning) } | ConvertTo-Json -Compress

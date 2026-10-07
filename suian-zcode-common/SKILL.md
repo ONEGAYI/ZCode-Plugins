@@ -65,12 +65,15 @@ Start-Process -FilePath "{{zcode_exe}}" -WindowStyle Hidden
 执行 Status，分别检查配置、用户环境、网关、Desktop、上游与配对：
 
 - `configured` / `user_env_matches`：公共配置与用户环境。
-- `gateway_running`：用户任务与健康接口。
-- `vbs_launcher` / `launcher_update_required`：无窗口 VBS 入口是否已生效、旧任务是否待切换。
+- `gateway_running` / `health_status`：实际健康接口是否可达；连接失败为 `unreachable`，未配置为 `not_configured`。
+- `task_running`：计划任务是否正在监督启动链。Ready 不代表网关进程已停止。
+- `vbs_launcher` / `launcher_update_required`：任务是否配置为 VBS、入口或监督链是否需要恢复。
 - `desktop_connected`：是否有 Desktop 连入网关；这才是生效证据。
 - `upstream_connected` / `paired`：上游和手机配对；未开远控或手机未连时可正常为 false。
 
-健康检查默认单次 5 秒，仅超时重试一次；连续超时报运行状态未知，不据此断言网关停止。必要时可给 Status 指定 `-HealthTimeoutSec {{seconds}}`（1–30）。不把历史 `LastTaskResult` 当作当前进程状态；以这次健康结果和当前任务为依据。
+健康检查默认单次 5 秒，仅超时重试一次；连续超时报运行状态未知，不据此断言网关停止。必要时可给 Status 指定 `-HealthTimeoutSec {{seconds}}`（1–30）。不把历史 `LastTaskResult` 当作当前进程状态；分别读取本次健康结果和任务状态。
+
+网关可达但任务未运行时，报告启动链需要恢复，不另开第二个实例。Restart/Remove 仍先检查实际 Desktop 连接；等待网关 HTTP 监听和启动器都退出后才改配置。任务正在运行但健康端点不可达时，重载或移除明确拒绝，先查启动日志。
 
 重开后在原窗口启用移动端远控，检查 Desktop 状态，再用手机刷新页面验证配对。不要创建真实 Agent 任务探活。端口占用、网络或任务权限错误照实处理，不擅自提权、杀进程或改其他插件配置。
 

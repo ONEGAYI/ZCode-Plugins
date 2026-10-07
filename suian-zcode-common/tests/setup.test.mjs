@@ -28,7 +28,7 @@ function New-ScheduledTaskTrigger { param([switch]$AtLogOn, [string]$User) retur
 function New-ScheduledTaskPrincipal { param([string]$UserId, [string]$LogonType, [string]$RunLevel) return [pscustomobject]@{ UserId=$UserId; LogonType=$LogonType; RunLevel=$RunLevel } }
 function New-ScheduledTaskSettingsSet { param([TimeSpan]$ExecutionTimeLimit, [int]$RestartCount, [TimeSpan]$RestartInterval, [string]$MultipleInstances, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries) return [pscustomobject]@{ ExecutionTimeLimit=$ExecutionTimeLimit.TotalSeconds; RestartCount=$RestartCount; MultipleInstances=$MultipleInstances } }
 function Register-ScheduledTask { param([string]$TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) $global:fixture.task = [pscustomobject]@{ TaskName=$TaskName; TaskPath='\'; Actions=$Action; Trigger=$Trigger; Principal=$Principal; Settings=$Settings; State='Ready' }; $global:fixture.registrations++; Save-Fixture }
-function Start-ScheduledTask { param([string]$TaskName) if ($TaskName -ne $global:fixture.task.TaskName) { throw '启动了其他任务' }; $global:fixture.task.State='Running'; $global:fixture.starts++; Save-Fixture }
+function Start-ScheduledTask { param([string]$TaskName) if ($TaskName -ne $global:fixture.task.TaskName) { throw '启动了其他任务' }; $global:fixture.task.State='Running'; $global:fixture.health_available=$true; $global:fixture.starts++; Save-Fixture }
 function Stop-ScheduledTask { throw 'Gateway already accepted self shutdown; do not terminate its exiting launcher' }
 function Unregister-ScheduledTask { param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; $global:fixture.task=$null; Save-Fixture }
 function Invoke-RestMethod {
@@ -37,9 +37,11 @@ function Invoke-RestMethod {
     $config = Get-Content -LiteralPath (Join-Path $DataDir 'config.json') -Raw | ConvertFrom-Json
     if ($Method -eq 'Post') {
         if ($Headers.Authorization -ne ('Bearer ' + $config.control_token)) { throw '控制令牌错误' }
-        $global:fixture.shutdowns++; $global:fixture.task.State='Ready'; Save-Fixture
+        $global:fixture.shutdowns++; $global:fixture.draining=($global:fixture.shutdown_health_reads -gt 0); $global:fixture.health_available=$global:fixture.draining; if ($null -ne $global:fixture.task) { $global:fixture.task.State='Ready' }; Save-Fixture
         return [pscustomobject]@{ ok=$true }
     }
+    if (-not $global:fixture.health_available) { throw [Net.WebException]::new('fixture: no health listener', [Net.WebExceptionStatus]::ConnectFailure) }
+    if ($global:fixture.draining) { $global:fixture.shutdown_health_reads--; if ($global:fixture.shutdown_health_reads -eq 0) { $global:fixture.draining=$false; $global:fixture.health_available=$false } }
     $global:fixture.health_requests++
     if ($global:fixture.timeouts_left -gt 0 -or $TimeoutSec -lt $global:fixture.health_min_timeout) {
         if ($global:fixture.timeouts_left -gt 0) { $global:fixture.timeouts_left-- }
@@ -62,7 +64,7 @@ async function fixture(t, overrides = {}) {
   const script = join(root, 'Windows 边界 fixture.ps1');
   const dataDir = join(root, '公共 data');
   const skillsDir = join(root, 'skills');
-  const initial = { relay: 'wss://previous.example/ws', task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', desktop: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, ...overrides };
+  const initial = { relay: 'wss://previous.example/ws', task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', desktop: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, health_available: false, draining: false, shutdown_health_reads: 0, ...overrides };
   await writeFile(stateFile, JSON.stringify(initial));
   await writeFile(script, '\uFEFF' + systemFixture);
   const run = async (action, { healthTimeoutSec } = {}) => {
@@ -251,4 +253,61 @@ test('旧 PowerShell 启动任务在活跃连接时只报告待升级，安全�
   const updated = await f.run('Status');
   assert.equal(updated.vbs_launcher, true);
   assert.equal(updated.launcher_update_required, false);
+});
+
+test('任务已结束但网关仍存活时状态以健康为准，活跃 Desktop 阻止移除与重载', { skip: process.platform !== 'win32' }, async (t) => {
+  const f = await fixture(t);
+  await f.run('Install');
+  let state = await f.state();
+  state.task.State = 'Ready';
+  state.desktop = true;
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const status = await f.run('Status');
+  assert.equal(status.gateway_running, true);
+  assert.equal(status.task_running, false);
+  assert.equal(status.desktop_connected, true);
+  assert.equal(status.health_status, 'reachable');
+  assert.equal(status.restart_required, true);
+  const reused = await f.run('Install');
+  assert.equal(reused.gateway_running, true);
+  assert.equal(reused.task_running, false);
+  assert.equal(reused.launcher_update_required, true);
+  assert.equal((await f.state()).registrations, 1);
+  const before = await readFile(join(f.dataDir, 'config.json'), 'utf8');
+  await assert.rejects(f.run('Remove'), /quit ZCode/);
+  await assert.rejects(f.run('Restart'), /quit ZCode/);
+  assert.equal(await readFile(join(f.dataDir, 'config.json'), 'utf8'), before);
+  assert.equal((await f.state()).shutdowns, 0);
+  state = await f.state();
+  state.desktop = false;
+  state.shutdown_health_reads = 2;
+  const beforeRestart = state.health_requests;
+  await writeFile(f.stateFile, JSON.stringify(state));
+  assert.equal((await f.run('Restart')).vbs_launcher, true);
+  assert.equal((await f.state()).shutdowns, 1);
+  assert.equal((await f.state()).task.State, 'Running');
+  assert.equal((await f.state()).health_requests - beforeRestart, 4);
+  assert.equal((await f.state()).shutdown_health_reads, 0);
+});
+
+test('健康端点不可达与任务状态分别报告，配置保留以供安全重新启动', { skip: process.platform !== 'win32' }, async (t) => {
+  const f = await fixture(t);
+  await f.run('Install');
+  const state = await f.state();
+  state.task.State = 'Ready';
+  state.health_available = false;
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const status = await f.run('Status');
+  assert.equal(status.gateway_running, false);
+  assert.equal(status.task_running, false);
+  assert.equal(status.health_status, 'unreachable');
+  state.task.State = 'Running';
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const before = await readFile(join(f.dataDir, 'config.json'), 'utf8');
+  await assert.rejects(f.run('Restart'), /running state is unknown/);
+  await assert.rejects(f.run('Remove'), /running state is unknown/);
+  assert.equal(await readFile(join(f.dataDir, 'config.json'), 'utf8'), before);
+  state.task.State = 'Ready';
+  await writeFile(f.stateFile, JSON.stringify(state));
+  assert.equal((await f.run('Restart')).gateway_running, true);
 });

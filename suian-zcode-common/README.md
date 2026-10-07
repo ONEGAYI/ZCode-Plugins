@@ -57,9 +57,11 @@ Remove 只在用户要求移除公共网关时执行，先完整退出 ZCode。�
 
 ## 健康状态与本地接口
 
-`setup.ps1 -Action Status` 汇报配置、用户环境、启动任务、Desktop、上游与配对状态。`gateway_running` 不等于远控已经开启；`desktop_connected` 才能证明有 Desktop 连接网关。默认 HTTP 健康地址为 `http://127.0.0.1:17329/health`。
+`setup.ps1 -Action Status` 汇报配置、用户环境、启动任务、Desktop、上游与配对状态。`gateway_running` 来自实际 HTTP 健康结果，`task_running` 单独报告计划任务状态；任务 Ready 不代表 Node 已停止。`gateway_running` 不等于远控已经开启；`desktop_connected` 才能证明有 Desktop 连接网关。默认 HTTP 健康地址为 `http://127.0.0.1:17329/health`。
 
-健康请求默认每次等 5 秒，仅超时时重试一次；需要调整时使用 `-HealthTimeoutSec {{seconds}}`（1–30）。连续超时明确报运行状态未知，不输出一个成功的 `gateway_running:false` 来代替；非超时错误照实报出。`vbs_launcher` 与 `launcher_update_required` 区分已切换 VBS 和仍在复用旧任务；需要升级时先结束运行中工作、完整退出 Desktop，再执行 Restart。
+健康请求默认每次等 5 秒，仅超时时重试一次；需要调整时使用 `-HealthTimeoutSec {{seconds}}`（1–30）。`health_status` 区分未配置、可达和连接失败（`not_configured` / `reachable` / `unreachable`）。连续超时明确报运行状态未知，不输出一个成功的 `gateway_running:false` 来代替；其他错误照实报出。移除与重载直接检查网关，不依赖任务是否 Running；停止后须等 HTTP 监听与旧启动器都结束才改配置。
+
+`vbs_launcher` 表示任务是否使用 VBS。`launcher_update_required` 表示旧入口待切换或任务已结束、未继续监督存活网关；需要恢复时先结束运行中工作、完整退出 Desktop，再执行 Restart。安装会复用仍存活的网关，避免再开一个进程。
 
 | 接口 | 范围 |
 | --- | --- |
