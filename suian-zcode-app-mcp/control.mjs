@@ -6,8 +6,16 @@ import { loadAuthorization as loadStoredAuthorization } from '../suian-zcode-com
 import { writeTitlePolicy } from '../suian-zcode-common/title-policy.mjs';
 import { getGlmBalance, resetGlmQuota } from './glm.mjs';
 
-export function deliveredMessage(content) {
-  return `<delivered-by-other-session>\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n${content}\n</delivered-by-other-session>`;
+const xmlAttribute = value => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll("'", '&apos;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+export function deliveredMessage(content, deliverer) {
+  const attribute = deliverer === undefined ? '' : ` deliverer="${xmlAttribute(deliverer)}"`;
+  return `<delivered-by-other-session${attribute}>\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n${content}\n</delivered-by-other-session>`;
+}
+
+function createdMessage(content, creator) {
+  const attribute = creator === undefined ? '' : ` creator="${xmlAttribute(creator)}"`;
+  return `<created-by-other-session${attribute}>\n<notice>\nYou are a new zcode session created by another zcode session or the system, instead of directly by the user.\n</notice>\n${content}\n</created-by-other-session>`;
 }
 
 function archiveActivity(snapshot, sessionId) {
@@ -47,9 +55,9 @@ export function createSessionController({ reader, authDataDir = join(homedir(), 
       finally { remote.close(); }
     } finally { busy = false; }
   };
-  const send = async (remote, session_id, message) => {
+  const send = async (remote, session_id, content) => {
     const input_id = randomUUID();
-    await remote.call('zcode-task', 'sendPrompt', [{ taskId: session_id, traceId: input_id, content: deliveredMessage(message) }]);
+    await remote.call('zcode-task', 'sendPrompt', [{ taskId: session_id, traceId: input_id, content }]);
     return { input_id, delivery_status: 'accepted' };
   };
   const archiveResult = (args, remote, archived) => {
@@ -76,7 +84,7 @@ export function createSessionController({ reader, authDataDir = join(homedir(), 
         return { source: 'original_host', session_id: args.session_id, workspace_path: meta.workspacePath, title: meta.title };
       });
     },
-    async startSession({ workspace_path, title, message, model, lock_title = false }) {
+    async startSession({ workspace_path, title, message, model, lock_title = false, creator }) {
       return attached({ workspacePath: workspace_path }, async remote => {
         let modelSelection;
         if (model) {
@@ -90,7 +98,7 @@ export function createSessionController({ reader, authDataDir = join(homedir(), 
         const meta = await remote.call('zcode-task', 'createTask', [{ workspacePath: remote.workspacePath,
           ...(modelSelection ? { modelSelection } : {}), deferPersistenceUntilFirstPrompt: true }]);
         if (!meta.taskId) throw new Error('create_not_confirmed: 原 Host 创建响应缺少 taskId');
-        const result = { source: 'original_host', session_id: meta.taskId, workspace_path: meta.workspacePath, title: meta.title };
+        const result = { source: 'original_host', session_id: meta.taskId, workspace_path: meta.workspacePath, title: meta.title, ...(creator === undefined ? {} : { creator }) };
         try {
           if (title !== undefined) {
             const renamed = await remote.call('zcode-task', 'renameTask', [{ taskId: meta.taskId, workspacePath: meta.workspacePath, title }]);
@@ -99,7 +107,7 @@ export function createSessionController({ reader, authDataDir = join(homedir(), 
           }
           await setTitlePolicy({ sessionId: meta.taskId, locked: lock_title });
           result.lock_title = lock_title;
-          return { ...result, ...await send(remote, meta.taskId, message) };
+          return { ...result, ...await send(remote, meta.taskId, createdMessage(message, creator)) };
         } catch (error) {
           error.partial_result = { ...result, delivery_status: 'unknown' };
           throw error;
@@ -113,7 +121,8 @@ export function createSessionController({ reader, authDataDir = join(homedir(), 
         const meta = await remote.call('zcode-task', 'getTaskMeta', [params]);
         if (!meta || meta.taskId !== args.session_id) throw new Error('session_not_found: 原 Host 未确认目标会话');
         await remote.call('zcode-task', 'resumeTask', [params]);
-        return { source: 'original_host', session_id: args.session_id, workspace_path: remote.workspacePath, ...await send(remote, args.session_id, args.message) };
+        return { source: 'original_host', session_id: args.session_id, workspace_path: remote.workspacePath,
+          ...(args.deliverer === undefined ? {} : { deliverer: args.deliverer }), ...await send(remote, args.session_id, deliveredMessage(args.message, args.deliverer)) };
       });
     },
     async archiveSession(args) {

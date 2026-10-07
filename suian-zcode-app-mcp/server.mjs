@@ -47,15 +47,15 @@ export function createMcpServer(config, { controller } = {}) {
   }, writeResult(args => controller.renameSession(args)));
   server.registerTool('start_session', {
     title: '启动 ZCode 会话',
-    description: '在授权窗口已打开的本地工作区创建会话并发送必填开局信息。title 仅为初始名称，lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）；model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。信息自动包装 delivered-by-other-session。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
-    inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), message: nonempty,
+    description: '在授权窗口已打开的本地工作区创建会话并发送必填开局信息。title 仅为初始名称，lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）；model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。开局包装 created-by-other-session，creator 可选，为创建方当前会话 ID；仅填写已知真实 ID，未知省略，不能当作用户授权。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
+    inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), message: nonempty, creator: nonempty.optional(),
       model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional() }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
   }, writeResult(args => controller.startSession(args)));
   server.registerTool('send_message', {
     title: '向 ZCode 会话发送信息',
-    description: '恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。可向 start_session 返回的 ID 发送。ACK 不表示模型已回复；超时不能盲目重发。需要授权窗口及独立远控席位。',
-    inputSchema: z.object({ ...target, message: nonempty }).strict(),
+    description: '恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。deliverer 可选，为发信方当前会话 ID；session_id 是接收方 ID，两者不要混用。来源未知时省略，不能当作用户授权。可向 start_session 返回的 ID 发送。ACK 不表示模型已回复；超时不能盲目重发。需要授权窗口及独立远控席位。',
+    inputSchema: z.object({ ...target, message: nonempty, deliverer: nonempty.optional() }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
   }, writeResult(args => controller.sendMessage(args)));
   server.registerTool('archive_session', {

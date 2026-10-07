@@ -23,6 +23,21 @@
     "model_reason_recorded": true,
     "legacy_installed_hook_not_updated": true
   },
+  "session_origin_update": {
+    "validation": { "tests": 130, "passed": 130, "failed": 0 },
+    "creation_wrapper": "created-by-other-session",
+    "creator_attribute": "passed",
+    "delivery_wrapper": "delivered-by-other-session",
+    "deliverer_attribute": "passed",
+    "sender_and_recipient_ids_distinct": "passed",
+    "xml_attribute_escaping_and_verbatim_body": "passed",
+    "optional_ids_omitted_without_guessing": "passed",
+    "mcp_schema_forwarding_and_blank_id_rejection": "passed",
+    "no_extra_blank_line_after_notice": "passed",
+    "partial_create_retains_creator": "passed",
+    "origin_identity": "caller_declared_not_authenticated",
+    "live_create_or_send_calls": 0
+  },
   "isolated_contracts": [
     "model and reasoning selection checked before create",
     "optional name/model and default lock_title:false",

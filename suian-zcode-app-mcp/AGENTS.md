@@ -17,7 +17,7 @@
 
 - 两个读取工具只查本机持久化数据，不连接远控。五个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在授权窗口打开。
 - 两个 GLM 工具也连接原 Host。重置每次必须真实用户明确许可和客户端 form elicitation，不接受 Agent 自填 confirmed；不自动重试消耗。只读查询不发卡、不消耗、不标记历史已读。
-- 开局和后续消息均由服务包装固定 delivered-by-other-session 标识。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
+- 创建开局由服务包装 created-by-other-session 与可选 creator，后续发信包装 delivered-by-other-session 与可选 deliverer。来源 ID 是调用方声明，不认证发起方身份。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
 - 独立 terminal 仍占官方单设备席位，不把公共网关的 bootstrap 共存验收扩大为写 RPC 已共存；跨插件争用与手机占用明确报失败，不强行踢出设备。
 - 不将 `getTaskSnapshot` 当作无副作用读接口；公开源码中它会恢复会话并同步索引。
 - 不扩展为 SQL 执行工具。数据库缺失、schema 不兼容、历史不存在等错误明确返回，不创建空库或静默回退。
