@@ -1,0 +1,159 @@
+{
+  "verifiedAt": "2026-10-07 04:48:34 UTC",
+  "scope": "本机 ZCode 3.14.4，只读 SQLite 持久化数据",
+  "tests": {
+    "count": 11,
+    "passed": 11,
+    "failed": 0,
+    "isolatedDatabasesUnchanged": true,
+    "mcpInitializeAndToolsCalls": true,
+    "stdioProcess": true,
+    "negativeLimitRejected": true,
+    "extraSqlArgumentRejected": true
+  },
+  "tdd": [
+    {
+      "slice": "最近 N 条",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "工作区与字面搜索、分页",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "消息顺序与完整正文",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "可见消息及持久化回退",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "目标与不可读历史报错",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "非 text part 的可见性布尔标记",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "MCP 工具注册",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "独立 stdio 进程",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "无回退且没有父标识的可见助手消息",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "当前 branchCutAfterMessageID 回退与旧标记优先级",
+      "redExit": 1,
+      "greenExit": 0
+    },
+    {
+      "slice": "损坏消息与文本片段结构明确失败",
+      "redExit": 1,
+      "greenExit": 0
+    }
+  ],
+  "liveSqliteSmoke": {
+    "node": "v24.15.0",
+    "tools": [
+      {
+        "name": "list_sessions",
+        "readOnlyHint": true
+      },
+      {
+        "name": "read_session",
+        "readOnlyHint": true
+      }
+    ],
+    "recentReturned": 5,
+    "nonDeletedTotal": 215,
+    "nonDeletedSqlCount": 215,
+    "workspaceCount": 29,
+    "scopedTotal": 44,
+    "idSearchMatched": true,
+    "titleSearchMatched": true,
+    "historyTotal": 82,
+    "historyReturned": 6,
+    "olderReturned": 6,
+    "roles": [
+      "assistant",
+      "assistant",
+      "assistant",
+      "assistant",
+      "assistant",
+      "assistant"
+    ],
+    "source": "local_cli_sqlite",
+    "branch": "persisted",
+    "unknownIsError": true,
+    "contentNotLogged": true
+  },
+  "originalHostReadOnlyCrossCheck": {
+    "ok": true,
+    "desktopAppVersion": "3.14.4",
+    "bootstrapWorkspaceCount": 11,
+    "bootstrapTaskCount": 117,
+    "rpcMethods": [
+      "zcode-task.getTaskMeta",
+      "zcode-task.listTasks"
+    ],
+    "taskMetaMatchesIndex": true,
+    "listMatchesIndex": true,
+    "workspaceTaskCount": 43,
+    "noSnapshotResumeOrGeneration": true
+  },
+  "notPerformed": [
+    "未注册或修改用户 MCP 设置",
+    "未连接实时 V4 消息流",
+    "未读取远端工作区正文",
+    "未发送消息、创建/恢复/停止/归档会话或调用模型",
+    "未推送或发布"
+  ],
+  "credentialsPersisted": false,
+  "privateChatContentPersisted": false,
+  "projectionSourceSha256": "FE3B86E2DE8A969AC5EBF4B8C7C7B88AB3E15DFC2CD2E3920F7B2553556D30D3",
+  "licenseSourceSha256": "FA36DC312BC4946B1C22DBA3C726AD8D3052B353F81424E7B997DBB3D9B40A49",
+  "review": {
+    "standards": "初次审查及修复增量未发现确认的规范问题",
+    "specFindings": [
+      {
+        "priority": "P1",
+        "issue": "branchCutAfterMessageID 的新分支被遗漏",
+        "resolution": "支持 cut+1 且优先于旧 created 标记，新增契约测试通过"
+      },
+      {
+        "priority": "P2",
+        "issue": "非法消息/文本结构被当作空聊天",
+        "resolution": "在数据库边界验证 role/type/text，格式错误明确返回，新增契约测试通过"
+      }
+    ],
+    "recheckPending": false,
+    "recheck": {
+      "revision": "f8d43bed9df031bf95b9a43c9351bb7556b6b47f",
+      "standards": "增量未发现新增问题",
+      "spec": "两项问题均已关闭，未发现直接需求回归"
+    }
+  },
+  "delivery": {
+    "entry": "suian-zcode-app-mcp/cli.mjs",
+    "dependenciesInstalled": true,
+    "npmCiExitCode": 0,
+    "primaryDirectoryStdioSmokeExitCode": 0,
+    "mcpConfigurationChanged": false
+  }
+}

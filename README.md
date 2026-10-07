@@ -1,4 +1,4 @@
-给 ZCode 做的插件集合。ZCode 是智谱推出的 Agentic Coding 工具（桌面端 + CLI），这个仓库放围绕它的自研插件：一个已经能用，一个在规划中。
+给 ZCode 做的插件集合。ZCode 是智谱推出的 Agentic Coding 工具（桌面端 + CLI），这个仓库放会话自动命名插件与只读会话 MCP。
 
 ## suian-zcode-title — 会话自动命名（可用）
 
@@ -11,9 +11,9 @@
 
 它通过 ZCode 官方的 Web 远控通道连接当前窗口，用你自己账号里的模型生成标题，不往对话里插消息，也不直接改数据库；标题会跟随工作主线缓慢更新，手动改过的标题不会再被覆盖。安装时把一段话粘给 ZCode 就行，详见 [suian-zcode-title/README.md](./suian-zcode-title/README.md)。
 
-## suian-zcode-app-mcp — 会话操控 MCP（待开发）
+## suian-zcode-app-mcp — 会话 MCP（只读首版）
 
-想让外部程序或别的 Agent 操控**已经开着**的 ZCode 窗口：列出会话、读取历史、派生任务、跨会话投递消息。源码研究与可行性验证已经完成（不改官方源码、走授权远控通道的路线已实测改名链路），立项依据和能力边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。
+通过两个只读工具列出本机 ZCode 会话、按工作区或标题/ID 检索，并查看指定会话的聊天消息。首版读取 SQLite 持久化历史，通过 stdio 接入 MCP 客户端；发送消息、创建与状态管理留待后续。接入与边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。
 
 ## 找到你想要的
 

@@ -23,7 +23,7 @@ ZCode-Plugins/
 ├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 远控命名 + Toast 通知）
 │   └── docs/notes/         # 研究与验证笔记（脱敏后入库；桌面截图等敏感物料不入库）
 │
-├── suian-zcode-app-mcp/    # ZCode 会话操控 MCP（待开发空壳：指令、研究总览与守则）
+├── suian-zcode-app-mcp/    # ZCode 会话 MCP（只读首版：会话检索、聊天历史与 stdio 接入）
 │
 └── sources/                # 上游源码 submodule 引用（只读，见 sources/README.md）
     ├── official-zcode/     # zai-org/ZCode @ 29628c9（v3.14.3 公开快照）
