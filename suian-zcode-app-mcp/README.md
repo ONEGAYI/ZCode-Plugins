@@ -1,11 +1,55 @@
 # suian-zcode-app-mcp
 
-ZCode 会话操控 MCP 服务，目前为待开发的空壳。
+让 ZCode 或其他 MCP 客户端查询本机 ZCode 会话。**首版提供两个只读工具：列出会话、读取聊天消息**。
 
-目标是不 fork、不修改 ZCode 源码，做一层独立的 MCP，让外部 Agent 通过官方 Web 远控通道接入**已经开着**的 ZCode 桌面窗口：列出会话、读取历史、派生任务、改名与状态管理。同仓库的 [suian-zcode-title](../suian-zcode-title/) 是这条路线上率先落地的第一个能力（Stop 后自动命名），它的远控连接、探活与改名调用已经过真实验证。
+| 工具 | 用途 |
+| --- | --- |
+| `list_sessions` | 最近 N 条、指定工作区或所有工作区；按标题或 ID 搜索；支持归档项和分页 |
+| `read_session` | 指定会话最近消息及向前翻页；完整正文、可见消息过滤和持久化回退分支 |
 
-## 现状
+当前读取本机 SQLite 持久化历史，无需远控授权链接。结果不包含未持久化的流式字符；远端工作区正文暂不支持。设计依据、参数和读取边界见 [只读工具设计](./docs/readonly-tools.md)。
 
-- 立项依据与已核实能力清单见 [docs/research-findings.md](./docs/research-findings.md)（源码研究结论总览，随 suian-zcode-title/docs/notes/ 一起维护）。
-- 上游源码以 submodule 引用在 [../sources/](../sources/)，不入库、不修改。
-- 命名相关的协议实现（relay 认证、bridge、Channel RPC、probe）可直接复用 suian-zcode-title 的 `remote.mjs` 与 `vendor/`。
+## 接入
+
+需要 Node.js 24+。在本插件目录安装锁定依赖：
+
+```powershell
+npm ci --ignore-scripts --no-fund --no-audit
+```
+
+在 MCP 客户端添加下面的 stdio 服务。将 `{{plugin_root}}` 替换为本插件目录的绝对路径，建议使用 `/` 分隔符；服务入口必须是 `cli.mjs`。配置示例见 [mcp.config.example.json](./mcp.config.example.json)。
+
+```json
+{
+  "mcpServers": {
+    "suian-zcode-app": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["{{plugin_root}}/cli.mjs"]
+    }
+  }
+}
+```
+
+该 JSON 是连接配置，不是完整 ZCode 插件安装包。本版未自动注册服务、安装 Skill 或修改用户设置；由 MCP 客户端加载后可调用两个工具。
+
+默认读取当前系统用户的 `~/.zcode/v2/tasks-index.sqlite` 和 `~/.zcode/cli/db/db.sqlite`。自定义数据路径可在 args 后追加 `--index-db {{index_db_path}} --session-db {{session_db_path}}`，或设置环境变量 `ZCODE_APP_MCP_INDEX_DB`、`ZCODE_APP_MCP_SESSION_DB`。优先级是命令参数 > 环境变量 > 默认路径。
+
+## 调用示例
+
+```json
+{"name":"list_sessions","arguments":{"limit":10}}
+{"name":"list_sessions","arguments":{"workspace_path":"D:/work/example","limit":20}}
+{"name":"list_sessions","arguments":{"query":"MCP","include_archived":true}}
+{"name":"read_session","arguments":{"session_id":"sess_example","limit":10}}
+```
+
+`list_sessions` 省略工作区即所有索引工作区，默认排除归档与删除项。使用 `next_offset` 继续列举；`read_session` 使用 `next_before_message_id` 获取更早消息。
+
+测试命令为 `npm test`。实测与契约测试汇总见 [验收证据](./docs/readonly-tools-evidence.json)。
+
+## 研究与许可
+
+早期原 Host 接入研究见 [research-findings.md](./docs/research-findings.md)；同仓库 [suian-zcode-title](../suian-zcode-title/) 已实现自动命名。本版的读取能力独立运行，不加载命名插件或启动 CLI app-server。
+
+自有代码沿用仓库 [MIT 许可](../LICENSE)。消息可见性投影库来自固定版本 ZCode，原样保留其 Apache-2.0 许可与 [来源声明](./vendor/NOTICE.md)。

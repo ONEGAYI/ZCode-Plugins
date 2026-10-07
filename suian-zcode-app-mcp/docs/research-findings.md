@@ -4,6 +4,7 @@
 > 命名后端已剥离为 [suian-zcode-title](../../suian-zcode-title/) 插件并完成 Stop Hook 全自动端到端验证
 > （原文"Stop Hook 未配置，授权仍需外部注入"为当时状态）；证据笔记随插件迁移至其 docs/notes/；
 > 源码快照改为本仓库 sources/ 下的 submodule 引用。
+> 2026-10-07 已实现只读会话 MCP 首版：列表检索与持久化聊天读取，见 [首版设计](./readonly-tools.md)。下文保留研究时点的状态描述。
 
 核查日期：2026-10-05 至 2026-10-06。
 
