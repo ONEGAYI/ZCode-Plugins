@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-07",
+  "host_version": "3.14.4",
+  "source_snapshot": "29628c9acdb81b703bbd4080c207a0e7ce5e276e",
+  "real_reset": {
+    "path": "original_host_rpc_probe",
+    "user_authorized": true,
+    "user_acknowledged_card_selection_uncertainty": true,
+    "reset_type": "FIVE_HOUR",
+    "use_rpc_calls": 1,
+    "automatic_retries": 0,
+    "host_result": { "used": true },
+    "confirmed_at": "2026-10-07T14:10:46.000Z",
+    "before": {
+      "available_five_hour_cards": 3,
+      "card_expiry_times": ["2026-10-07T14:34:33.000Z", "2026-10-28T03:01:09.000Z", "2026-10-28T03:01:09.000Z"],
+      "model_five_hour_used_percent": 84,
+      "glm_monthly_tool_used_percent": 12
+    },
+    "after": {
+      "available_five_hour_cards": 2,
+      "card_expiry_times": ["2026-10-28T03:01:09.000Z", "2026-10-28T03:01:09.000Z"],
+      "model_five_hour_used_percent": 0,
+      "glm_monthly_tool_used_percent": 12
+    },
+    "earliest_card_disappeared": true,
+    "other_two_expiry_times_unchanged": true,
+    "opportunity_or_history_read_post_calls": 0,
+    "probe_exit_code": 0
+  },
+  "real_query": {
+    "path": "implemented_controller_readonly",
+    "quota_generated_at": "2026-10-07T14:35:48.842Z",
+    "model_five_hour_remaining_percent": 95,
+    "model_weekly_status": "not_returned",
+    "glm_monthly_tool_remaining": 879,
+    "zcode_server_mcp_remaining": 1000,
+    "available_five_hour_cards": 2,
+    "available_week_cards": 0,
+    "errors_present": false,
+    "probe_exit_code": 0
+  },
+  "automated_verification": {
+    "mcp_baseline_tests_passed": 28,
+    "final_total_tests_passed": 128,
+    "final_tests_failed": 0,
+    "final_test_exit_code": 0,
+    "local_document_links_checked": 29,
+    "design_json_examples_parsed": 3,
+    "tdd_red_observed": ["查询/重置方法缺失", "MCP注册缺少新工具", "null百分比误当零", "150秒确认超过旧连接寿命"],
+    "sdk_form_supported_and_unsupported_branches": "passed",
+    "native_zcode_form_ui": "not_verified"
+  },
+  "limits": [
+    "真实消耗先于最终 MCP 工具注册，使用原 Host RPC 探针；之后不再消耗，最终工具使用 mock 验证",
+    "一次实测不能保证所有账号的服务端选卡顺序",
+    "ZCode 原生客户端是否展示 form elicitation 尚未验收；未声明支持的客户端明确拒绝重置",
+    "复用原幂等键的客户端逻辑已用 mock 验证，未对真实服务端执行第二次消耗调用"
+  ]
+}

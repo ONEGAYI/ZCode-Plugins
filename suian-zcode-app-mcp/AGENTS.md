@@ -2,7 +2,7 @@
 
 目标：做独立的 MCP 服务，让 ZCode 与外部 Agent 查询会话，并逐步沿官方授权原 Host 链路增加控制能力。公共层提供协议、授权与通知模块；suian-zcode-title（会话自动命名）使用它完成命名业务。
 
-当前状态：公开七个工具。`list_sessions` 与 `read_session` 保持本机 SQLite 只读连接；`rename_session`、`start_session`、`send_message`、`archive_session`、`restore_session` 使用已授权的独立远控连接调用原 Host。契约见 `docs/readonly-tools.md` 与 `docs/write-tools.md`。
+当前状态：公开九个工具。`list_sessions` 与 `read_session` 保持本机 SQLite 只读连接；五个会话写工具及 `get_glm_balance`、`reset_glm_quota` 使用已授权的独立远控连接调用原 Host。契约见 `docs/readonly-tools.md`、`docs/write-tools.md` 与 `docs/glm-balance-design.md`。
 
 ## 守则（沿自研究期，开发期继续适用）
 
@@ -16,6 +16,7 @@
 ## 边界与维护
 
 - 两个读取工具只查本机持久化数据，不连接远控。五个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在授权窗口打开。
+- 两个 GLM 工具也连接原 Host。重置每次必须真实用户明确许可和客户端 form elicitation，不接受 Agent 自填 confirmed；不自动重试消耗。只读查询不发卡、不消耗、不标记历史已读。
 - 开局和后续消息均由服务包装固定 delivered-by-other-session 标识。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
 - 独立 terminal 仍占官方单设备席位，不把公共网关的 bootstrap 共存验收扩大为写 RPC 已共存；跨插件争用与手机占用明确报失败，不强行踢出设备。
 - 不将 `getTaskSnapshot` 当作无副作用读接口；公开源码中它会恢复会话并同步索引。
@@ -31,6 +32,7 @@
 | cli.mjs | stdio 入口、数据库/授权目录参数与 stdin DPAPI 授权配置 |
 | server.mjs | MCP 工具注册、参数校验与结构化响应 |
 | control.mjs | 原 Host 改名读回、指定模型创建、消息包装、归档保护与复原；按调用释放连接 |
+| glm.mjs | GLM 个人套餐额度/卡片投影、确认后重置与同次尝试回执；共用 controller 远控互斥 |
 | sessions.mjs | 只读索引查询、会话定位、历史投影与分页 |
 | package.json / package-lock.json | 固定依赖版本与测试入口 |
 | mcp.config.example.json | MCP 客户端连接示例 |

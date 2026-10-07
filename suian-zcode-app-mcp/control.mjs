@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { connectRemote } from '../suian-zcode-common/remote.mjs';
 import { loadAuthorization as loadStoredAuthorization } from '../suian-zcode-common/auth-store.mjs';
 import { writeTitlePolicy } from '../suian-zcode-common/title-policy.mjs';
+import { getGlmBalance, resetGlmQuota } from './glm.mjs';
 
 export function deliveredMessage(content) {
   return `<delivered-by-other-session>\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n${content}\n</delivered-by-other-session>`;
@@ -30,17 +31,18 @@ function archiveActivity(snapshot, sessionId) {
   return reasons;
 }
 
-export function createSessionController({ reader, authDataDir = join(homedir(), '.zcode', 'tools', 'suian-zcode-app-mcp'), connect = connectRemote, loadAuthorization = () => loadStoredAuthorization({ dataDir: authDataDir }), setTitlePolicy = writeTitlePolicy }) {
+export function createSessionController({ reader, authDataDir = join(homedir(), '.zcode', 'tools', 'suian-zcode-app-mcp'), connect = connectRemote, loadAuthorization = () => loadStoredAuthorization({ dataDir: authDataDir }), setTitlePolicy = writeTitlePolicy, now = Date.now }) {
   let busy = false;
+  const glmAttempts = new Map();
   const targetOf = args => ({ sessionId: args.session_id,
     workspacePath: args.workspace_path ?? reader.readSession({ session_id: args.session_id, workspace_key: args.workspace_key, limit: 1 }).session.workspace_path });
-  const attached = async (target, run) => {
+  const attached = async (target, run, timeoutMs = 120000) => {
     if (busy) throw new Error('remote_busy: 本 MCP 正在使用远控连接，请等待当前调用结束');
     busy = true;
     try {
       const authorizationUrl = await loadAuthorization();
       if (!authorizationUrl) throw new Error('authorization_required: 写工具需要当前窗口的远控授权，请按 skill 配置');
-      const remote = await connect({ ...target, authorizationUrl, timeoutMs: 120000, handshakeTimeoutMs: 8000 });
+      const remote = await connect({ ...target, authorizationUrl, timeoutMs, handshakeTimeoutMs: 8000 });
       try { return await run(remote); }
       finally { remote.close(); }
     } finally { busy = false; }
@@ -57,6 +59,13 @@ export function createSessionController({ reader, authDataDir = join(homedir(), 
     return { source: 'original_host', session_id: args.session_id, workspace_path: remote.workspacePath, archived };
   };
   return {
+    async getGlmBalance({ workspace_path }) {
+      return attached({ workspacePath: workspace_path }, remote => getGlmBalance(remote, { now }));
+    },
+    async resetGlmQuota(args, { requestConfirmation, signal } = {}) {
+      // 180 秒用户确认，加上确认前后额度读取、提交与刷新；其他工具保持 120 秒。
+      return attached({ workspacePath: args.workspace_path }, remote => resetGlmQuota(remote, args, { requestConfirmation, attempts: glmAttempts, now, signal }), 360000);
+    },
     async renameSession(args) {
       const target = targetOf(args);
       return attached(target, async remote => {

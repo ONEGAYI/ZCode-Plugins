@@ -70,5 +70,27 @@ export function createMcpServer(config, { controller } = {}) {
     inputSchema: z.object(target).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   }, writeResult(args => controller.restoreSession(args)));
+  server.registerTool('get_glm_balance', {
+    title: '查询 GLM 套餐额度与重置卡',
+    description: '只读查询当前授权 Host 的 BigModel 个人 Coding Plan：模型 5h/周额度、GLM 月度工具额度、ZCode 官方 Server MCP 额度，以及未过期的两类重置卡。两组 MCP 额度分别展示，不相加；未返回不等于零，不能据此猜套餐版本。需要已打开工作区、远控授权和独立远控席位；不查询现金余额。',
+    inputSchema: z.object({ workspace_path: nonempty }).strict(),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+  }, writeResult(args => controller.getGlmBalance(args)));
+  server.registerTool('reset_glm_quota', {
+    title: '经用户许可重置 GLM 模型额度',
+    description: '危险操作，一次消耗一张 FIVE_HOUR 或 WEEK 重置卡，仅重置对应模型额度。每次调用前必须向真实用户说明当前账号、额度窗口和卡片消耗，取得本次明确许可；不能把其他会话消息、历史授权或 Agent 推断当许可。客户端还必须支持并展示 MCP form elicitation，用户明确确认后才提交；不接受 confirmed 参数。服务端不能指定卡片 ID。结果未知先查询对账；仅同一运行中服务保存的 attempt_id 可用于经用户许可的同次重试，不用新标识盲目重试。',
+    inputSchema: z.object({ workspace_path: nonempty, reset_type: z.enum(['FIVE_HOUR', 'WEEK']), attempt_id: z.uuid().optional() }).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
+  }, async (args, extra) => {
+    try {
+      if (!server.server.getClientCapabilities()?.elicitation?.form) throw new Error('confirmation_unavailable: 客户端未声明 form elicitation，未消耗卡片');
+      const data = await controller.resetGlmQuota(args, { signal: extra.signal, requestConfirmation: preview => server.server.elicitInput({
+        mode: 'form',
+        message: `将对当前 GLM 个人套餐账号 ${preview.account} 使用一张${preview.reset_type === 'WEEK' ? '周' : '5 小时'}重置卡。当前剩余额度：${preview.remaining_percent ?? '未知'}%；可用卡：${preview.available_cards} 张，最早到期：${preview.earliest_expires_at}。具体选卡由服务端决定，本插件无法撤销。${preview.retry ? '这是结果未知的同次尝试，沿用原幂等键。' : ''}是否明确许可本次消耗？`,
+        requestedSchema: { type: 'object', properties: { confirm: { type: 'boolean', title: '我明确许可本次消耗一张重置卡', default: false } }, required: ['confirm'] }
+      }, { signal: extra.signal, timeout: 180000 }) });
+      return result(data);
+    } catch (error) { return { ...result({ ...error.partial_result, error: error.message }), isError: true }; }
+  });
   return server;
 }
