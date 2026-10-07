@@ -31,7 +31,8 @@
 | sessions.mjs | 只读索引查询、会话定位、历史投影与分页 |
 | package.json / package-lock.json | 固定依赖版本与测试入口 |
 | mcp.config.example.json | MCP 客户端连接示例 |
+| install.mjs / SKILL.md | skill 幂等部署与 Agent 初始化、原生 MCP 配置合并；公共网关流程委托同级子项目 |
 | vendor/ | 官方可见消息投影与原许可、来源声明 |
 | tests/ | 真实 SQLite fixture 与 MCP/stdio 契约测试 |
 | docs/ | 早期研究、首版设计与脱敏验收证据 |
-| experiments/relay-gateway/ | 设备侧 relay 网关实验、模拟契约与公网未鉴权证据；独立于正式 MCP |
+| experiments/relay-gateway/ | 历史网关实验证据与迁移指针；实现统一维护于 `../suian-zcode-gateway/` |

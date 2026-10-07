@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import WebSocket from 'ws';
-import { OFFICIAL_RELAY, startGateway } from './gateway.mjs';
+import { OFFICIAL_RELAY, startGateway } from '../gateway.mjs';
 
 const evidence = { checkedAt: new Date().toISOString(), target: OFFICIAL_RELAY, syntheticIdentity: true, userCredentialsUsed: false, authResponseSent: false, authenticated: false, gatewayFaults: [] };
 let resolveResponse, rejectResponse;

@@ -1,4 +1,4 @@
-给 ZCode 做的插件集合。ZCode 是智谱推出的 Agentic Coding 工具（桌面端 + CLI），这个仓库放会话自动命名插件与只读会话 MCP。
+给 ZCode 做的插件与公共工具集合。ZCode 是智谱推出的 Agentic Coding 工具（桌面端 + CLI），这个仓库放会话自动命名插件、只读会话 MCP，以及两者共用的设备侧网关。
 
 ## suian-zcode-title — 会话自动命名（可用）
 
@@ -15,9 +15,17 @@
 
 通过两个只读工具列出本机 ZCode 会话、按工作区或标题/ID 检索，并查看指定会话的聊天消息。首版读取 SQLite 持久化历史，通过 stdio 接入 MCP 客户端；发送消息、创建与状态管理留待后续。接入与边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。
 
+## suian-zcode-gateway — 公共网关
+
+统一维护 Desktop 到官方 relay 的转发，以及 Windows 当前用户启动任务、环境变量配置和恢复流程。两个插件的初始化 skill 都调用 [公共网关 skill](./suian-zcode-gateway/SKILL.md)，Agent 会完成配置并提示用户先处理运行中工作，再完整退出重开 ZCode。
+
+已验证同进程 bootstrap 元数据读取与官方手机页面共存；命名插件的完整 V4 RPC 尚未接入网关分流。说明与配置入口见 [suian-zcode-gateway](./suian-zcode-gateway/)。
+
 ## 找到你想要的
 
 - **直接用自动命名** → [suian-zcode-title](./suian-zcode-title/)，README 里有「让 ZCode 帮你安装」的一段话
+- **安装会话查询 MCP** → [MCP skill](./suian-zcode-app-mcp/SKILL.md)，包括原生配置合并与握手验证
+- **配置共用网关** → [公共网关 skill](./suian-zcode-gateway/SKILL.md)，端口、启动、重启生效和恢复只维护一处
 - **了解实现**（远控协议、Stop Hook、探活分层）→ [suian-zcode-title/AGENTS.md](./suian-zcode-title/AGENTS.md) 的技术参考
 - **做会话操控 / MCP** → [research-findings.md](./suian-zcode-app-mcp/docs/research-findings.md)，含已核实能力表与首批工具设计
 - **读 ZCode 源码** → [sources/](./sources/)，官方公开快照与社区桥接项目，submodule 引用、按需获取

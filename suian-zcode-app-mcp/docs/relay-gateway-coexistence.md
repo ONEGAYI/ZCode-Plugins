@@ -50,7 +50,7 @@ flowchart LR
 
 ## 证据来源
 
-- 本轮实际运行 ZCode 3.14.4；网关使用 Node 24.15.0、ws 8.22.0。原型说明和固定安装包 SHA-256 见 [实验目录](../experiments/relay-gateway/README.md)。
+- 本轮实际运行 ZCode 3.14.4；网关使用 Node 24.15.0、ws 8.22.0。固定安装包 SHA-256 与阶段定位保留在 [历史证据](../experiments/relay-gateway/evidence.json)。网关实现与配置已统一迁入 [公共子项目](../../suian-zcode-gateway/README.md)，本报告的 bootstrap 结论范围不变。
 - 固定 3.14.4 ASAR 的 `out/main/index.js`：第 1367 行 offset 708268 启动读取覆盖变量，708672 的 endpoint factory 捕获该值；第 408 行 offset 376088 的连接使用构造时 `relayWsUrl`。offset 为 UTF-16 字符偏移。
 - 同产物第 1368 行 offset 718200：内部重启回调执行 `prepareAppQuit → app.relaunch → app.quit`，未接收新环境参数。公开快照的 [重启回调](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/desktop/src/main/index.ts#L1349-L1371) 仅作补充，版本为 3.14.3。
 - [公开窗口关闭分支](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/desktop/src/main/desktopWindowLifecycle.ts#L379-L411)：Windows 下关闭窗口可能隐藏到托盘，与完整退出不同。

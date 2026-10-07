@@ -3,7 +3,38 @@ import { once } from 'node:events';
 import { test } from 'node:test';
 import { createHmac } from 'node:crypto';
 import WebSocket, { WebSocketServer } from 'ws';
-import { startGateway } from './gateway.mjs';
+import { startGateway } from '../gateway.mjs';
+
+test('健康入口区分网关、设备连接和配对，拒绝浏览器连接且不返回认证材料', { timeout: 3000 }, async (t) => {
+  const { gateway, desktop, upstream, relay } = await connectedFixture(t, 'matched', { instanceId: 'fixture-installation', controlToken: 'fixture-health-token' });
+  const healthUrl = gateway.url.replace('ws:', 'http:').replace('/ws', '/health');
+  const response = await fetch(healthUrl);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    service: 'suian-zcode-gateway', version: 1, instance_id: 'fixture-installation',
+    upstream_url: `ws://127.0.0.1:${relay.address().port}/ws`,
+    desktop_connected: true, upstream_connected: true, paired: true,
+  });
+  const changed = once(desktop, 'message');
+  upstream.send('{"type":"pair_status_ack","pair_status":"waiting"}');
+  await changed;
+  assert.equal((await (await fetch(healthUrl)).json()).paired, false);
+  assert.equal((await fetch(healthUrl, { headers: { Origin: 'https://example.test' } })).status, 403);
+  const browser = new WebSocket(gateway.url, { origin: 'https://example.test' });
+  browser.on('error', () => {});
+  const browserRejected = new Promise((resolve) => browser.once('unexpected-response', (_request, rejected) => { rejected.resume(); browser.terminate(); resolve(rejected.statusCode); }));
+  assert.equal(await browserRejected, 403);
+  assert.equal(relay.clients.size, 1);
+  assert.equal((await fetch(healthUrl.replace('/health', '/shutdown'), { method: 'POST', headers: { Authorization: 'Bearer fixture-health-token' } })).status, 409);
+  const disconnected = once(desktop, 'close');
+  desktop.terminate();
+  await disconnected;
+  await new Promise((resolve) => upstream.once('close', resolve));
+  const offline = await (await fetch(healthUrl)).json();
+  assert.equal(offline.desktop_connected, false);
+  assert.equal(offline.upstream_connected, false);
+  assert.equal(offline.paired, false);
+});
 
 test('唯一设备连接原样转发认证及文本/二进制消息，并保留 mid 和握手头', { timeout: 3000 }, async (t) => {
   const relay = new WebSocketServer({ host: '127.0.0.1', port: 0 });

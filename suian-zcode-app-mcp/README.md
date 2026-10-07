@@ -11,6 +11,20 @@
 
 ## 接入
 
+### 让 Agent 初始化
+
+将完整仓库克隆到本机后，告诉 ZCode：
+
+```text
+帮我初始化 suian-zcode-app-mcp。仓库在 D:/path/to/ZCode-Plugins。
+请读取 suian-zcode-app-mcp/SKILL.md，完成 MCP 与公共网关配置。
+完成后提醒我先处理运行中的任务并保存工作，再按公共 skill 的方法完整退出重开，验证生效。
+```
+
+[本插件 skill](./SKILL.md) 负责服务注册与只读验证，[公共网关 skill](../suian-zcode-gateway/SKILL.md) 统一负责启动、Desktop 环境变量和恢复。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`；该命令不会自动注册 MCP 服务。
+
+### 手动接入 MCP
+
 需要 Node.js 24+。在本插件目录安装锁定依赖：
 
 ```powershell
@@ -31,7 +45,9 @@ npm ci --ignore-scripts --no-fund --no-audit
 }
 ```
 
-该 JSON 是连接配置，不是完整 ZCode 插件安装包。本版未自动注册服务、安装 Skill 或修改用户设置；由 MCP 客户端加载后可调用两个工具。
+这是使用 `mcpServers` 的兼容客户端示例。ZCode 原生 `~/.zcode/cli/config.json` 或工作区 `.zcode/config.json` 使用 `mcp.servers`，由 Agent 按 skill 合并本服务，保留其他配置；不要把整个示例当作原生配置文件。[官方 MCP 文档](https://zcode.z.ai/cn/docs/mcp-services)
+
+公共网关的环境变量必须配置在 Desktop 启动环境中，不能只放在 MCP 服务的 `env`。手动配置流程也以 [公共网关 skill](../suian-zcode-gateway/SKILL.md) 为准；当前两个 SQLite 工具可独立运行，无需远控授权链接。
 
 默认读取当前系统用户的 `~/.zcode/v2/tasks-index.sqlite` 和 `~/.zcode/cli/db/db.sqlite`。自定义数据路径可在 args 后追加 `--index-db {{index_db_path}} --session-db {{session_db_path}}`，或设置环境变量 `ZCODE_APP_MCP_INDEX_DB`、`ZCODE_APP_MCP_SESSION_DB`。优先级是命令参数 > 环境变量 > 默认路径。
 

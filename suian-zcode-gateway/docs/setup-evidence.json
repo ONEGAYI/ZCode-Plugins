@@ -1,0 +1,39 @@
+{
+  "checked_date": "2026-10-07",
+  "scope": "公共网关提取、Windows 配置入口与两个插件的 Agent skill",
+  "runtime": { "platform": "win32", "node": "24.15.0", "ws": "8.22.0" },
+  "suites": {
+    "gateway": { "tests": 14, "passed": 14, "failed": 0, "skipped": 0, "exit_code": 0 },
+    "app_mcp": { "tests": 15, "passed": 15, "failed": 0, "skipped": 0, "exit_code": 0 },
+    "title": { "tests": 57, "passed": 57, "failed": 0, "skipped": 0, "exit_code": 0 }
+  },
+  "documentation": { "valid_skills": 3, "markdown_files_checked": 13, "local_links_checked": 37, "personal_identifiers_found": 0 },
+  "review": { "standards": "passed after fixes", "spec": "passed after fixes" },
+  "verified": [
+    "唯一公共网关保留五项原有转发和 bootstrap 契约",
+    "健康状态为明确布尔值，浏览器 Origin 和第二个 Desktop 被拒绝",
+    "JSON 对象端口被拒绝，不能用 Node listen 重载绕过回环绑定",
+    "原生 Node CLI 与真实 Windows 隐藏启动器启动、探活并自行停止",
+    "本地停止要求工具令牌，拒绝错误令牌、网页 Origin 和有 Desktop 的停止请求",
+    "隔离 PowerShell 流程：唯一当前用户任务、重复安装、原环境备份、配置及 skill 部署",
+    "启动失败或错误实例时不写网关环境，移除恢复原值或保留外部修改",
+    "MCP skill 安装器四项契约及 stdio/SQLite 只读回归",
+    "三份 SKILL.md 通过 skill-creator quick_validate",
+    "两份 PowerShell 脚本 AST 及真实 ScheduledTasks 参数对象构造通过"
+  ],
+  "safety_scope": {
+    "real_user_environment_writes": 0,
+    "real_scheduled_tasks_registered": 0,
+    "current_zcode_restarted": false,
+    "user_remote_credentials_read": false,
+    "real_agent_messages_submitted": 0,
+    "title_protocol_activated": false
+  },
+  "not_exercised": [
+    "真实当前用户任务注册、Windows 登录后的自动启动权限与时序",
+    "用户完成工作后按公共 skill 重开 Desktop 的本轮安装验收",
+    "跨进程 bootstrap、完整 V4 RPC、改名或发信与手机共存",
+    "手机离线注入、独立上游重连、长期负载与背压"
+  ],
+  "prior_live_evidence": "../../suian-zcode-app-mcp/docs/relay-gateway-coexistence-evidence.json"
+}

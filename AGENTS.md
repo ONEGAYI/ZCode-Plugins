@@ -1,10 +1,11 @@
 # ZCode-Plugins — ZCode 插件 monorepo 根
 
-`ZCode-Plugins/` 是多个相互独立的 ZCode 插件的集总仓库；每个一级子目录是一个插件根，插件内部约定由其自身 `AGENTS.md` 维护，本文件只负责导航与仓库级约定。
+`ZCode-Plugins/` 是 ZCode 插件与公共工具的集总仓库；每个一级子目录是一个子项目根，内部约定由其自身 `AGENTS.md` 维护，本文件只负责导航与仓库级约定。
 
 ## 仓库级约定
 
-- 新增插件必须在本文件文件树登记，并拥有自己的 `AGENTS.md`；通用规则写这里，插件专属规则写插件内。
+- 新增子项目必须在本文件文件树登记，并拥有自己的 `AGENTS.md`；通用规则写这里，专属规则写子项目内。
+- `suian-zcode-gateway/` 是两个插件共用的唯一网关实现和配置入口。插件 skill 调用其公共流程，不复制转发、后台启动或 Desktop 环境变量管理代码。
 - 开源发布前完成个人信息脱敏（用户名、会话标识、本机路径、授权凭据），由插件各自 `.gitignore` 挡住运行时数据。
 - 提交信息用中文，`类型: 简述` 格式，正文分条说明做了什么、为什么做。
 - `sources/` 下的 submodule 是研究用的第三方上游快照：只读、不 fork、不修改、不安装依赖；升级钉定提交须在 `sources/README.md` 同步登记。
@@ -24,6 +25,8 @@ ZCode-Plugins/
 │   └── docs/notes/         # 研究与验证笔记（脱敏后入库；桌面截图等敏感物料不入库）
 │
 ├── suian-zcode-app-mcp/    # ZCode 会话 MCP（只读首版：会话检索、聊天历史与 stdio 接入）
+│
+├── suian-zcode-gateway/    # 公共 relay 网关、当前用户启动配置与 Agent skill
 │
 └── sources/                # 上游源码 submodule 引用（只读，见 sources/README.md）
     ├── official-zcode/     # zai-org/ZCode @ 29628c9（v3.14.3 公开快照）
