@@ -1,5 +1,5 @@
 {
-  "scope": "throwaway device-side relay gateway prototype",
+  "scope": "initial prototype before real Desktop rerouting; later live evidence is in docs/relay-gateway-coexistence-evidence.json",
   "baselineCommit": "3165d0829e1b7d8cfb94b49779f45855ad2a34a5",
   "nodeVersion": "24.15.0",
   "wsVersion": "8.22.0",

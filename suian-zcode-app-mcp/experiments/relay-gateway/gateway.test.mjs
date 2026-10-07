@@ -57,11 +57,11 @@ test('唯一设备连接原样转发认证及文本/二进制消息，并保留 
   assert.deepEqual(faults, []);
 });
 
-async function connectedFixture(t, pairStatus) {
+async function connectedFixture(t, pairStatus, options = {}) {
   const relay = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(relay, 'listening');
   t.after(() => { for (const socket of relay.clients) socket.terminate(); relay.close(); });
-  const gateway = await startGateway({ upstreamUrl: `ws://127.0.0.1:${relay.address().port}/ws` });
+  const gateway = await startGateway({ upstreamUrl: `ws://127.0.0.1:${relay.address().port}/ws`, ...options });
   t.after(() => gateway.close());
   const accepted = once(relay, 'connection');
   const desktop = new WebSocket(gateway.url);
@@ -146,4 +146,26 @@ test('本地请求超时或设备断开时明确失败', { timeout: 3000 }, asyn
   await requested;
   desktop.close();
   await rejection;
+});
+
+test('实测观察只暴露方向、消息类型、配对状态和本地归属，不暴露凭据或消息正文', { timeout: 3000 }, async (t) => {
+  const events = [];
+  const { gateway, desktop, upstream } = await connectedFixture(t, 'matched', { onTraffic: (event) => events.push(event) });
+  const phoneReceived = once(desktop, 'message');
+  upstream.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId: 'phone-id', privateText: 'fixture-secret' } }));
+  await phoneReceived;
+  const authReceived = once(upstream, 'message');
+  desktop.send(JSON.stringify({ type: 'auth_response', device_sid: 'fixture-private-sid', proof: 'fixture-proof' }));
+  await authReceived;
+  const localReceived = once(desktop, 'message');
+  const local = gateway.bootstrap();
+  const requestId = JSON.parse((await localReceived)[0].toString()).payload.requestId;
+  desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-response', requestId, success: true, result: { tasks: ['fixture-private-task'] } } }));
+  await local;
+  assert.deepEqual(events, [
+    { from: 'upstream', type: 'auth_ack', zcodeType: null, pairStatus: 'matched', local: false },
+    { from: 'upstream', type: 'data', zcodeType: 'bootstrap-request', pairStatus: null, local: false },
+    { from: 'desktop', type: 'auth_response', zcodeType: null, pairStatus: null, local: false },
+    { from: 'desktop', type: 'data', zcodeType: 'bootstrap-response', pairStatus: null, local: true },
+  ]);
 });

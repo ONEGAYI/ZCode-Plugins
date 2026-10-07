@@ -2,7 +2,7 @@
 
 **实验问题**：能否让 ZCode 的设备连接经过本地网关，继续连接官方 relay，同时在网关内分流本地请求，从而保留官方手机页面？
 
-**当前结论**：选路与认证消息转发有静态依据；模拟共存测试通过；公网官方 relay 已通过网关返回 `auth_challenge`。真实桌面端认证、手机共存与 V4 RPC 控制尚未验证。
+**当前结论**：真实 Desktop 已通过网关完成鉴权，官方手机页面与同一网关内的 bootstrap 元数据读取实测共存。六次读取成功，后续约 47 秒独立观察没有新增 `waiting`。完整 V4 RPC 控制尚未验证。细节和保留异常见 [真实共存报告](../../docs/relay-gateway-coexistence.md)。
 
 这是 `prototype/zcode-relay-gateway` 分支上的临时原型，未接入正式 MCP。正式的两个 SQLite 只读工具可以直接与手机共存。
 
@@ -25,7 +25,7 @@ flowchart LR
 | Desktop 启动时覆盖 relay 的环境变量 | `ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL` |
 | 本地示例地址 | `ws://127.0.0.1:17329/ws` |
 
-环境变量由 **Desktop 主进程启动时读取**。让它生效需要退出原主进程，再从持有该变量的环境启动 ZCode；只打开一个复用原主进程的新窗口不能完成切换。本轮未修改启动环境或重启 ZCode。
+环境变量由 **Desktop 主进程启动时读取**。让它生效需要退出原主进程，再从持有该变量的环境启动 ZCode；只打开一个复用原主进程的新窗口不能完成切换。真实验证中，用户完整退出后，以进程级覆盖变量启动了新主进程。
 
 持久授权的 `auth_init` 携带 `role: device` 和 `device_sid`。Desktop 本地计算 `auth_response.proof`；网关原样转发挑战及回应，无需读取保存的凭据。首次注册另有 `device_register_init`，其内容同样仅经过转发，不写日志。
 
@@ -44,20 +44,21 @@ $env:ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL = 'ws://127.0.0.1:17329/ws'
 
 这项变量只影响该 PowerShell 及其随后创建的子进程，之后需从该环境启动新的 Desktop 主进程。
 
-`startGateway()` 返回 `url`、`bootstrap({ timeoutMs })` 和 `close()`。`bootstrap()` 在启动网关的**同一个 Node 进程**内调用；独立 CLI 当前只做转发，尚无跨进程调用入口。
+`startGateway()` 返回 `url`、`bootstrap({ timeoutMs })` 和 `close()`。`bootstrap()` 在启动网关的**同一个 Node 进程**内调用；独立 CLI 当前只做转发，尚无正式跨进程调用入口。可传 `onTraffic` 观察方向、协议类型、配对状态和本地归属，不传递凭据、请求 ID 或消息正文。
 
 本地请求只能在上游报告 `matched` 后注入。返回值是完整的 `bootstrap-response` payload，调用方按 `success` 判断业务结果。手机请求原样传递；本地请求及其迟到回复按 `requestId` 留在本地。
 
 ## 已完成验证
 
-2026-10-07，Node 24.15.0、ws 8.22.0，四项契约全部通过：
+2026-10-07，Node 24.15.0、ws 8.22.0，五项契约全部通过：
 
 1. 设备认证消息体、文本/二进制类型、`mid` 与握手头保持；第二个 Desktop 被拒绝。
 2. 两个本地 bootstrap 乱序返回，手机 bootstrap 仍通过唯一上游连接正常往返。
 3. 上游 `waiting` 状态拒绝本地请求，并结束尚未完成的请求。
 4. 超时或断开明确失败；超时后的本地迟到回复不会发给手机。
+5. 消息流观察接口只暴露方向、协议类型、配对状态和本地归属，不暴露凭据、请求 ID 或正文。
 
-这四项使用回环 WebSocket 模拟 relay 与 Desktop。完整测试输出先落盘，再提炼到 [evidence.json](evidence.json)，原始日志已清理。
+这些契约使用回环 WebSocket 模拟 relay 与 Desktop。初始四项与未鉴权公网探测的阶段证据见 [evidence.json](evidence.json)；新增第五项和真实共存证据见 [实测报告](../../docs/relay-gateway-coexistence.md)。测试输出先落盘，验收后保留脱敏汇总。
 
 `node probe-official.mjs` 使用临时随机 `mid`/`sid`，经过网关向官方 relay 发送一次 `terminal auth_init`。实际收到 `auth_challenge`，未发送 `auth_response`，未完成鉴权。探针不会读取用户链接、凭据或会话，也不会提交 Agent 任务。脱敏结果写入忽略的 `.scratch/`。
 

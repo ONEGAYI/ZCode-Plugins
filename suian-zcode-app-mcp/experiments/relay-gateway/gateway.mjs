@@ -13,7 +13,7 @@ function envelope(data, isBinary) {
 }
 
 // 实验原型：只接受一个 Desktop，消息体及文本/二进制类型原样转发。
-export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, onError = (error) => console.error('gateway socket error:', error.code ?? error.name) } = {}) {
+export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, onError = (error) => console.error('gateway socket error:', error.code ?? error.name), onTraffic = () => {} } = {}) {
   const server = new WebSocketServer({ host: '127.0.0.1', port, path: '/ws' });
   await once(server, 'listening');
   let active;
@@ -47,7 +47,9 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, onE
     desktop.on('message', (data, isBinary) => {
       const message = envelope(data, isBinary);
       const payload = message?.payload;
-      if (message?.type === 'data' && payload?.zcode_type === 'bootstrap-response' && connection.localIds.has(payload.requestId)) {
+      const local = message?.type === 'data' && payload?.zcode_type === 'bootstrap-response' && connection.localIds.has(payload.requestId);
+      onTraffic({ from: 'desktop', type: message?.type ?? null, zcodeType: payload?.zcode_type ?? null, pairStatus: message?.pair_status ?? null, local });
+      if (local) {
         const pending = connection.pending.get(payload.requestId);
         if (pending) {
           clearTimeout(pending.timer);
@@ -66,6 +68,7 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, onE
     });
     upstream.on('message', (data, isBinary) => {
       const message = envelope(data, isBinary);
+      onTraffic({ from: 'upstream', type: message?.type ?? null, zcodeType: message?.payload?.zcode_type ?? null, pairStatus: message?.pair_status ?? null, local: false });
       if (message?.type === 'auth_ack' || message?.type === 'pair_status_ack') {
         connection.paired = message.pair_status === 'matched';
         if (!connection.paired) rejectPending(new Error('配对结束'));

@@ -1,0 +1,114 @@
+{
+  "checkedDate": "2026-10-07",
+  "scope": "real Desktop gateway authentication and bootstrap coexistence with official phone",
+  "desktopVersion": "3.14.4",
+  "gatewayDependencies": {
+    "node": "24.15.0",
+    "ws": "8.22.0"
+  },
+  "routing": {
+    "desktopUsesLocalGateway": true,
+    "gatewayHasOfficialTlsUpstream": true,
+    "localCallerCreatesTerminalConnection": false
+  },
+  "initialization": {
+    "userConfirmedFullExit": true,
+    "allZCodeProcessesWereGone": true,
+    "overrideEnvironmentScope": "launch process and its descendants; no registry or persistent config change"
+  },
+  "userPhoneConfirmation": "用户报告重新连接后可以查看会话",
+  "localReadResults": {
+    "successful": 6,
+    "failuresAfterPhonePaired": 0,
+    "workspaceCount": 11,
+    "taskCount": 118,
+    "responseMeaning": "remote bootstrap metadata; not full history or V4 RPC",
+    "successfulReadTimes": [
+      "2026-10-07T06:18:35.350Z",
+      "2026-10-07T06:18:35.350Z",
+      "2026-10-07T06:18:35.351Z",
+      "2026-10-07T06:20:29.415Z",
+      "2026-10-07T06:21:57.772Z",
+      "2026-10-07T06:22:21.513Z"
+    ]
+  },
+  "observationWindow": {
+    "start": "2026-10-07T06:21:57.771Z",
+    "end": "2026-10-07T06:22:44.967Z",
+    "durationSeconds": 47.196,
+    "startCounts": {
+      "deviceAuthInit": 2,
+      "authAck": 2,
+      "matchedAck": 35,
+      "waitingAck": 14,
+      "lastPairStatus": "matched",
+      "phoneInboundData": 883,
+      "phoneOutboundData": 856,
+      "localReplies": 4,
+      "faults": []
+    },
+    "endCounts": {
+      "deviceAuthInit": 2,
+      "authAck": 2,
+      "matchedAck": 39,
+      "waitingAck": 14,
+      "lastPairStatus": "matched",
+      "phoneInboundData": 883,
+      "phoneOutboundData": 856,
+      "localReplies": 6,
+      "faults": []
+    },
+    "deviceReauthenticationDelta": 0,
+    "matchedAckDelta": 4,
+    "waitingAckDelta": 0
+  },
+  "caveat": "较早一次读取后的观察段曾新增两次 waiting，随后恢复 matched；没有逐次状态变更时间或手机操作记录，原因未判定。上述独立对照窗口没有新增 waiting。",
+  "privacy": {
+    "probeCredentialFilesRead": false,
+    "probeCredentialUrlsUsed": false,
+    "chatBodiesRecorded": false,
+    "identifiersInSavedEvidence": false,
+    "nativeDesktopHandlesAuthorization": true
+  },
+  "gatewayContractTests": {
+    "observerRed": {
+      "passed": 4,
+      "failed": 1,
+      "exitCode": 1
+    },
+    "observerGreen": {
+      "passed": 5,
+      "failed": 0,
+      "exitCode": 0
+    }
+  },
+  "notValidated": [
+    "phone-offline virtual pairing",
+    "full V4 bridge / RPC multiplexing",
+    "sending prompts or renaming conversations",
+    "production lifecycle and permanent installation"
+  ],
+  "postTestRouting": {
+    "userRequested": "restore official direct connection",
+    "userConfirmedAlreadyRestarted": true,
+    "mainHasOfficialTlsConnection": true,
+    "mainHasLocalGatewayConnection": false,
+    "gatewayDesktopPeers": 0,
+    "temporaryGatewayExitCode": 0,
+    "gatewayPortHasListener": false,
+    "status": "restored; temporary gateway stopped"
+  },
+  "phoneTrafficComparison": {
+    "before": {
+      "at": "2026-10-07T06:18:35.348Z",
+      "inboundData": 468,
+      "outboundData": 454
+    },
+    "after": {
+      "at": "2026-10-07T06:20:29.414Z",
+      "inboundData": 883,
+      "outboundData": 856
+    },
+    "meaning": "forwarded type=data traffic counters; not an assertion that every V4 RPC succeeded"
+  }
+}
