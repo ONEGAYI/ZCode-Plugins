@@ -129,7 +129,7 @@
   "projectionSourceSha256": "FE3B86E2DE8A969AC5EBF4B8C7C7B88AB3E15DFC2CD2E3920F7B2553556D30D3",
   "licenseSourceSha256": "FA36DC312BC4946B1C22DBA3C726AD8D3052B353F81424E7B997DBB3D9B40A49",
   "review": {
-    "standards": "原快照未发现确认问题",
+    "standards": "初次审查及修复增量未发现确认的规范问题",
     "specFindings": [
       {
         "priority": "P1",
@@ -142,6 +142,11 @@
         "resolution": "在数据库边界验证 role/type/text，格式错误明确返回，新增契约测试通过"
       }
     ],
-    "recheckPending": true
+    "recheckPending": false,
+    "recheck": {
+      "revision": "f8d43bed9df031bf95b9a43c9351bb7556b6b47f",
+      "standards": "增量未发现新增问题",
+      "spec": "两项问题均已关闭，未发现直接需求回归"
+    }
   }
 }
