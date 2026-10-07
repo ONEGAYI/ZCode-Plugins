@@ -7,16 +7,16 @@ import {resolve,dirname,join} from "node:path";
 import {randomUUID} from "node:crypto";
 import {createBackend} from "./backend.mjs";
 import {runNaming} from "./naming.mjs";
-import {probeRemote} from "../suian-zcode-common/remote.mjs";
+import {probeHost} from "../suian-zcode-common/remote.mjs";
 import {toastBodyFor} from "./toast.mjs";
 import {notifyOnce} from "../suian-zcode-common/notifications.mjs";
 import {ensureToastAppId,PROTOCOL} from "./install.mjs";
 import {shouldNotify} from "../suian-zcode-common/cooldown.mjs";
-import {saveAuthorization as storeAuthorization,loadAuthorization,clearAuthorization} from "../suian-zcode-common/auth-store.mjs";
+import {saveAuthorization as storeAuthorization,clearAuthorization} from "../suian-zcode-common/auth-store.mjs";
 
 const args=process.argv.slice(2);
 if(args.includes("--help")||!args.length) {
-  console.log("用法：node cli.mjs run [--apply] [--config 文件]\n      node cli.mjs doctor|models|probe|status|enable|disable|auth|unauth [--config 文件]\nstdin JSON：session_id、workspace_path（或 cwd）、可选 user_message_id；auth 时另带 authorization_url。\n远控授权经 stdin 或 OIL_ZCODE_REMOTE_URL 单次使用；auth 子命令以当前用户 DPAPI 加密落盘。\n远控类失败弹原生 Toast（2 小时冷却），设 OIL_ZCODE_TITLE_DISABLE_TOAST=1 静音。");
+   console.log("用法：node cli.mjs run [--apply] [--config 文件]\n      node cli.mjs doctor|models|probe|status|enable|disable|auth|unauth [--config 文件]\nstdin JSON：session_id、workspace_path（或 cwd）、可选 user_message_id。\n原 Host 调用统一走公共网关；请先按公共 skill 安装或重载。auth / unauth 保留为旧凭据管理入口，不参与网关调用。\n网关类失败弹原生 Toast（2 小时冷却），设 OIL_ZCODE_TITLE_DISABLE_TOAST=1 静音。");
 } else {
   let backend,lease,leasePath,dataDir,command,event;
   const startedAt=Date.now();
@@ -41,12 +41,10 @@ if(args.includes("--help")||!args.length) {
     };
     if(!Number.isInteger(config.timeoutMs)||config.timeoutMs<1000||config.timeoutMs>300000)throw new Error("timeoutMs 应在 1000–300000 范围内");
     dataDir=resolve(configPath?dirname(configPath):process.cwd(),process.env.OIL_ZCODE_TITLE_DATA??config.dataDir??join(homedir(),".zcode","suian-zcode-title"));
-    const authorizationUrl=event.authorization_url??process.env.OIL_ZCODE_REMOTE_URL
-      ??(await loadAuthorization({dataDir}).catch(()=>null));
     const prompt=await readFile(new URL("./prompt.md",import.meta.url),"utf8");
     const statePath=join(dataDir,event.session_id+".json");
     backend=createBackend({
-      event,config,prompt,authorizationUrl,
+      event,config,prompt,
       saveState:async state=>{
         const temporary=statePath+".tmp-"+randomUUID();
         await writeFile(temporary,JSON.stringify(state,null,2)+"\n","utf8");
@@ -75,6 +73,7 @@ if(args.includes("--help")||!args.length) {
         await clearAuthorization({dataDir});
         result={status:"auth_cleared"};
       } else if(command==="status") {
+        const legacyAuthorizationFilePresent=await stat(join(dataDir,"remote.blob")).then(info=>info.isFile(),error=>{if(error.code==="ENOENT")return false;throw error;});
         const vbsInstalled=await stat(join(dataDir,"toast-launch.vbs")).then(()=>true,()=>false);
         let protocolRegistered=false;
         try {protocolRegistered=(await promisify(execFile)("reg.exe",["query",`HKCU\\Software\\Classes\\${PROTOCOL}\\shell\\open\\command`,"/ve"],{windowsHide:true})).stdout.includes("wscript.exe");}
@@ -85,8 +84,8 @@ if(args.includes("--help")||!args.length) {
           const lines=(await readFile(join(dataDir,"usage.jsonl"),"utf8")).trim().split("\n");
           if(lines.length)lastUsage=JSON.parse(lines[lines.length-1]);
         }catch{}
-        result={status:"status",enabled:config.enabled!==false,selection:config.selection??null,dataDir,
-          authorization:(await loadAuthorization({dataDir}).catch(()=>null))?"configured":"missing",
+        result={status:"status",enabled:config.enabled!==false,selection:config.selection??null,dataDir,transport:"gateway",
+          legacyAuthorizationFilePresent,
           toast:{appId:await ensureToastAppId({dataDir}).catch(()=>null),vbsInstalled,protocolRegistered,cooldownActive:!cooldown.allowed,cooldownUntil:cooldown.nextAllowedAt?new Date(cooldown.nextAllowedAt).toISOString():null},
           lastUsage:{status:lastUsage?.status??null,at:lastUsage?.at??null,title:lastUsage?.title??null}};
       } else if(command==="enable"||command==="disable") {
@@ -98,11 +97,8 @@ if(args.includes("--help")||!args.length) {
         await rename(temporary,configPath);
         result={status:command==="enable"?"enabled_writing":"disabled_writing",enabled:current.enabled};
       } else if(command==="probe") {
-        if(!authorizationUrl)result={status:"probe_failed",ok:false,stage:"config",reasonCode:"missing_authorization",paired:false,message:"未提供远控授权链接"};
-        else {
-          const probed=await probeRemote({authorizationUrl,workspacePath:event.workspace_path??event.cwd,sessionId:event.session_id,timeoutMs:config.probeTimeoutMs??8000});
-          result={status:probed.ok?"probe_ok":"probe_failed",...probed};
-        }
+        const probed=await probeHost({workspacePath:event.workspace_path??event.cwd,sessionId:event.session_id,gatewayConfigPath:config.gatewayConfigPath,timeoutMs:config.probeTimeoutMs??8000});
+        result={status:probed.ok?"probe_ok":"probe_failed",...probed};
       } else if(command==="doctor") {
         const snapshot=await backend.read();
         const view=await backend.models();

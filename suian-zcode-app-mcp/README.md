@@ -16,9 +16,9 @@
 
 当前读取本机 SQLite 持久化历史，无需远控授权链接。结果不包含未持久化的流式字符；远端工作区正文暂不支持。设计依据、参数和读取边界见 [只读工具设计](./docs/readonly-tools.md)。
 
-五个写工具需要当前窗口的远控授权，使用原 Host 的 RPC，不直接写数据库。工作区必须已在授权窗口中打开；独立 terminal 仍受官方单设备限制，与手机占用及命名插件并发可能冲突。公共网关尚未提供这些写 RPC 的分流。完整形状、来源包装、部分失败与验收见 [写工具设计](./docs/write-tools.md)。
+五个写工具通过公共网关调用原 Host，不直接写数据库，不另建官方 terminal。目标本地工作区必须已在网关连接的窗口打开；RPC 分流已有隔离验证，真实手机验收以当前证据为准。手机在远端工作区时，本地请求明确让位。完整形状、来源包装、部分失败与验收见 [写工具设计](./docs/write-tools.md)。
 
-两个 GLM 工具同样需要原 Host 授权与独立席位。额度查询不消耗重置卡；重置需要客户端声明并实际展示 MCP form elicitation，未支持时明确拒绝。一次只消耗一张，不能指定卡片 ID。数据口径、许可与幂等边界见 [GLM 工具契约](./docs/glm-balance-design.md)，真实一次重置对账见 [验收证据](./docs/glm-balance-evidence.json)。
+两个 GLM 工具同样通过公共网关调用原 Host。额度查询不消耗重置卡；重置需要客户端声明并实际展示 MCP form elicitation，未支持时明确拒绝。一次只消耗一张，不能指定卡片 ID。数据口径、许可与幂等边界见 [GLM 工具契约](./docs/glm-balance-design.md)，历史一次重置对账见 [验收证据](./docs/glm-balance-evidence.json)。
 
 ## 接入
 
@@ -45,7 +45,7 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 
 本插件的获取范围是 **MCP 目录 + 公共层 + 仓库根文件**，可以不检出命名插件。克隆命令与已有稀疏检出的扩展方式统一见 [根 README 的代码获取范围](../README.md#代码获取范围)。如果两个插件都要，可使用根 README 的组合提示词，由 Agent 询问插件选择。
 
-[本插件 skill](./SKILL.md) 负责服务注册、授权和验证，[公共网关 skill](../suian-zcode-common/SKILL.md) 统一负责启动、Desktop 环境变量和恢复。只用两个 SQLite 工具时可不配置授权；会话写验收使用经用户授权的新建测试会话，GLM 真实重置需要单独的具体授权。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`；该命令不会自动注册 MCP 服务。
+[本插件 skill](./SKILL.md) 负责服务注册和验证，[公共网关 skill](../suian-zcode-common/SKILL.md) 统一负责启动、Desktop 环境变量、本地 RPC 鉴权与恢复。无需提供手机远控链接；只用两个 SQLite 工具时可独立运行。会话写验收使用经用户授权的新建测试会话，GLM 真实重置需要单独的具体授权。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`，不会自动注册 MCP 服务。
 
 ### 手动接入 MCP
 
@@ -88,7 +88,7 @@ npm ci --ignore-scripts --no-fund --no-audit
 
 测试命令为 `npm test`。实测与契约测试汇总见 [验收证据](./docs/readonly-tools-evidence.json)。
 
-写工具的示例、DPAPI 授权保存方法与创建→发信→读回复闭环见 [写工具设计](./docs/write-tools.md)。
+写工具示例与创建→发信→读回复闭环见 [写工具设计](./docs/write-tools.md)。公共配置目录非默认时，给 args 添加 `--gateway-config {{gateway_config_path}}`，指向公共 config.json；不把其中令牌复制到 MCP 配置。
 
 查询 GLM 额度使用 `get_glm_balance({"workspace_path":"D:/work/example"})`。重置输入为 `{"workspace_path":"D:/work/example","reset_type":"FIVE_HOUR"}`，周窗口用 `WEEK`；没有用户许可和确认表单时不得调用。完整形状见 [GLM 工具契约](./docs/glm-balance-design.md)。
 

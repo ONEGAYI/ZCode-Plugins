@@ -4,15 +4,17 @@
 
 ## 连接与授权
 
-写工具需要授权窗口仍在线并开启远控，目标为窗口已打开的本地工作区。独立 terminal 占官方单设备席位，手机或命名插件正在连接时可能失败；当前公共网关的 bootstrap 分流不提供这些 RPC 的共存。一个 MCP 进程同时只接收一个写调用，冲突返回 `remote_busy`，读取工具可以继续使用。
+写工具通过公共网关调用已开启远控的 Desktop，目标为窗口已打开的本地工作区。默认 connectHost 不新建官方 terminal；旧网关缺少 RPC 时明确要求重载，不回退直连。一个 MCP 进程仍只接收一个写调用，冲突返回 remote_busy，读取可继续。本地工作区分流已有隔离验证，真实手机验收以当前证据为准。
 
-本插件默认从 `~/.zcode/tools/suian-zcode-app-mcp/remote.blob` 读取当前用户 DPAPI 密文。用以下入口从 stdin 提供 JSON `{"authorization_url":"{{remote_link}}"}`：
+默认从 ~/.zcode/tools/suian-zcode-gateway/config.json 读取公共配置；自定义目录用 --gateway-config {{path}}。本地令牌只放请求头，不复制到 MCP 配置。手机使用远端工作区时本地 RPC 返回 remote_workspace_busy，不切走手机。
+
+下列旧凭据保存入口保留兼容，当前工具不会读取该密文或要求手机链接；仅管理旧凭据时从 stdin 提供 JSON {"authorization_url":"{{remote_link}}"}：
 
 ```powershell
 node "{{plugin_root}}/cli.mjs" --save-authorization
 ```
 
-这条命令保存后退出，不启动 MCP。链接只经 stdin/内存使用，不放在命令参数、MCP env 或公开日志中。自定义授权目录使用 `--auth-data-dir {{dir}}` 或 `ZCODE_APP_MCP_AUTH_DATA_DIR`，命令参数优先；可明确指定已存在的密文目录复用授权，不复制其他插件实现。两个读取工具始终无需授权。
+这条兼容命令保存后退出，不启动 MCP。链接不放到 args/env/日志；--auth-data-dir 或 ZCODE_APP_MCP_AUTH_DATA_DIR 只指定旧密文位置，不影响网关调用。两个读取工具始终无需网关。
 
 ## 输入与输出
 

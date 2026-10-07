@@ -1,13 +1,13 @@
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {win32} from "node:path";
-import {connectRemote} from "../suian-zcode-common/remote.mjs";
+import {connectHost} from "../suian-zcode-common/remote.mjs";
 import {readHistory,recentSnapshot} from "./history.mjs";
 import {readTitlePolicy as loadTitlePolicy} from "../suian-zcode-common/title-policy.mjs";
 
 const SESSION_ID_RE=/^sess_[A-Za-z0-9_-]+$/;
 
-export function createBackend({event,config,authorizationUrl,saveState,prompt,connect=connectRemote,readTitlePolicy=loadTitlePolicy}) {
+export function createBackend({event,config,saveState,prompt,connect=connectHost,readTitlePolicy=loadTitlePolicy}) {
   const sessionId=event.session_id;
   if(!SESSION_ID_RE.test(sessionId??""))throw new Error("输入需要有效 session_id");
   let remote;
@@ -42,8 +42,7 @@ export function createBackend({event,config,authorizationUrl,saveState,prompt,co
   };
   const attach=async()=>{
     if(!remote) {
-      if(!authorizationUrl)throw Object.assign(new Error("需要当前窗口的远控授权链接，使用 stdin.authorization_url 或 OIL_ZCODE_REMOTE_URL"),{stage:"config",reasonCode:"missing_authorization"});
-      remote=await connect({authorizationUrl,workspacePath:await workspacePath(),sessionId,timeoutMs:config.timeoutMs??120000,handshakeTimeoutMs:config.probeTimeoutMs??Math.min(config.timeoutMs??120000,8000)});
+      remote=await connect({workspacePath:await workspacePath(),sessionId,gatewayConfigPath:config.gatewayConfigPath,timeoutMs:config.timeoutMs??120000,handshakeTimeoutMs:config.probeTimeoutMs??Math.min(config.timeoutMs??120000,8000)});
     }
     return remote;
   };

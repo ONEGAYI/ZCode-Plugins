@@ -1,8 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-import { connectRemote } from '../suian-zcode-common/remote.mjs';
-import { loadAuthorization as loadStoredAuthorization } from '../suian-zcode-common/auth-store.mjs';
+import { connectHost } from '../suian-zcode-common/remote.mjs';
 import { writeTitlePolicy } from '../suian-zcode-common/title-policy.mjs';
 import { getGlmBalance, resetGlmQuota } from './glm.mjs';
 
@@ -39,7 +36,7 @@ function archiveActivity(snapshot, sessionId) {
   return reasons;
 }
 
-export function createSessionController({ reader, authDataDir = join(homedir(), '.zcode', 'tools', 'suian-zcode-app-mcp'), connect = connectRemote, loadAuthorization = () => loadStoredAuthorization({ dataDir: authDataDir }), setTitlePolicy = writeTitlePolicy, now = Date.now }) {
+export function createSessionController({ reader, gatewayConfigPath, connect = connectHost, setTitlePolicy = writeTitlePolicy, now = Date.now }) {
   let busy = false;
   const glmAttempts = new Map();
   const targetOf = args => ({ sessionId: args.session_id,
@@ -48,9 +45,7 @@ export function createSessionController({ reader, authDataDir = join(homedir(), 
     if (busy) throw new Error('remote_busy: 本 MCP 正在使用远控连接，请等待当前调用结束');
     busy = true;
     try {
-      const authorizationUrl = await loadAuthorization();
-      if (!authorizationUrl) throw new Error('authorization_required: 写工具需要当前窗口的远控授权，请按 skill 配置');
-      const remote = await connect({ ...target, authorizationUrl, timeoutMs, handshakeTimeoutMs: 8000 });
+      const remote = await connect({ ...target, gatewayConfigPath, timeoutMs, handshakeTimeoutMs: 8000 });
       try { return await run(remote); }
       finally { remote.close(); }
     } finally { busy = false; }

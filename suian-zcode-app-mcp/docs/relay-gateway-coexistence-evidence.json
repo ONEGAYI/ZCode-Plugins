@@ -98,6 +98,66 @@
     "gatewayPortHasListener": false,
     "status": "restored; temporary gateway stopped"
   },
+  "mcpWriteRetest": {
+    "checkedAtUtc": "2026-10-07T15:55:06Z",
+    "clientTimezone": "Asia/Shanghai",
+    "mcpMasterCommit": "41c12ae837fbc35452bcbe8de4f944b471b10106",
+    "gatewayReloaded": false,
+    "desktopRestarted": false,
+    "gatewayUpdateDeferredReason": "user has running work",
+    "rpcRouting": "independent terminal directly to official relay",
+    "baselineWithoutPhone": {
+      "createAccepted": true,
+      "sendAccepted": true,
+      "fixedReplyReadBack": true,
+      "renameReadBack": true
+    },
+    "withPhone": {
+      "userConfirmedConnectedBeforeCalls": true,
+      "sendAccepted": true,
+      "fixedReplyReadBack": true,
+      "renameReadBack": true,
+      "userReportedOtherDeviceTakeover": true,
+      "pairedBeforeCalls": true,
+      "pairedImmediatelyAfterCalls": true,
+      "pairedAfterTestClientExited": false,
+      "coexistencePassed": false
+    },
+    "recovery": {
+      "testClientExited": true,
+      "userConfirmedPhoneReconnectAfterRefresh": true,
+      "oldGatewayAndDesktopKeptRunning": true
+    },
+    "privacy": {
+      "savedCredentialUsed": true,
+      "credentialsRecorded": false,
+      "identifiersInSavedEvidence": false,
+      "chatBodiesRecorded": false
+    },
+    "conclusion": "RPC succeeds by taking over the phone slot; paired does not identify the connected terminal. No full RPC coexistence or gateway reload validation."
+  },
+  "rpcGatewayImplementation": {
+    "checkedDate": "2026-10-08",
+    "protocolVersion": 1,
+    "routing": "local authenticated /rpc; one physical Local Host bridge; per-peer RPC IDs",
+    "officialTerminalConnectionCreatedByPlugins": false,
+    "contracts": {
+      "common": { "passed": 73, "failed": 0, "exitCode": 0 },
+      "mcp": { "passed": 40, "failed": 0, "exitCode": 0 },
+      "title": { "passed": 37, "failed": 0, "exitCode": 0 }
+    },
+    "testEnvironment": "isolated loopback Desktop/relay fixtures, private configuration paths",
+    "review": {
+      "standards": "no remaining verified findings after fixes",
+      "spec": "no remaining verified findings after fixes",
+      "userAcceptance": "pending live phone test"
+    },
+    "remoteWorkspacePolicy": "phone-only passthrough; concurrent local Host requests explicitly yield",
+    "liveDeployment": false,
+    "livePhoneCoexistence": "pending",
+    "realResetCallsThisRound": 0,
+    "successCriterion": "phone remains usable during MCP send/rename and fixed reply readback"
+  },
   "phoneTrafficComparison": {
     "before": {
       "at": "2026-10-07T06:18:35.348Z",

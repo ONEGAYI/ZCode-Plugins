@@ -50,7 +50,7 @@ function Invoke-RestMethod {
     }
     Save-Fixture
     $id = if ($global:fixture.health -eq 'foreign') { 'foreign-instance' } else { $config.instance_id }
-    return [pscustomobject]@{ service='suian-zcode-gateway'; version=1; instance_id=$id; upstream_url=$config.upstream_url; desktop_connected=$global:fixture.desktop; upstream_connected=$false; paired=$false }
+    return [pscustomobject]@{ service='suian-zcode-gateway'; version=1; instance_id=$id; upstream_url=$config.upstream_url; desktop_connected=$global:fixture.desktop; upstream_connected=$false; paired=$false; rpc_protocol_version=1; upstream_paired=$false; local_clients=0 }
 }
 $params = @{ Action=$Action; DataDir=$DataDir; SkillsDir=$SkillsDir }
 if ($PSBoundParameters.ContainsKey('HealthTimeoutSec')) { $params.HealthTimeoutSec=$HealthTimeoutSec }
@@ -119,6 +119,9 @@ test('重复初始化复用唯一实例与原环境备份；状态区分未配�
   assert.equal(waiting.configured, true);
   assert.equal(waiting.user_env_matches, true);
   assert.equal(waiting.gateway_running, true);
+   assert.equal(waiting.rpc_available, true);
+   assert.equal(waiting.upstream_paired, false);
+   assert.equal(waiting.local_clients, 0);
   assert.equal(waiting.desktop_connected, false);
   assert.equal(waiting.restart_required, true);
   state.desktop = true;

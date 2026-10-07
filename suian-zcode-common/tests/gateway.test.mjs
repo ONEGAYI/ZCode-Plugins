@@ -14,6 +14,7 @@ test('健康入口区分网关、设备连接和配对，拒绝浏览器连接�
     service: 'suian-zcode-gateway', version: 1, instance_id: 'fixture-installation',
     upstream_url: `ws://127.0.0.1:${relay.address().port}/ws`,
     desktop_connected: true, upstream_connected: true, paired: true,
+    upstream_paired: true, local_clients: 0, rpc_protocol_version: 1,
   });
   const changed = once(desktop, 'message');
   upstream.send('{"type":"pair_status_ack","pair_status":"waiting"}');

@@ -9,6 +9,8 @@ flowchart LR
   Desktop[ZCode Desktop] <--> Gateway[公共回环网关]
   Gateway <--> Relay[官方 relay]
   Relay <--> Phone[官方手机页面]
+  Naming[命名 worker] <--> Gateway
+  MCP[会话 MCP] <--> Gateway
   Agent[插件初始化 Agent] --> Setup[公共 setup.ps1]
   Setup --> Task[当前用户登录任务]
   Task --> VBS[VBS 无窗口启动桥]
@@ -24,7 +26,8 @@ flowchart LR
 | 模块 | 公共接口与调用方 |
 | --- | --- |
 | gateway.mjs | `startGateway()`：独立网关；同进程 `bootstrap()`、`close()` |
-| remote.mjs | `connectRemote()`、`probeRemote()`、`startRelay()`：使用传入授权；当前命名流程调用 |
+| gateway-client.mjs / remote.mjs | 插件默认 `connectHost()` / `probeHost()`；旧 `connectRemote()` / `probeRemote()` / `startRelay()` 仅保留显式诊断用途 |
+| rpc-broker.mjs | 一个本地 Host 桥；客户端 RPC 编号、订阅及手机虚拟桥分流 |
 | auth-store.mjs | `saveAuthorization({dataDir,url})`、`loadAuthorization({dataDir})`、`clearAuthorization({dataDir})` |
 | title-policy.mjs | MCP 写入、命名插件读取的独立锁定策略；默认在 `~/.zcode/tools/suian-zcode-common/session-titles` |
 | notifications.mjs | `notifyOnce({dataDir,title,message,reasonCode,appId,actionUri})`；保留两小时冷却、跨进程互斥及显示失败结果 |
@@ -32,7 +35,7 @@ flowchart LR
 | notification-install.mjs | `installToastAssets()` / `removeToastAssets()`：接收调用方的 protocol、appId、shortcutName、description、pluginRoot、dataDir |
 | vendor/projection.js | `getConversationMessageProjectionPolicy()`：两个插件引用同一固定产物 |
 
-调用方继续指定自己的数据目录和通知身份。命名插件的 `.local/remote.blob`、Toast 冷却、`suian-zcode-title://` 协议和 AUMID 不迁移；公共网关配置不保存远控授权。MCP 的两个读取工具共享投影库，五个写工具共享远控与 DPAPI 模块，授权目录由 MCP 配置。会话命名策略是明确跨插件共享的新数据，其他授权和通知状态保持调用方归属。
+调用方继续指定自己的数据目录和通知身份。既有授权密文保留，但插件的默认调用不再读取它；Toast 冷却、`suian-zcode-title://` 协议和 AUMID 不迁移。MCP 两个读取工具共享投影库，其余原 Host 调用与命名 worker 共享网关 RPC。会话命名策略保存在公共目录，通知状态仍归调用方。
 
 通知模块的系统动作可注入，用于隔离测试；自动化验证不能触发真实协议或 ZCode 的外部工作区确认框。测试按两个不同调用方的身份安装/卸载验证隔离，这不代表 MCP 已启用 Toast。
 
@@ -66,11 +69,14 @@ Remove 只在用户要求移除公共网关时执行，先完整退出 ZCode。�
 
 | 接口 | 范围 |
 | --- | --- |
-| WebSocket `/ws` | 一个 Desktop，原样转发至官方 relay；第二个 Desktop 被拒绝 |
+| WebSocket `/ws` | 一个 Desktop；认证及非 RPC 流量转发，RPC 桥由网关分流；第二个 Desktop 被拒绝 |
+| WebSocket `/rpc` | 当前用户插件的本地二进制 Channel RPC；Bearer 鉴权，不新增官方 terminal |
 | GET `/health` | 工具版本、安装标识、上游地址、连接与配对布尔值；不含凭据或消息正文 |
 | POST `/shutdown` | 仅供公共移除与重载流程，要求本地 Bearer 令牌，且无 Desktop 连接；不是 ZCode 远控 RPC |
 
-带浏览器 `Origin` 的 HTTP 或 WebSocket 连接均拒绝。`config.json` 中的 `control_token` 仅控制本地网关停止，不是 ZCode 授权；不要把完整配置、令牌或请求头贴入报告和日志。启动任务的 Node 输出只包含就绪地址和错误类别，日志在公共数据目录。
+带浏览器 `Origin` 的 HTTP 或 WebSocket 连接均拒绝。`config.json` 中的 `control_token` 用于本地 RPC 和停止接口；客户端从同一用户的文件读取，令牌只经本地请求头传递。它不是手机远控链接，不要把完整配置、令牌或请求头贴入报告和日志。
+
+Status 的 `rpc_available` 表示已加载 RPC 代码；false 时先按 skill 重载，插件会明确失败，不回退到官方直连。`upstream_paired` 只描述官方链路，`local_clients` 为本地客户端数；`paired` 包含本地虚拟配对，不能证明手机在线。自定义配置目录用 connectHost 的 gatewayConfigPath、命名配置同名字段和 MCP 的 --gateway-config 指向同一个文件。
 
 前台调试可使用 `node gateway.mjs --port 17329`；正式任务由 VBS 隐藏启动 `run.ps1`，读取公共配置。不要同时开第二个实例，不要在两个插件各自 `.local` 建另一套公共配置。
 
@@ -86,7 +92,9 @@ Remove 只在用户要求移除公共网关时执行，先完整退出 ZCode。�
 
 真实 ZCode 3.14.4 上已验证设备连接经网关鉴权，以及同进程 `bootstrap()` 元数据读取与官方手机页面共存：[真实共存报告](../suian-zcode-app-mcp/docs/relay-gateway-coexistence.md)。历史来源和固定安装包定位保留在 [阶段证据](../suian-zcode-app-mcp/experiments/relay-gateway/evidence.json)。既有网关配置验收见 [setup-evidence.json](./docs/setup-evidence.json)，公共层提取、重载与文件更新验证见 [common-layer-evidence.json](./docs/common-layer-evidence.json)。
 
-`startGateway()` 提供 `url`、同进程 `bootstrap({timeoutMs})` 与 `close()`。bootstrap 只在官方上游报告 `matched` 后注入，本地回复及迟到回复不发给手机；当前没有跨进程 bootstrap 或 V4 RPC 入口。网关内的完整 workspace bridge、改名、提交 prompt 与手机离线注入仍需后续实现；自动命名与 MCP 写工具的独立 terminal 仍受官方席位限制。MCP 两个 SQLite 只读工具可独立与手机共存。
+`startGateway()` 提供 `url`、同进程 `bootstrap({timeoutMs})` 与 `close()`，跨进程客户端使用 `/rpc`。本地工作区附着窗口级 Host，共用一个物理桥；手机保留自己的桥身份、代次和序号，各客户端 RPC 编号单独映射。取消与订阅各归原客户端，正文不重写。手机离线时，本地已鉴权连接提供临时有效配对；退出后恢复官方状态。
+
+RPC 共存目前已有隔离契约验证，真实手机复测尚待部署本版。手机独用远端工作区时保留原通道；本地 RPC 明确让位。已有本地 RPC 连接时，手机不能切到远端工作区，需待调用结束。本版不扩大 MCP 的远端工作区能力。
 
 当前没有独立的上游重连或背压队列策略；断开交还 Desktop 自己处理，WebSocket 关闭码未透传。本地 bootstrap 的 requestId 在连接内保留到断开，用于消耗迟到回复。需要长期压力验证后才能扩大运行保证。
 
