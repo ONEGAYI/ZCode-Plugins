@@ -31,7 +31,7 @@ export function startRelay({authorizationUrl,timeoutMs=120000,handshakeTimeoutMs
   const extendDeadline=ms=>{clearTimeout(deadlineTimer);deadlineTimer=setTimeout(()=>fault.reject(timeoutError()),ms);};
   const close=()=>{closing=true;clearTimeout(deadlineTimer);clearInterval(heartbeat);socket.close();};
   socket.addEventListener("open",()=>socket.send(JSON.stringify({
-    type:"auth_init",role:"terminal",device_sid:sid,meta:{platform:"web",version:auth.searchParams.get("app_version")??"3.14.4",name:"suian-zcode-title"},client_ts:Date.now()
+    type:"auth_init",role:"terminal",device_sid:sid,meta:{platform:"web",version:auth.searchParams.get("app_version")??"3.14.4",name:"suian-zcode-common"},client_ts:Date.now()
   })));
   socket.addEventListener("error",()=>{
     if(pairedDone)fault.reject(classified("远控 WebSocket 连接失败","network","network_error"));

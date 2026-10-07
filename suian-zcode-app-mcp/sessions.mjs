@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { win32 } from 'node:path';
-import { getConversationMessageProjectionPolicy } from './vendor/projection.js';
+import { getConversationMessageProjectionPolicy } from '../suian-zcode-common/vendor/projection.js';
 
 function openReadOnly(path) {
   const db = new DatabaseSync(path, { readOnly: true, timeout: 2000 });

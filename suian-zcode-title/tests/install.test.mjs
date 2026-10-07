@@ -1,15 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {buildVbsContent,buildProtocolCommand,installToastAssets,removeToastAssets,ensureToastAppId,installStopHook,removeStopHook,buildHookCommand,installSkill,removeSkill,AUMID,PROTOCOL} from "../install.mjs";
+import {installToastAssets,removeToastAssets,ensureToastAppId,installStopHook,removeStopHook,buildHookCommand,installSkill,removeSkill,AUMID,PROTOCOL} from "../install.mjs";
+
+import {buildVbsContent,buildProtocolCommand} from "../../suian-zcode-common/notification-install.mjs";
 
 const makeShell=()=>{
   const state={files:new Map(),reg:[],ps:[],removed:[]};
   return {
+    mkdir:async()=>{},
     state,
     run:async(cmd,args)=>{state.reg.push({cmd,args});return"";},
     ps:async script=>{state.ps.push(script);},
     writeText:async(path,text)=>{state.files.set(path,text);},
-    readText:async path=>{if(!state.files.has(path))throw new Error("ENOENT");return state.files.get(path);},
+    readText:async path=>{if(!state.files.has(path))throw Object.assign(new Error("ENOENT"),{code:"ENOENT"});return state.files.get(path);},
     remove:async path=>{state.removed.push(path);state.files.delete(path);}
   };
 };

@@ -1,7 +1,7 @@
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {win32} from "node:path";
-import {connectRemote} from "./remote.mjs";
+import {connectRemote} from "../suian-zcode-common/remote.mjs";
 import {readHistory,recentSnapshot} from "./history.mjs";
 
 const SESSION_ID_RE=/^sess_[A-Za-z0-9_-]+$/;

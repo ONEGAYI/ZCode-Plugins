@@ -35,7 +35,7 @@
 - 手机恰好在命名那几秒发起连接：手机连接会被拒绝，等命名连接结束后重试。
 - 链接失效后插件会弹 Windows 原生通知提醒，点按钮即可复制排障提示词并打开 ZCode。
 
-初始化现在会调用同仓库 [公共网关 skill](../suian-zcode-gateway/SKILL.md)，统一配置后台网关和 Desktop 环境变量。已验证的共存范围是 bootstrap 元数据读取；命名插件仍使用独立 terminal，完整 RPC 分流尚未接入，以上席位限制仍适用。
+初始化现在会调用同仓库 [公共网关 skill](../suian-zcode-common/SKILL.md)，统一配置后台网关和 Desktop 环境变量。已验证的共存范围是 bootstrap 元数据读取；命名插件仍使用独立 terminal，完整 RPC 分流尚未接入，以上席位限制仍适用。
 
 ## 让 ZCode 帮你安装或升级
 
@@ -48,17 +48,17 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 先询问我是首次安装还是升级，以及源码放在哪里。
 先检查已有源码和安装位置，优先复用现有仓库；没有时再确定克隆目录。
 确认后，由你克隆或更新代码。首次安装按根 README 的“代码获取范围”使用稀疏检出，
-获取 suian-zcode-title、公共 suian-zcode-gateway 和仓库根文件，不初始化 sources 子模块。
+获取 suian-zcode-title、公共 suian-zcode-common 和仓库根文件，不初始化 sources 子模块。
 已有仓库保留其他已安装插件的目录；更新遇到本地修改或分叉时先说明，不强制覆盖。
 
 读取仓库中最新的 suian-zcode-title/SKILL.md，
-公共网关统一按 suian-zcode-gateway/SKILL.md 配置，复用同一网关，
+公共层统一按 suian-zcode-common/SKILL.md 配置，复用同一网关，
 保留已有授权、模型选择和其他配置。
 完成后分别检查插件与网关；需要我操作界面或重启时，说明保存工作、完整退出
 和从正确环境重开的方法，不要自行重启 ZCode。
 ```
 
-本插件的获取范围是 **自动命名目录 + 公共网关 + 仓库根文件**，可以不检出 MCP。克隆命令与已有稀疏检出的扩展方式统一见 [根 README 的代码获取范围](../README.md#代码获取范围)。如果也要安装 MCP，可使用根 README 的组合提示词，由 Agent 询问插件选择。
+本插件的获取范围是 **自动命名目录 + 公共层 + 仓库根文件**，可以不检出 MCP。克隆命令与已有稀疏检出的扩展方式统一见 [根 README 的代码获取范围](../README.md#代码获取范围)。如果也要安装 MCP，可使用根 README 的组合提示词，由 Agent 询问插件选择。
 
 ## 日常怎么用
 
@@ -71,7 +71,7 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 
 ## 状态与限制
 
-- 命名运行已在 Windows 10/11 实测。需要 Node.js 24+ 和 sqlite3；命名代码本身无 npm 依赖，公共网关单独执行 `npm ci`。
+- 命名运行已在 Windows 10/11 实测。需要 Node.js 24+ 和 sqlite3；命名模块无需 npm 依赖，公共层网关单独执行 `npm ci`。
 - Stop Hook 在安装时写入，只对之后新建的会话生效；安装前已经开着的会话不会被命名。
 - 授权链接与当前 ZCode 窗口绑定，窗口关闭后命名会失败并弹通知，下次开启远控即恢复。
 - 模型调用走你自己的账号，每次命名的 token 用量记录在本机，可随时查看。

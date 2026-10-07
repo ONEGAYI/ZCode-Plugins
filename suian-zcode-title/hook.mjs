@@ -7,7 +7,7 @@ import {join,dirname,resolve} from "node:path";
 import {homedir} from "node:os";
 import {readFile,appendFile} from "node:fs/promises";
 import {fileURLToPath,pathToFileURL} from "node:url";
-import {loadAuthorization} from "./auth-store.mjs";
+import {loadAuthorization} from "../suian-zcode-common/auth-store.mjs";
 
 const pluginRoot=dirname(fileURLToPath(import.meta.url));
 

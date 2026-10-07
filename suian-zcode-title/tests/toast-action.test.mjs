@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseActionUri,runAction,encodeWorkspaceOpenUri,defaultFixWorkspace} from "../toast-action.mjs";
+import {parseActionUri,runAction} from "../toast-action.mjs";
+import {encodeWorkspaceOpenUri,defaultFixWorkspace} from "../../suian-zcode-common/notification-action.mjs";
 import {homedir} from "node:os";
 import {join} from "node:path";
 // 注意：runAction 的真实默认 openWorkspace 会弹 ZCode 官方确认模态框；测试一律注入 mock，严禁触达真实打开链路。

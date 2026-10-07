@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-07",
+  "scope": "网关扩为公共层，提取远控/DPAPI/Toast/投影；安全重载、健康探测与无窗口启动",
+  "baseline": {
+    "tests": 86,
+    "passed": 86
+  },
+  "validation": {
+    "tests": 96,
+    "passed": 96,
+    "failed": 0,
+    "skipped": 0
+  },
+  "new_contracts": [
+    "通知安装由调用方提供身份，幂等且卸载不影响其他调用方",
+    "按钮复制调用方提示词后打开默认工作区，复制失败不打开",
+    "DPAPI 存储文件操作错误明确报出",
+    "Restart 在 Desktop 已连接时拒绝；迁移旧网关根并保留配置、备份和令牌",
+    "剪贴板写入与回读同时短暂失败时保留有限重试；测试拦截未注入的系统执行",
+    "健康请求默认5秒，超时重试一次，持续失败明确报状态未知；支持指定检查时长",
+    "VBS隐藏PowerShell控制台并等待真实退出码；VBS→PowerShell→Node完整启动停止",
+    "旧PowerShell任务活跃时不重启，报告待升级；Desktop断开后切换VBS"
+  ],
+  "windows_file_update_probe": {
+    "node": "24.15.0",
+    "ws": "8.22.0",
+    "isolated_child": true,
+    "desktop_connected": false,
+    "git_checkout_replaced_loaded_js": true,
+    "loaded_ws_module_renamed": true,
+    "source_directory_renamed": true,
+    "running_process_kept_old_code": true,
+    "graceful_shutdown": true
+  },
+  "preserved": [
+    "命名规则、Stop Hook、原通知协议与 AUMID、调用方授权/冷却目录",
+    "list_sessions 与 read_session 契约",
+    "网关原数据目录、当前用户任务名和健康 service",
+    "第三方固定产物与许可"
+  ],
+  "limits": [
+    "Windows 启动任务与注册表在测试中使用模拟边界，未修改真实用户配置",
+    "文件更新实验未使用真实 Desktop，不保证其他进程或原生扩展不会锁文件",
+    "未重命名真实会话或在当前宿主触发真实 Toast/协议动作",
+    "完整 V4 RPC 尚未接入网关分流，手机与自动命名共存边界不变"
+  ],
+  "windows_launcher_probe": {
+    "isolated_child": true,
+    "vbs_host": "wscript.exe",
+    "powershell_console_visible": false,
+    "nonzero_exit_code_preserved": 23,
+    "gateway_chain_exit_code": 0,
+    "registered_real_task": false
+  },
+  "delivery_checks": {
+    "local_markdown_links": 44,
+    "selective_source_scopes": [
+      "命名插件+公共层可加载，无MCP源码",
+      "MCP+公共层可加载，无命名插件源码"
+    ],
+    "skill_count": 3
+  },
+  "verification_incidents": [
+    "首次剪贴板重试测试中，旧API忽略尚未支持的注入参数，意外将系统剪贴板写成固定测试文本“检查配置”；已向用户说明，后续测试增加原生执行硬拦截；未触发真实打开ZCode动作。"
+  ]
+}

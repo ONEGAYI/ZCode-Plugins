@@ -1,12 +1,12 @@
 # suian-zcode-title — ZCode 会话自动命名插件
 
-- 本仓库自包含：官方源码的研究与探查材料不随仓库分发，结论沉淀在 `docs/`（脱敏证据）；vendored 协议库的来源与许可见 `vendor/NOTICE.md`。
+- 本插件依赖同级 `suian-zcode-common`；命名规则保留在本目录，协议、DPAPI 与通知实现不复制。结论沉淀在 `docs/`（脱敏证据）；公共第三方库来源与许可见 `../suian-zcode-common/vendor/NOTICE.md`。
 - 用户已授权自动命名的搭建、验证与 Stop Hook 自动配置；真实改名操作限定明确指定的测试会话或用户会话的自动触发。
 - 不修改 ZCode 官方源码，不直接写 ZCode 会话数据库；改名仅走官方远控 RPC。
 - 远控授权链接仅以当前用户 DPAPI 密文（`.local/remote.blob`）保存；配置、日志、Toast、提示词均不携带链接明文或其 sid/hash/mid 片段。
 - Toast 按钮的打开动作固定指向用户自带默认工作区 `%USERPROFILE%\.zcode\workspace\default`，不随插件位置变化。
 - 自动化测试与脚本严禁触发 `suian-zcode-title://` 协议激活链路（会弹 ZCode 官方确认模态框，无人值守时无限阻塞）。
-- vendor 是固定来源的协议与投影库；版本信息见 vendor/NOTICE.md，不自动更新。
+- 公共 vendor 是固定来源的协议与投影库；版本信息见 ../suian-zcode-common/vendor/NOTICE.md，不自动更新。
 - 新行为先写契约测试，记录红绿验证日志（docs/round2-evidence.json）；不添加无关功能。
 
 ## 技术参考（面向维护者）
@@ -70,13 +70,13 @@ node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
 | naming.mjs | 命名决策、去重、手动锁定保护、写前写后复核 |
 | backend.mjs | 只读双库与原 Host 服务适配 |
 | history.mjs | 历史重建、回退分支、最近三轮整理与指纹 |
-| remote.mjs | 官方 relay 鉴权、bridge、Channel RPC、probe 探活 |
-| auth-store.mjs | 授权链接的当前用户 DPAPI 加密存取 |
-| toast.mjs / toast-action.mjs / cooldown.mjs | Toast 编排与冷却、协议按钮动作、跨进程互斥锁 |
-| install.mjs | 幂等安装：协议桥、快捷方式 AUMID、Stop Hook 配置、技能副本（注入本机插件根）与卸载 |
-| prompt.md | 命名规则（沿用自 oil-codex-title 并按本项目调整） |
-| SKILL.md | 自然语言操作入口、插件根定位与授权/Hook；公共网关配置委托同级 `suian-zcode-gateway` skill |
-| vendor/ | 固定来源的协议与投影库，见 NOTICE.md |
+| ../suian-zcode-common/remote.mjs | 公共 relay 鉴权、bridge、Channel RPC 与探活 |
+| ../suian-zcode-common/auth-store.mjs | 公共 DPAPI 存取；仍使用本插件 `.local/remote.blob` |
+| toast.mjs / toast-action.mjs | 命名失败文案、排障提示词与自有协议动作；系统通知、冷却和剪贴板交给公共层 |
+| install.mjs | 自有通知身份、Stop Hook 配置与技能副本；协议桥及 AUMID 系统安装调用公共层 |
+| prompt.md | 命名规则（沿用自 oil-codex-title 的 prompts/naming.md，只调整编辑器名称） |
+| SKILL.md | 自然语言操作入口、插件根定位与授权/Hook；公共网关配置委托同级 `suian-zcode-common` skill |
+| ../suian-zcode-common/vendor/ | 两个插件共用的固定投影库与远控协议库，见公共 NOTICE.md |
 | tests/ | 命名、Hook、授权与通知契约及 CLI 集成测试（`node --test tests/*.test.mjs`） |
 
 ### 已验证与边界

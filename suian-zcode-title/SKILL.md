@@ -22,13 +22,13 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 ### "初始化 / 安装自动命名插件"
 
-1. `node <插件根>/install.mjs <插件根>/.local`——幂等安装协议桥、开始菜单快捷方式、自建通知标识（AUMID）。重复执行安全；输出 `ok:true` 即安装完成。
-2. **配置公共网关**：读取已安装的 `~/.zcode/skills/suian-zcode-gateway/SKILL.md`；尚未安装时读取插件根同级 `../suian-zcode-gateway/SKILL.md`。按其流程完成依赖、Status → Install 和分层验证。后台启动、Desktop 用户级环境变量、重启方法及恢复流程只维护在公共 skill，不在本插件复制脚本。缺少该子项目时先补齐同一版本的完整仓库。
-3. `node cli.mjs doctor --config config.local.json`（stdin 传会话）验证本地链路。
+1. `node <插件根>/install.mjs <插件根>/.local`——幂等安装协议桥、开始菜单快捷方式、自建通知标识（AUMID）。重复执行安全；输出 `ok:true` 表示本地安装完成，远控与生效状态仍要分别验证。
+2. **配置公共网关**：优先读取仓库同级的最新 `../suian-zcode-common/SKILL.md`；源码尚未定位时用已安装的 `~/.zcode/skills/suian-zcode-common/SKILL.md` 定位。按其流程完成依赖、Status → Install 和分层验证。后台启动、Desktop 用户级环境变量、重启方法及恢复流程只维护在公共 skill，不在本插件复制脚本。缺少该子项目时先补齐同一版本的公共层目录。
+3. `node cli.mjs status --config config.local.json`（stdin 传会话）检查已有配置与授权状态；未完成远控授权前，不用会调模型清单的 doctor 判断本地安装失败。
 4. 按公共 skill 指导用户择时重开 Desktop。明确提醒：**运行中的 Agent 任务和未保存工作可能被重启中断，先完成或保存，再完整退出重开**。不要在承载初始化的 ZCode 中自行退出宿主；分别报告配置已写入与用户重启后已生效。
 5. 远控授权：从重开后的当前窗口"移动端远程控制"取得链接，按下方"配置授权"以 stdin 交给 `auth`，仅保存当前用户 DPAPI 密文，不保存明文、不回显、不进日志。
 6. `node cli.mjs probe` 验证授权（见下方分层结果）。若手机正在占用 terminal，说明当前命名 RPC 尚未接入网关分流，本地初始化可以继续，远端验证需在用户暂停手机远控后进行；不要强行抢占连接或声称配置网关就已完成命名共存。
-7. Stop Hook 配置（见"Hook 配置"节），完成后在用户选定的测试会话验证一次真实触发。
+7. 授权与模型就绪后运行 doctor，再完成 Stop Hook 配置（见"Hook 配置"节），在用户选定的测试会话验证一次真实触发。
 
 ### "更换远控链接"
 
@@ -65,7 +65,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 | `auth_link_rejected` | 链接被服务端拒绝（已失效） | 窗口里重新开启远程控制并生成新链接，重新 auth |
 | `missing_authorization` / `invalid_url` | 未提供链接/链接格式错误 | 用户提供新链接 |
 
-4. 网关问题交给公共 `suian-zcode-gateway` skill，先区分配置、任务、Desktop、上游及配对状态；不要把网关变量只写到 Hook 或 MCP 子进程中。
+4. 网关问题交给公共 `suian-zcode-common` skill，先区分配置、任务、Desktop、上游及配对状态；不要把网关变量只写到 Hook 或 MCP 子进程中。
 5. 检查 Stop Hook：是否已配置、已启用、已信任、真实触发过（分别验证，不能只看一项）。
 
 ### "暂停 / 恢复自动命名"

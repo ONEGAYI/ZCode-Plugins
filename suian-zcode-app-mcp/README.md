@@ -22,19 +22,19 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 先询问我是首次安装还是升级，以及源码放在哪里。
 先检查已有源码和安装位置，优先复用现有仓库；没有时再确定克隆目录。
 确认后，由你克隆或更新代码。首次安装按根 README 的“代码获取范围”使用稀疏检出，
-获取 suian-zcode-app-mcp、公共 suian-zcode-gateway 和仓库根文件，不初始化 sources 子模块。
+获取 suian-zcode-app-mcp、公共 suian-zcode-common 和仓库根文件，不初始化 sources 子模块。
 已有仓库保留其他已安装插件的目录；更新遇到本地修改或分叉时先说明，不强制覆盖。
 
 读取仓库中最新的 suian-zcode-app-mcp/SKILL.md，
-公共网关统一按 suian-zcode-gateway/SKILL.md 配置，复用同一网关，
+公共层统一按 suian-zcode-common/SKILL.md 配置，复用同一网关，
 保留已有授权、模型选择和其他配置。
 完成后分别检查插件与网关；需要我操作界面或重启时，说明保存工作、完整退出
 和从正确环境重开的方法，不要自行重启 ZCode。
 ```
 
-本插件的获取范围是 **MCP 目录 + 公共网关 + 仓库根文件**，可以不检出命名插件。克隆命令与已有稀疏检出的扩展方式统一见 [根 README 的代码获取范围](../README.md#代码获取范围)。如果两个插件都要，可使用根 README 的组合提示词，由 Agent 询问插件选择。
+本插件的获取范围是 **MCP 目录 + 公共层 + 仓库根文件**，可以不检出命名插件。克隆命令与已有稀疏检出的扩展方式统一见 [根 README 的代码获取范围](../README.md#代码获取范围)。如果两个插件都要，可使用根 README 的组合提示词，由 Agent 询问插件选择。
 
-[本插件 skill](./SKILL.md) 负责服务注册与只读验证，[公共网关 skill](../suian-zcode-gateway/SKILL.md) 统一负责启动、Desktop 环境变量和恢复。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`；该命令不会自动注册 MCP 服务。
+[本插件 skill](./SKILL.md) 负责服务注册与只读验证，[公共网关 skill](../suian-zcode-common/SKILL.md) 统一负责启动、Desktop 环境变量和恢复。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`；该命令不会自动注册 MCP 服务。
 
 ### 手动接入 MCP
 
@@ -60,7 +60,7 @@ npm ci --ignore-scripts --no-fund --no-audit
 
 这是使用 `mcpServers` 的兼容客户端示例。ZCode 原生 `~/.zcode/cli/config.json` 或工作区 `.zcode/config.json` 使用 `mcp.servers`，由 Agent 按 skill 合并本服务，保留其他配置；不要把整个示例当作原生配置文件。[官方 MCP 文档](https://zcode.z.ai/cn/docs/mcp-services)
 
-公共网关的环境变量必须配置在 Desktop 启动环境中，不能只放在 MCP 服务的 `env`。手动配置流程也以 [公共网关 skill](../suian-zcode-gateway/SKILL.md) 为准；当前两个 SQLite 工具可独立运行，无需远控授权链接。
+公共网关的环境变量必须配置在 Desktop 启动环境中，不能只放在 MCP 服务的 `env`。手动配置流程也以 [公共网关 skill](../suian-zcode-common/SKILL.md) 为准；当前两个 SQLite 工具可独立运行，无需远控授权链接。
 
 默认读取当前系统用户的 `~/.zcode/v2/tasks-index.sqlite` 和 `~/.zcode/cli/db/db.sqlite`。自定义数据路径可在 args 后追加 `--index-db {{index_db_path}} --session-db {{session_db_path}}`，或设置环境变量 `ZCODE_APP_MCP_INDEX_DB`、`ZCODE_APP_MCP_SESSION_DB`。优先级是命令参数 > 环境变量 > 默认路径。
 

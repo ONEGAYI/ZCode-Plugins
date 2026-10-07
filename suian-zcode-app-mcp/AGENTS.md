@@ -1,6 +1,6 @@
 # suian-zcode-app-mcp — ZCode 会话 MCP
 
-目标：做独立的 MCP 服务，让 ZCode 与外部 Agent 查询会话，并逐步沿官方授权原 Host 链路增加控制能力。suian-zcode-title（会话自动命名）已经验证了远控改名能力。
+目标：做独立的 MCP 服务，让 ZCode 与外部 Agent 查询会话，并逐步沿官方授权原 Host 链路增加控制能力。公共层提供协议、授权与通知模块；suian-zcode-title（会话自动命名）使用它完成命名业务。
 
 当前状态：只读首版，公开 `list_sessions` 与 `read_session`。使用本机 SQLite 只读连接，stdio 接入 MCP 客户端。完整契约和验证范围见 `docs/readonly-tools.md`。
 
@@ -18,7 +18,7 @@
 - 默认只查本机已持久化数据，不连接远控、不创建 CLI app-server，不读实时 V4 内存状态。
 - 不将 `getTaskSnapshot` 当作无副作用读接口；公开源码中它会恢复会话并同步索引。
 - 不扩展为 SQL 执行工具。数据库缺失、schema 不兼容、历史不存在等错误明确返回，不创建空库或静默回退。
-- `vendor/projection.js` 与许可文件保持原样；更新前核查固定来源和可见性契约。
+- `../suian-zcode-common/vendor/projection.js` 与许可文件保持原样；更新前核查固定来源和可见性契约。
 - 新可执行行为先写契约测试，观察红灯后实现；运行测试首次即保存日志和退出码，交付前保留脱敏汇总并清理原探针。
 - 验证在独立 git worktree 进行；没有授权不推送、建 PR 或注册用户 MCP 设置。
 
@@ -32,7 +32,7 @@
 | package.json / package-lock.json | 固定依赖版本与测试入口 |
 | mcp.config.example.json | MCP 客户端连接示例 |
 | install.mjs / SKILL.md | skill 幂等部署与 Agent 初始化、原生 MCP 配置合并；公共网关流程委托同级子项目 |
-| vendor/ | 官方可见消息投影与原许可、来源声明 |
+| vendor/NOTICE.md | 公共消息投影库的来源与许可指针 |
 | tests/ | 真实 SQLite fixture 与 MCP/stdio 契约测试 |
 | docs/ | 早期研究、首版设计与脱敏验收证据 |
-| experiments/relay-gateway/ | 历史网关实验证据与迁移指针；实现统一维护于 `../suian-zcode-gateway/` |
+| experiments/relay-gateway/ | 历史网关实验证据与迁移指针；实现统一维护于 `../suian-zcode-common/` |
