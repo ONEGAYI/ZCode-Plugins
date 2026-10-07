@@ -24,7 +24,7 @@ ZCode-Plugins/
 ├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 命名决策 + 通知文案）
 │   └── docs/notes/         # 研究与验证笔记（脱敏后入库；桌面截图等敏感物料不入库）
 │
-├── suian-zcode-app-mcp/    # ZCode 会话 MCP（只读首版：会话检索、聊天历史与 stdio 接入）
+├── suian-zcode-app-mcp/    # ZCode 会话 MCP（检索、聊天历史、原 Host 改名/创建/发信与 stdio 接入）
 │
 ├── suian-zcode-common/    # 公共网关、远控/授权/通知/投影模块、Windows 配置与 Agent skill
 │

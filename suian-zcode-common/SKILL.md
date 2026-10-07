@@ -15,7 +15,7 @@ description: 管理 ZCode 插件共用的基础能力。当用户初始化或升
 
 初始化或升级优先读取仓库中的最新 skill，保留所选插件与公共层的同一版本。稀疏检出须补齐公共层，保留其他已安装插件目录；缺少公共层时先按根 README 获取代码。
 
-**共存范围**：网关原样转发 Desktop 与官方 relay；同进程 bootstrap 与手机已实测共存。完整 V4 RPC 尚未接入网关分流。命名模块仍开独立 terminal，只读 MCP 仍读本机 SQLite；公共层提取不会改变这两项边界。
+**共存范围**：网关原样转发 Desktop 与官方 relay；同进程 bootstrap 与手机已实测共存。完整 V4 RPC 尚未接入网关分流。命名模块与 MCP 写工具仍开独立 terminal；MCP 两个读取工具仍查本机 SQLite，可与手机共存。
 
 ## 首次安装
 
@@ -77,7 +77,7 @@ Start-Process -FilePath "{{zcode_exe}}" -WindowStyle Hidden
 
 重开后在原窗口启用移动端远控，检查 Desktop 状态，再用手机刷新页面验证配对。不要创建真实 Agent 任务探活。端口占用、网络或任务权限错误照实处理，不擅自提权、杀进程或改其他插件配置。
 
-公共 DPAPI 与 Toast 实现按调用方 `dataDir` 存储状态：命名插件的授权密文、冷却、协议桥与 AUMID 仍在原位置，通知标题和排障提示词由命名插件提供。无需为代码迁移重新取得链接。只读 MCP 不索取凭据、不增加 Toast。诊断通知时读取调用方 skill，公共配置不承担业务文案或自动 Hook 配置。
+公共 DPAPI 与 Toast 实现按调用方 `dataDir` 存储状态：命名插件的授权密文、冷却、协议桥与 AUMID 仍在原位置，通知标题和排障提示词由命名插件提供。无需为代码迁移重新取得链接。MCP 仅在用户使用写工具时配置自己的授权，不增加 Toast。诊断通知时读取调用方 skill，公共配置不承担业务文案或自动 Hook 配置。
 
 不要回显 `sid/hash/mid`、授权链接、消息正文或整个网关 config。config 中的 `control_token` 只控制本地网关停止，定位只解析必要字段。
 

@@ -81,3 +81,48 @@ test("宿主自动改名（generated）不锁定并重新命名；unchanged 需�
   const drift=await runNaming({backend:box2.backend,selection,state:{lastFingerprint:"content-v1",lastTitle:"🧩 旧标题｜已过时"},apply:true});
   assert.equal(drift.status,"renamed","指纹未变但标题被宿主改动，也应重新命名而非 unchanged");
 });
+
+test('MCP 显式不锁名称时非规范 keep 要纠正一次，并记录模型理由', async () => {
+  const box = fixture();
+  box.snapshot.titlePolicy = { version: 1, locked: false };
+  box.backend.generate = async context => {
+    box.generations++;
+    assert.equal(context.title_format_required, true);
+    return { text: JSON.stringify(box.generations === 1 ? { action: 'keep', title: '原名', reason: '信息不足' } : candidate), finishReason: 'stop' };
+  };
+  const result = await runNaming({ backend: box.backend, selection, apply: true,
+    state: { lastFingerprint: 'content-v1', lastTitle: '原名', locked: true } });
+  assert.equal(result.status, 'renamed');
+  assert.equal(result.reason, candidate.reason);
+  assert.equal(box.generations, 2);
+  assert.equal(box.state.locked, undefined);
+});
+
+test('MCP 锁定策略阻止生成；持续返回不合规 keep 时失败而不记录成功基线', async () => {
+  const box = fixture(); box.snapshot.titlePolicy = { version: 1, locked: true };
+  assert.equal((await runNaming({ backend: box.backend, selection, apply: true })).status, 'locked');
+  assert.equal(box.generations, 0);
+  box.snapshot.titlePolicy.locked = false;
+  box.backend.generate = async () => { box.generations++; return { text: JSON.stringify({ action: 'keep', title: '原名', reason: 'keep' }), finishReason: 'stop' }; };
+  await assert.rejects(runNaming({ backend: box.backend, selection, apply: true }), /格式/);
+  assert.equal(box.generations, 2);
+  assert.deepEqual(box.state, {});
+});
+
+test('模型理由包含链接或凭据片段时拒绝，不将理由写入结果和状态', async () => {
+  for (const reason of ['https://zcode.z.ai/remote/v4?sid=fixture&hash=fixture', 'hash=fixture-secret', '{"sid":"fixture"}', 'sk-fixture-secret', 'D:\\private\\fixture']) {
+    const box = fixture();
+    box.backend.generate = async () => ({ text: JSON.stringify({ ...candidate, reason }), finishReason: 'stop' });
+    await assert.rejects(runNaming({ backend: box.backend, selection, apply: true }), e => /命名理由/.test(e.message) && !e.message.includes(reason));
+    assert.deepEqual(box.state, {}); assert.equal(box.renames, 0);
+  }
+});
+
+test('理由的普通英文词尾不误判成密钥或凭据字段', async () => {
+  for (const reason of ['Task-based workflow matches the goal.', 'Work amid: ordinary context']) {
+    const box = fixture();
+    box.backend.generate = async () => ({ text: JSON.stringify({ ...candidate, reason }), finishReason: 'stop' });
+    const result = await runNaming({ backend: box.backend, selection, apply: true });
+    assert.equal(result.reason, reason); assert.equal(result.status, 'renamed');
+  }
+});

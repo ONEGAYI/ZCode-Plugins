@@ -74,18 +74,19 @@ export function startRelay({authorizationUrl,timeoutMs=120000,handshakeTimeoutMs
 }
 
 export async function connectRemote({authorizationUrl,workspacePath,sessionId,timeoutMs=120000,handshakeTimeoutMs,WebSocketImpl=WebSocket}) {
-  if(!workspacePath||!sessionId)throw new Error("缺少工作区或会话标识");
+  if(!workspacePath)throw new Error("缺少工作区标识");
   const bootstrap=Promise.withResolvers(),ready=Promise.withResolvers();
   const bootstrapId=randomUUID(),bridgeId=randomUUID(),bridgeSessionId=randomUUID();
   const emitter=new Emitter();
   let client,assembler,identity,physicalSeq=1,messageSeq=1;
+  let bridgeWorkspacePath=workspacePath;
   const relay=startRelay({
     authorizationUrl,timeoutMs,handshakeTimeoutMs,WebSocketImpl,
     onData:p=>{
       if(p.zcode_type==="bootstrap-response"&&p.requestId===bootstrapId)bootstrap.resolve(p);
       else if(p.zcode_type==="workspace-bridge-ready"&&p.requestId===bridgeId) {
         const b=p.bridge;
-        if(b.bridgeSessionId!==bridgeSessionId||b.bridgeGeneration!==1||b.workspaceKey!==workspacePath||b.workspacePath!==workspacePath||b.initialTaskId!==sessionId||b.kind!=="local")throw new Error("远控工作区或会话不匹配");
+        if(b.bridgeSessionId!==bridgeSessionId||b.bridgeGeneration!==1||b.workspaceKey!==bridgeWorkspacePath||b.workspacePath!==bridgeWorkspacePath||(sessionId!==undefined&&b.initialTaskId!==sessionId)||b.kind!=="local")throw new Error("远控工作区或会话不匹配");
         identity={bridgeSessionId:b.bridgeSessionId,bridgeGeneration:b.bridgeGeneration,...b.recoveryId?{recoveryId:b.recoveryId}:{}};
         assembler=new Assembler({identity});
         client=new ChannelClient({
@@ -120,13 +121,16 @@ export async function connectRemote({authorizationUrl,workspacePath,sessionId,ti
     relay.sendData({zcode_type:"bootstrap-request",requestId:bootstrapId});
     const b=await Promise.race([bootstrap.promise,relay.fault.promise]);
     if(!b.success)throw new Error("原窗口 bootstrap 失败");
-    if(!b.result.workspaces.some(w=>w.kind==="local"&&samePath(workspaceKey(w),workspacePath)))throw new Error("原窗口没有打开目标本地工作区");
-    if(!b.result.tasks.some(t=>t.taskId===sessionId&&samePath(t.workspacePath,workspacePath)))throw new Error("原窗口没有目标会话");
-    relay.sendData({zcode_type:"workspace-bridge-open",requestId:bridgeId,bridgeSessionId,bridgeGeneration:1,workspaceKey:workspacePath,taskId:sessionId});
+    const workspace=b.result.workspaces.find(w=>w.kind==="local"&&samePath(workspaceKey(w),workspacePath));
+    if(!workspace)throw new Error("原窗口没有打开目标本地工作区");
+    bridgeWorkspacePath=workspace.workspacePath;
+    if(sessionId!==undefined&&!b.result.tasks.some(t=>t.taskId===sessionId&&samePath(t.workspacePath,workspacePath)))throw new Error("原窗口没有目标会话");
+    relay.sendData({zcode_type:"workspace-bridge-open",requestId:bridgeId,bridgeSessionId,bridgeGeneration:1,workspaceKey:bridgeWorkspacePath,...sessionId!==undefined?{taskId:sessionId}:{}});
     await Promise.race([ready.promise,relay.fault.promise]);
     relay.extendDeadline(timeoutMs);
     return {
       bootstrap:b.result,
+      workspacePath:bridgeWorkspacePath,
       call:(channel,method,args=[])=>Promise.race([client.getChannel(channel).call(method,args),relay.fault.promise]),
       probe:({ackTimeoutMs=5000}={})=>{
         if(relay.isClosing()||relay.socket.readyState!==1)return Promise.resolve({ok:false,stage:"pair",reasonCode:"connection_closed",paired:false,message:"远控连接已关闭"});

@@ -8,6 +8,7 @@
 - 自动化测试与脚本严禁触发 `suian-zcode-title://` 协议激活链路（会弹 ZCode 官方确认模态框，无人值守时无限阻塞）。
 - 公共 vendor 是固定来源的协议与投影库；版本信息见 ../suian-zcode-common/vendor/NOTICE.md，不自动更新。
 - 新行为先写契约测试，记录红绿验证日志（docs/round2-evidence.json）；不添加无关功能。
+- MCP 创建会话的公共命名策略优先：locked:true 不生成；false 不推断手动保护、要求格式合规。不合规 keep 最多纠正一次并记录理由。既有无策略会话保留原规则。
 
 ## 技术参考（面向维护者）
 
@@ -56,7 +57,7 @@ node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
 |---|---|
 | preview / renamed / kept | 候选、已写入并核验、模型决定保留 |
 | unchanged | 同一内容已处理，跳过模型 |
-| manual_title / locked | 成功命名后标题被改为非宿主生成来源（`title_source!=="generated"`），停止覆盖；宿主自动改名视为竞争，照常重新命名（删 `.local/<session_id>.json` 解锁） |
+| manual_title / locked | 无公共策略时，成功命名后非 generated 标题变化则保护；MCP 的公共 locked:true 优先阻止生成，false 明确不锁。公共锁需改公共策略，删除旧状态仅解除旧锁 |
 | stale_result / outdated_event | 内容已更新或事件过期，丢弃结果 |
 | archived / running / empty / disabled / busy | 不适合命名或已暂停，不调用模型 |
 | failed | 连接、模型或核验失败，退出码 1（附 `stage/reasonCode/toast`） |

@@ -25,6 +25,7 @@
 | setup.ps1 / run.ps1 / run.vbs | 用户任务、变量、公共 skill；无窗口监督启动、安全重载与恢复 |
 | remote.mjs | 官方 relay 鉴权、workspace bridge、Channel RPC 与分层探活 |
 | auth-store.mjs | 调用方数据目录内的当前用户 DPAPI 授权存取 |
+| title-policy.mjs | 当前用户跨插件的会话锁定策略：MCP 写入，命名插件读取 |
 | notifications.mjs / cooldown.mjs | Toast 显示、XML、两小时冷却、跨进程显示互斥 |
 | notification-action.mjs | 复制调用方提示词、打开固定默认工作区 |
 | notification-install.mjs | 按调用方身份安装/移除协议桥、快捷方式与 AUMID |

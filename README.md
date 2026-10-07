@@ -1,4 +1,4 @@
-给 ZCode 做的插件与公共工具集合。ZCode 是智谱推出的 Agentic Coding 工具（桌面端 + CLI），这个仓库放会话自动命名插件、只读会话 MCP，以及两者共用的基础能力。
+给 ZCode 做的插件与公共工具集合。ZCode 是智谱推出的 Agentic Coding 工具（桌面端 + CLI），这个仓库放会话自动命名插件、会话 MCP，以及两者共用的基础能力。
 
 ## 让 Agent 帮你安装或升级
 
@@ -9,7 +9,7 @@
 https://github.com/ONEGAYI/ZCode-Plugins.git
 
 先询问我：首次安装还是升级；选择自动命名 suian-zcode-title、
-只读会话 MCP suian-zcode-app-mcp，还是两个都要；源码放在哪里。
+会话 MCP suian-zcode-app-mcp，还是两个都要；源码放在哪里。
 先检查已有源码和安装位置，优先复用现有仓库；没有时再确定克隆目录。
 
 确认后，由你克隆或更新代码。首次安装优先用稀疏检出，
@@ -29,7 +29,7 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 | 用户选择 | 需要检出的子目录 |
 | --- | --- |
 | 自动命名 | `suian-zcode-title`、`suian-zcode-common` |
-| 只读会话 MCP | `suian-zcode-app-mcp`、`suian-zcode-common` |
+| 会话 MCP | `suian-zcode-app-mcp`、`suian-zcode-common` |
 | 两个都要 | 上述三个目录，公共层只获取一份、网关只配置一次 |
 
 下面是 Agent 首次安装自动命名时可用的命令；`{{repo_dir}}` 由 Agent 和用户确定。只装 MCP 时，将 `suian-zcode-title` 换成 `suian-zcode-app-mcp`；全装则在 `set` 后列出三个目录。
@@ -58,9 +58,9 @@ git -C "{{repo_dir}}" sparse-checkout set suian-zcode-title suian-zcode-common
 
 它通过 ZCode 官方的 Web 远控通道连接当前窗口，用你自己账号里的模型生成标题，不往对话里插消息，也不直接改数据库；标题会跟随工作主线缓慢更新，手动改过的标题不会再被覆盖。安装时把一段话粘给 ZCode 就行，详见 [suian-zcode-title/README.md](./suian-zcode-title/README.md)。
 
-## suian-zcode-app-mcp — 会话 MCP（只读首版）
+## suian-zcode-app-mcp — 会话 MCP
 
-通过两个只读工具列出本机 ZCode 会话、按工作区或标题/ID 检索，并查看指定会话的聊天消息。首版读取 SQLite 持久化历史，通过 stdio 接入 MCP 客户端；发送消息、创建与状态管理留待后续。接入与边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。
+通过两个只读工具列出本机会话、按工作区或标题/ID 检索并读取聊天消息；五个写工具经授权原 Host 改名、指定模型创建并提交开局信息、向指定会话发信、归档与复原。stdio 接入，消息由服务统一包装其他会话来源标识。当前写工具仍占独立远控席位，接入与边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。
 
 ## suian-zcode-common — 公共基础能力
 

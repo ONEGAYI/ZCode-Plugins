@@ -1,13 +1,20 @@
 # suian-zcode-app-mcp
 
-让 ZCode 或其他 MCP 客户端查询本机 ZCode 会话。**首版提供两个只读工具：列出会话、读取聊天消息**。
+让 ZCode 或其他 MCP 客户端查询和操作 ZCode 会话。**两个本机读取工具，五个原 Host 写工具**。
 
 | 工具 | 用途 |
 | --- | --- |
 | `list_sessions` | 最近 N 条、指定工作区或所有工作区；按标题或 ID 搜索；支持归档项和分页 |
 | `read_session` | 指定会话最近消息及向前翻页；完整正文、可见消息过滤和持久化回退分支 |
+| `rename_session` | 通过原 Host 改名并读回确认 |
+| `start_session` | 在已打开工作区创建会话，指定可选名称和模型，提交必填开局信息 |
+| `send_message` | 向指定会话提交信息，可使用刚创建的会话 ID |
+| `archive_session` | 检查活跃状态；发现活跃项时须用户授权 force 才归档 |
+| `restore_session` | 取消归档并确认索引状态 |
 
 当前读取本机 SQLite 持久化历史，无需远控授权链接。结果不包含未持久化的流式字符；远端工作区正文暂不支持。设计依据、参数和读取边界见 [只读工具设计](./docs/readonly-tools.md)。
+
+五个写工具需要当前窗口的远控授权，使用原 Host 的 RPC，不直接写数据库。工作区必须已在授权窗口中打开；独立 terminal 仍受官方单设备限制，与手机占用及命名插件并发可能冲突。公共网关尚未提供这些写 RPC 的分流。完整形状、来源包装、部分失败与验收见 [写工具设计](./docs/write-tools.md)。
 
 ## 接入
 
@@ -16,7 +23,7 @@
 直接把下面这段粘给 ZCode，**无需先手动克隆**。同一提示词支持首次安装和升级，由 Agent 先询问操作、检查已有安装，再获取代码。
 
 ```text
-请帮我安装或升级只读会话 MCP suian-zcode-app-mcp：
+请帮我安装或升级会话 MCP suian-zcode-app-mcp：
 https://github.com/ONEGAYI/ZCode-Plugins.git
 
 先询问我是首次安装还是升级，以及源码放在哪里。
@@ -34,7 +41,7 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 
 本插件的获取范围是 **MCP 目录 + 公共层 + 仓库根文件**，可以不检出命名插件。克隆命令与已有稀疏检出的扩展方式统一见 [根 README 的代码获取范围](../README.md#代码获取范围)。如果两个插件都要，可使用根 README 的组合提示词，由 Agent 询问插件选择。
 
-[本插件 skill](./SKILL.md) 负责服务注册与只读验证，[公共网关 skill](../suian-zcode-common/SKILL.md) 统一负责启动、Desktop 环境变量和恢复。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`；该命令不会自动注册 MCP 服务。
+[本插件 skill](./SKILL.md) 负责服务注册、授权和验证，[公共网关 skill](../suian-zcode-common/SKILL.md) 统一负责启动、Desktop 环境变量和恢复。只需读取时可以不配置授权；写工具验收使用经用户授权的新建测试会话。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`；该命令不会自动注册 MCP 服务。
 
 ### 手动接入 MCP
 
@@ -76,6 +83,8 @@ npm ci --ignore-scripts --no-fund --no-audit
 `list_sessions` 省略工作区即所有索引工作区，默认排除归档与删除项。使用 `next_offset` 继续列举；`read_session` 使用 `next_before_message_id` 获取更早消息。
 
 测试命令为 `npm test`。实测与契约测试汇总见 [验收证据](./docs/readonly-tools-evidence.json)。
+
+写工具的示例、DPAPI 授权保存方法与创建→发信→读回复闭环见 [写工具设计](./docs/write-tools.md)。
 
 ## 研究与许可
 

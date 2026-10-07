@@ -26,12 +26,13 @@ flowchart LR
 | gateway.mjs | `startGateway()`：独立网关；同进程 `bootstrap()`、`close()` |
 | remote.mjs | `connectRemote()`、`probeRemote()`、`startRelay()`：使用传入授权；当前命名流程调用 |
 | auth-store.mjs | `saveAuthorization({dataDir,url})`、`loadAuthorization({dataDir})`、`clearAuthorization({dataDir})` |
+| title-policy.mjs | MCP 写入、命名插件读取的独立锁定策略；默认在 `~/.zcode/tools/suian-zcode-common/session-titles` |
 | notifications.mjs | `notifyOnce({dataDir,title,message,reasonCode,appId,actionUri})`；保留两小时冷却、跨进程互斥及显示失败结果 |
 | notification-action.mjs | `copyPromptAndOpenWorkspace({prompt,dataDir})`：复制调用方提示词后打开用户默认工作区；仅用户点击后执行 |
 | notification-install.mjs | `installToastAssets()` / `removeToastAssets()`：接收调用方的 protocol、appId、shortcutName、description、pluginRoot、dataDir |
 | vendor/projection.js | `getConversationMessageProjectionPolicy()`：两个插件引用同一固定产物 |
 
-调用方继续指定自己的数据目录和通知身份。命名插件的 `.local/remote.blob`、Toast 冷却、`suian-zcode-title://` 协议和 AUMID 不迁移；公共配置不保存远控授权。MCP 仅共享投影库，仍只提供两个 SQLite 查询工具。
+调用方继续指定自己的数据目录和通知身份。命名插件的 `.local/remote.blob`、Toast 冷却、`suian-zcode-title://` 协议和 AUMID 不迁移；公共网关配置不保存远控授权。MCP 的两个读取工具共享投影库，五个写工具共享远控与 DPAPI 模块，授权目录由 MCP 配置。会话命名策略是明确跨插件共享的新数据，其他授权和通知状态保持调用方归属。
 
 通知模块的系统动作可注入，用于隔离测试；自动化验证不能触发真实协议或 ZCode 的外部工作区确认框。测试按两个不同调用方的身份安装/卸载验证隔离，这不代表 MCP 已启用 Toast。
 
@@ -85,7 +86,7 @@ Remove 只在用户要求移除公共网关时执行，先完整退出 ZCode。�
 
 真实 ZCode 3.14.4 上已验证设备连接经网关鉴权，以及同进程 `bootstrap()` 元数据读取与官方手机页面共存：[真实共存报告](../suian-zcode-app-mcp/docs/relay-gateway-coexistence.md)。历史来源和固定安装包定位保留在 [阶段证据](../suian-zcode-app-mcp/experiments/relay-gateway/evidence.json)。既有网关配置验收见 [setup-evidence.json](./docs/setup-evidence.json)，公共层提取、重载与文件更新验证见 [common-layer-evidence.json](./docs/common-layer-evidence.json)。
 
-`startGateway()` 提供 `url`、同进程 `bootstrap({timeoutMs})` 与 `close()`。bootstrap 只在官方上游报告 `matched` 后注入，本地回复及迟到回复不发给手机；当前没有跨进程 bootstrap 或 V4 RPC 入口。完整 workspace bridge、改名、提交 prompt 与手机离线注入仍需后续实现；自动命名的独立 terminal 仍受官方席位限制。MCP 两个 SQLite 只读工具可独立与手机共存。
+`startGateway()` 提供 `url`、同进程 `bootstrap({timeoutMs})` 与 `close()`。bootstrap 只在官方上游报告 `matched` 后注入，本地回复及迟到回复不发给手机；当前没有跨进程 bootstrap 或 V4 RPC 入口。网关内的完整 workspace bridge、改名、提交 prompt 与手机离线注入仍需后续实现；自动命名与 MCP 写工具的独立 terminal 仍受官方席位限制。MCP 两个 SQLite 只读工具可独立与手机共存。
 
 当前没有独立的上游重连或背压队列策略；断开交还 Desktop 自己处理，WebSocket 关闭码未透传。本地 bootstrap 的 requestId 在连接内保留到断开，用于消耗迟到回复。需要长期压力验证后才能扩大运行保证。
 

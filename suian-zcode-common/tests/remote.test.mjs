@@ -28,6 +28,7 @@ class RelayFixture {
       const p=m.payload;
       if(p.zcode_type==="bootstrap-request")this.reply({type:"data",payload:{zcode_type:"bootstrap-response",requestId:p.requestId,success:true,result:{workspaces:[{kind:"local",workspacePath}],tasks:[{taskId:sessionId,workspacePath,title:"原名"}]}}});
       else if(p.zcode_type==="workspace-bridge-open") {
+        this.bridgeRequest=p;
         this.identity={bridgeSessionId:p.bridgeSessionId,bridgeGeneration:p.bridgeGeneration};
         this.reply({type:"data",payload:{zcode_type:"workspace-bridge-ready",requestId:p.requestId,bridge:{...this.identity,kind:"local",workspaceKey:workspacePath,workspacePath,initialTaskId:sessionId}}});
         this.frame([200],undefined);
@@ -52,5 +53,17 @@ test("授权外部连接等待 Initialize 并以数组参数调用原 Host",asyn
     assert.ok(RelayFixture.latest.acks.includes(1));
   } finally {remote.close();}
   assert.equal(RelayFixture.latest.closed,true);
+});
+
+test('创建会话可只附着工作区，bridge 不携带不存在的 taskId', async () => {
+  const remote = await connectRemote({authorizationUrl:'https://zcode.z.ai/remote/v4?sid=fixture-sid&hash=fixture-key&mid=fixture-mid',workspacePath,WebSocketImpl:RelayFixture,timeoutMs:1000});
+  try { assert.equal(RelayFixture.latest.bridgeRequest.taskId, undefined); }
+  finally { remote.close(); }
+});
+
+test('Windows 工作区输入允许不同大小写和斜杠，bridge 使用 bootstrap 的实际路径', async () => {
+  const remote = await connectRemote({authorizationUrl:'https://zcode.z.ai/remote/v4?sid=fixture-sid&hash=fixture-key&mid=fixture-mid',workspacePath:'D:/FIXTURE',sessionId,WebSocketImpl:RelayFixture,timeoutMs:1000});
+  try { assert.equal(RelayFixture.latest.bridgeRequest.workspaceKey, workspacePath); }
+  finally { remote.close(); }
 });
 

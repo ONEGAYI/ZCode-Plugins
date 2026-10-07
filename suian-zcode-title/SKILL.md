@@ -43,7 +43,8 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 ### 标题策略速览（用户问起时据此回答）
 
 - **滚动更新**：每轮 Stop 触发，但会话内容指纹没变就不调模型（`unchanged`）；内容变了模型对照现有标题输出 keep 或 rename，标题跟随主线缓慢演进，不逐轮翻新。
-- **手动改名即锁定**：用户手动改过标题后该会话永久退出自动命名（防覆盖用户意愿）；解锁 = 删除 `.local/<session_id>.json` 状态文件。
+- **既有手动保护**：无公共策略时，已有命名基线且标题相对基线变化、来源非 generated，才判为手动改名并锁定；仅 custom 来源不足以证明被跳过。旧锁定可通过删除 `.local/<session_id>.json` 解除。
+- **MCP 独立锁定**：MCP 的 lock_title 默认 false，提供初始名称不推断锁定。公共 `title-policy.mjs` 管理当前用户 `~/.zcode/tools/suian-zcode-common/session-titles/<session_id>.json`：locked:true 不调模型；false 允许滚动命名并要求格式合规，不合规 keep 最多纠正一次。先读公共策略再判断旧状态，删旧状态不能解除公共锁。修改策略使用公共 writeTitlePolicy，按用户明确意图设置 locked，两个插件与公共层需同版本升级。
 
 ### "检查 / 修复命名插件"
 
