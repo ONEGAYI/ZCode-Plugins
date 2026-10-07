@@ -78,11 +78,17 @@ test('三个写工具转交已验证参数，拒绝空开局和未知字段，�
   t.after(async () => { await client.close(); await server.close(); });
   await server.connect(st); await client.connect(ct);
   for (const [name, args] of [
-    ['start_session', { workspace_path: 'D:/fixture', message: 'hello', model: { provider_id: 'fixture', model_id: 'flash', reasoning_level: 'low' } }],
-    ['send_message', { session_id: 'sess_created', message: 'next' }],
+    ['start_session', { workspace_path: 'D:/fixture', creator: 'sess_parent', message: 'hello', model: { provider_id: 'fixture', model_id: 'flash', reasoning_level: 'low' } }],
+    ['send_message', { session_id: 'sess_created', deliverer: 'sess_sender', message: 'next' }],
     ['rename_session', { session_id: 'sess_created', title: '测试' }]
   ]) assert.equal((await client.callTool({ name, arguments: args })).structuredContent.session_id, 'sess_created');
   assert.equal(calls.length, 3);
+  assert.equal(calls[0].args.creator, 'sess_parent');
+  assert.equal(calls[1].args.deliverer, 'sess_sender');
+  assert.equal((await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'hello', creator: ' ' } })).isError, true);
+  assert.equal((await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_created', message: 'hello', deliverer: ' ' } })).isError, true);
+  assert.equal((await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'hello', deliverer: 'sess_sender' } })).isError, true);
+  assert.equal((await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_created', message: 'hello', creator: 'sess_parent' } })).isError, true);
   assert.equal((await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: ' ' } })).isError, true);
   assert.equal((await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_created', message: 'hello', sql: 'write' } })).isError, true);
   assert.equal(calls.length, 3);

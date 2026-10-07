@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const workspace = 'D:\\fixture';
 const model = { provider_id: 'fixture', model_id: 'flash', reasoning_level: 'low' };
 const wrapped = text => `<delivered-by-other-session>\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n${text}\n</delivered-by-other-session>`;
+const opening = text => `<created-by-other-session>\n<notice>\nYou are a new zcode session created by another zcode session or the system, instead of directly by the user.\n</notice>\n${text}\n</created-by-other-session>`;
 async function fixture(overrides = {}) {
   const calls = [], connections = [], policies = []; let archived = false;
   const { createSessionController } = await import('../control.mjs');
@@ -37,7 +38,7 @@ test('创建使用指定模型，先命名后发送带来源标识的开局信�
   assert.deepEqual(f.policies, [{ sessionId: 'sess_new', locked: false }]);
   assert.deepEqual(f.calls.map(c => c.method), ['getView', 'createTask', 'renameTask', 'sendPrompt']);
   assert.deepEqual(f.calls[1].params, [{ workspacePath: workspace, modelSelection: { providerId: 'fixture', modelId: 'flash', options: { reasoningLevel: 'low' } }, deferPersistenceUntilFirstPrompt: true }]);
-  assert.equal(f.calls[3].params[0].content, wrapped('测试开局'));
+  assert.equal(f.calls[3].params[0].content, opening('测试开局'));
   assert.equal(f.calls[3].params[0].traceId, created.input_id);
   assert.equal(f.connections[0].args.sessionId, undefined);
   const sent = await f.controller.sendMessage({ session_id: created.session_id, message: '第二次测试' });
@@ -48,6 +49,36 @@ test('创建使用指定模型，先命名后发送带来源标识的开局信�
   assert.equal(renamed.title, '新标题');
   assert.deepEqual(f.calls.slice(-2).map(c => c.method), ['renameTask', 'getTaskMeta']);
   assert.ok(f.connections.every(c => c.closed));
+});
+
+test('开局标明 creator，后续信息标明 deliverer，来源与接收方 ID 分开', async () => {
+  const f = await fixture();
+  const created = await f.controller.startSession({ workspace_path: workspace, creator: 'sess_parent', message: '开局正文' });
+  assert.equal(created.creator, 'sess_parent');
+  assert.equal(created.session_id, 'sess_new');
+  assert.equal(f.calls.at(-1).params[0].taskId, 'sess_new');
+  assert.equal(f.calls.at(-1).params[0].content, '<created-by-other-session creator="sess_parent">\n<notice>\nYou are a new zcode session created by another zcode session or the system, instead of directly by the user.\n</notice>\n开局正文\n</created-by-other-session>');
+  const sent = await f.controller.sendMessage({ session_id: created.session_id, deliverer: 'sess_sender', message: '后续正文' });
+  assert.equal(sent.deliverer, 'sess_sender');
+  assert.equal(sent.session_id, 'sess_new');
+  assert.equal(f.calls.at(-1).params[0].taskId, 'sess_new');
+  assert.equal(f.calls.at(-1).params[0].content, '<delivered-by-other-session deliverer="sess_sender">\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n后续正文\n</delivered-by-other-session>');
+});
+
+test('来源 ID 在 XML 属性中转义，正文原样保留；不提供 ID 时省略属性和回执字段', async () => {
+  const f = await fixture(), origin = 'sess_"<&>', body = '正文\n<raw>& text';
+  const created = await f.controller.startSession({ workspace_path: workspace, creator: origin, message: body });
+  assert.equal(created.creator, origin);
+  assert.ok(f.calls.at(-1).params[0].content.startsWith('<created-by-other-session creator="sess_&quot;&lt;&amp;&gt;">'));
+  assert.ok(f.calls.at(-1).params[0].content.includes('</notice>\n' + body + '\n</created-by-other-session>'));
+  await f.controller.sendMessage({ session_id: created.session_id, deliverer: origin, message: body });
+  assert.ok(f.calls.at(-1).params[0].content.startsWith('<delivered-by-other-session deliverer="sess_&quot;&lt;&amp;&gt;">'));
+  const anonymous = await f.controller.startSession({ workspace_path: workspace, message: body });
+  assert.equal(Object.hasOwn(anonymous, 'creator'), false);
+  assert.equal(f.calls.at(-1).params[0].content, opening(body));
+  const sent = await f.controller.sendMessage({ session_id: anonymous.session_id, message: body });
+  assert.equal(Object.hasOwn(sent, 'deliverer'), false);
+  assert.equal(f.calls.at(-1).params[0].content, wrapped(body));
 });
 
 test('归档检测主代理、后台/子代理、未完成任务及待交互，默认阻止且 force 后才写入', async () => {
@@ -118,7 +149,7 @@ test('无效模型在创建前拒绝；创建后的发送失败保留会话标�
   const f = await fixture({ sendPrompt: () => { throw new Error('fixture failed'); } });
   await assert.rejects(f.controller.startSession({ workspace_path: workspace, message: 'hello', model: { ...model, model_id: 'missing' } }), /model_not_available/);
   assert.equal(f.calls.filter(c => c.method === 'createTask').length, 0);
-  await assert.rejects(f.controller.startSession({ workspace_path: workspace, message: 'hello' }), e => e.partial_result.session_id === 'sess_new' && /fixture failed/.test(e.message));
+  await assert.rejects(f.controller.startSession({ workspace_path: workspace, creator: 'sess_parent', message: 'hello' }), e => e.partial_result.session_id === 'sess_new' && e.partial_result.creator === 'sess_parent' && /fixture failed/.test(e.message));
   assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
   assert.ok(f.connections.every(c => c.closed));
 });
