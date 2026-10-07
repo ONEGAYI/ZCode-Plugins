@@ -5,7 +5,7 @@
 ## 仓库级约定
 
 - 新增子项目必须在本文件文件树登记，并拥有自己的 `AGENTS.md`；通用规则写这里，专属规则写子项目内。
-- `suian-zcode-gateway/` 是两个插件共用的唯一网关实现和配置入口。插件 skill 调用其公共流程，不复制转发、后台启动或 Desktop 环境变量管理代码。
+- `suian-zcode-common/` 是两个插件共用的公共基础能力实现和配置入口：网关、远控协议/探活、DPAPI、Toast 与消息投影。插件仅维护业务规则和提示词，不复制公共实现；运行数据归调用方，网关数据保留原目录。
 - 开源发布前完成个人信息脱敏（用户名、会话标识、本机路径、授权凭据），由插件各自 `.gitignore` 挡住运行时数据。
 - 提交信息用中文，`类型: 简述` 格式，正文分条说明做了什么、为什么做。
 - `sources/` 下的 submodule 是研究用的第三方上游快照：只读、不 fork、不修改、不安装依赖；升级钉定提交须在 `sources/README.md` 同步登记。
@@ -21,12 +21,12 @@ ZCode-Plugins/
 ├── LICENSE                 # MIT（自有代码）；vendor 第三方代码保留原许可
 ├── .gitignore              # 仓库级通用忽略规则
 │
-├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 远控命名 + Toast 通知）
+├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 命名决策 + 通知文案）
 │   └── docs/notes/         # 研究与验证笔记（脱敏后入库；桌面截图等敏感物料不入库）
 │
-├── suian-zcode-app-mcp/    # ZCode 会话 MCP（只读首版：会话检索、聊天历史与 stdio 接入）
+├── suian-zcode-app-mcp/    # ZCode 会话 MCP（检索、聊天历史、原 Host 改名/创建/发信与 stdio 接入）
 │
-├── suian-zcode-gateway/    # 公共 relay 网关、当前用户启动配置与 Agent skill
+├── suian-zcode-common/    # 公共网关、远控/授权/通知/投影模块、Windows 配置与 Agent skill
 │
 └── sources/                # 上游源码 submodule 引用（只读，见 sources/README.md）
     ├── official-zcode/     # zai-org/ZCode @ 29628c9（v3.14.3 公开快照）

@@ -1,5 +1,5 @@
 {
-  "name": "suian-zcode-gateway",
+  "name": "suian-zcode-common",
   "private": true,
   "type": "module",
   "engines": { "node": ">=24" },

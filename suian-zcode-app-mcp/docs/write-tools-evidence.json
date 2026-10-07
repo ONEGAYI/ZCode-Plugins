@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-07",
+  "host": "ZCode 3.14.4",
+  "tools": ["list_sessions", "read_session", "rename_session", "start_session", "send_message", "archive_session", "restore_session"],
+  "validation": {"tests": 118, "passed": 118, "failed": 0, "skipped": 0},
+  "live_stdio": {
+    "created_only_new_test_session": true,
+    "requested_model": "account:bigmodel-individual-coding-plan/GLM-5.3-Flash",
+    "host_meta_model_confirmed": true,
+    "reasoning_level": "low",
+    "opening_reply_confirmed": true,
+    "followup_reply_confirmed": true,
+    "message_wrapper_persisted": true,
+    "no_extra_blank_line_confirmed": true,
+    "rename_readback": true,
+    "idle_archive_index_readback": true,
+    "restore_index_readback": true,
+    "test_session_left_unarchived": true
+  },
+  "title_policy_live_new_runner": {
+    "explicit_lock_skipped_generation": true,
+    "unlocked_title_migrated_to_required_format": true,
+    "model_reason_recorded": true,
+    "legacy_installed_hook_not_updated": true
+  },
+  "isolated_contracts": [
+    "model and reasoning selection checked before create",
+    "optional name/model and default lock_title:false",
+    "policy stored before opening input; explicit true blocks naming",
+    "canonical bridge workspace path used by RPC",
+    "partial create failure retains session ID; no automatic write retry",
+    "noncompliant keep corrected once; persistent invalid reply fails",
+    "main/background/subagent/todo/goal/interaction block normal archive",
+    "force requires caller to obtain explicit human authorization",
+    "second snapshot detecting new activity blocks archive",
+    "missing runtime rejects archive even with force",
+    "stdin DPAPI save and unauthorized write error; read-only DB bytes unchanged"
+  ],
+  "limits": [
+    "writes use independent terminal, not gateway RPC multiplexing; official one-device constraint remains",
+    "archive check and write are separate RPCs; Host offers no atomic activity condition",
+    "force branches tested only in isolated fixtures; no live active work archived",
+    "archive hides session and does not cancel work",
+    "ACK means submitted, not model completion",
+    "primary checkout, real MCP registration and existing Hook source were not upgraded"
+  ]
+}

@@ -1,11 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {mkdtempSync,rmSync} from "node:fs";
+import {mkdtempSync,rmSync,mkdirSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {saveAuthorization,loadAuthorization,clearAuthorization} from "../auth-store.mjs";
 
 const freshDir=()=>mkdtempSync(join(tmpdir(),"z-title-auth-"));
+test("存取错误必须报出，不能当作未配置或已清除",async()=>{
+  const dataDir=freshDir();
+  try {
+    mkdirSync(join(dataDir,"remote.blob"));
+    await assert.rejects(loadAuthorization({dataDir}));
+    await assert.rejects(clearAuthorization({dataDir}));
+  } finally {rmSync(dataDir,{recursive:true});}
+});
 test("授权经当前用户 DPAPI 加密落盘并可往返解密，明文不落盘",async()=>{
   const dataDir=freshDir();
   try {

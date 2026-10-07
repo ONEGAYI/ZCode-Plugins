@@ -7,11 +7,12 @@ import {resolve,dirname,join} from "node:path";
 import {randomUUID} from "node:crypto";
 import {createBackend} from "./backend.mjs";
 import {runNaming} from "./naming.mjs";
-import {probeRemote} from "./remote.mjs";
-import {notifyOnce,toastBodyFor} from "./toast.mjs";
+import {probeRemote} from "../suian-zcode-common/remote.mjs";
+import {toastBodyFor} from "./toast.mjs";
+import {notifyOnce} from "../suian-zcode-common/notifications.mjs";
 import {ensureToastAppId,PROTOCOL} from "./install.mjs";
-import {shouldNotify} from "./cooldown.mjs";
-import {saveAuthorization as storeAuthorization,loadAuthorization,clearAuthorization} from "./auth-store.mjs";
+import {shouldNotify} from "../suian-zcode-common/cooldown.mjs";
+import {saveAuthorization as storeAuthorization,loadAuthorization,clearAuthorization} from "../suian-zcode-common/auth-store.mjs";
 
 const args=process.argv.slice(2);
 if(args.includes("--help")||!args.length) {
@@ -133,7 +134,7 @@ if(args.includes("--help")||!args.length) {
           try {
             await mkdir(dataDir,{recursive:true});
             const appId=await ensureToastAppId({dataDir});
-            const outcome=await notifyOnce({dataDir,title:"ZCode 自动命名暂停",message:toastBodyFor(failure.reasonCode),reasonCode:failure.reasonCode,appId});
+            const outcome=await notifyOnce({dataDir,title:"ZCode 自动命名暂停",message:toastBodyFor(failure.reasonCode),reasonCode:failure.reasonCode,appId,actionUri:"suian-zcode-title://fix"});
             failure.toast=outcome.shown?"shown":(outcome.reason??"suppressed");
           } catch(toastError) {failure.toast="unavailable:"+String(toastError.message).slice(0,80);}
         }

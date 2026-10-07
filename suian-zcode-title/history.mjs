@@ -2,7 +2,7 @@ import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {win32} from "node:path";
 import {createHash} from "node:crypto";
-import {getConversationMessageProjectionPolicy} from "./vendor/projection.js";
+import {getConversationMessageProjectionPolicy} from "../suian-zcode-common/vendor/projection.js";
 
 export async function readHistory({dbPath,sessionId,workspacePath,sqliteBin="sqlite3"}) {
   if(!/^sess_[A-Za-z0-9_-]+$/.test(sessionId))throw new Error("无效会话 ID");

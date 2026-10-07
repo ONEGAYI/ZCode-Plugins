@@ -39,10 +39,13 @@ test('JSON 的对象端口不能选用 Node listen 重载绕过回环绑定', { 
   await assert.rejects(promisify(execFile)(process.execPath, [fileURLToPath(new URL('../gateway.mjs', import.meta.url)), '--config', configFile], { windowsHide: true, timeout: 1500 }), /Invalid gateway port/);
 });
 
-test('Windows 隐藏启动入口加载公共配置，并随网关自行停止正常退出', { skip: process.platform !== 'win32', timeout: 10000 }, async (t) => {
+test('Windows VBS 启动链加载公共配置，并随网关自行停止正常退出', { skip: process.platform !== 'win32', timeout: 10000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'gateway-hidden-'));
   await writeFile(join(root, 'config.json'), JSON.stringify({ version: 1, port: 0, upstream_url: 'ws://127.0.0.1:1/ws', instance_id: 'fixture-hidden', control_token: 'fixture-hidden-token' }));
-  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', fileURLToPath(new URL('../run.ps1', import.meta.url)), '-NodePath', process.execPath, '-DataDir', root], { windowsHide: true });
+  const runFile = fileURLToPath(new URL('../run.ps1', import.meta.url)).replaceAll("'", "''");
+  const launch = "& '" + runFile + "' -NodePath '" + process.execPath.replaceAll("'", "''") + "' -DataDir '" + root.replaceAll("'", "''") + "'";
+  const encoded = Buffer.from(launch, 'utf16le').toString('base64');
+  const child = spawn(join(process.env.SystemRoot, 'System32', 'wscript.exe'), ['//B', '//NoLogo', fileURLToPath(new URL('../run.vbs', import.meta.url)), encoded], { windowsHide: true });
   const exited = once(child, 'exit');
   let ready;
   let errors = '';

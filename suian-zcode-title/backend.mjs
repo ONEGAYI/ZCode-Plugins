@@ -1,12 +1,13 @@
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {win32} from "node:path";
-import {connectRemote} from "./remote.mjs";
+import {connectRemote} from "../suian-zcode-common/remote.mjs";
 import {readHistory,recentSnapshot} from "./history.mjs";
+import {readTitlePolicy as loadTitlePolicy} from "../suian-zcode-common/title-policy.mjs";
 
 const SESSION_ID_RE=/^sess_[A-Za-z0-9_-]+$/;
 
-export function createBackend({event,config,authorizationUrl,saveState,prompt,connect=connectRemote}) {
+export function createBackend({event,config,authorizationUrl,saveState,prompt,connect=connectRemote,readTitlePolicy=loadTitlePolicy}) {
   const sessionId=event.session_id;
   if(!SESSION_ID_RE.test(sessionId??""))throw new Error("输入需要有效 session_id");
   let remote;
@@ -57,7 +58,7 @@ export function createBackend({event,config,authorizationUrl,saveState,prompt,co
         const meta=await remote.call("zcode-task","getTaskMeta",[{taskId:sessionId,workspacePath:ws}]);
         if(meta.taskId!==sessionId||meta.workspacePath!==ws||meta.title!==history.session.title)throw new Error("原 Host 与持久化标题不一致");
       }
-      return{...recentSnapshot(history,ws),titleSource:history.session.titleSource??null,archived:!!row?.archived,deleted:!!row?.deleted,running:row?.task_status==="running"};
+      return{...recentSnapshot(history,ws),titleSource:history.session.titleSource??null,titlePolicy:await readTitlePolicy({sessionId}),archived:!!row?.archived,deleted:!!row?.deleted,running:row?.task_status==="running"};
     },
     async models() {return(await attach()).call("model-selection","getView",[]);},
     async generate(context,selection) {
