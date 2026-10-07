@@ -148,5 +148,12 @@
       "standards": "增量未发现新增问题",
       "spec": "两项问题均已关闭，未发现直接需求回归"
     }
+  },
+  "delivery": {
+    "entry": "suian-zcode-app-mcp/cli.mjs",
+    "dependenciesInstalled": true,
+    "npmCiExitCode": 0,
+    "primaryDirectoryStdioSmokeExitCode": 0,
+    "mcpConfigurationChanged": false
   }
 }
