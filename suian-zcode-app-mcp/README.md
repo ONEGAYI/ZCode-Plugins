@@ -11,15 +11,28 @@
 
 ## 接入
 
-### 让 Agent 初始化
+### 让 Agent 安装或升级
 
-将完整仓库克隆到本机后，告诉 ZCode：
+直接把下面这段粘给 ZCode，**无需先手动克隆**。同一提示词支持首次安装和升级，由 Agent 先询问操作、检查已有安装，再获取代码。
 
 ```text
-帮我初始化 suian-zcode-app-mcp。仓库在 D:/path/to/ZCode-Plugins。
-请读取 suian-zcode-app-mcp/SKILL.md，完成 MCP 与公共网关配置。
-完成后提醒我先处理运行中的任务并保存工作，再按公共 skill 的方法完整退出重开，验证生效。
+请帮我安装或升级只读会话 MCP suian-zcode-app-mcp：
+https://github.com/ONEGAYI/ZCode-Plugins.git
+
+先询问我是首次安装还是升级，以及源码放在哪里。
+先检查已有源码和安装位置，优先复用现有仓库；没有时再确定克隆目录。
+确认后，由你克隆或更新代码。首次安装按根 README 的“代码获取范围”使用稀疏检出，
+获取 suian-zcode-app-mcp、公共 suian-zcode-gateway 和仓库根文件，不初始化 sources 子模块。
+已有仓库保留其他已安装插件的目录；更新遇到本地修改或分叉时先说明，不强制覆盖。
+
+读取仓库中最新的 suian-zcode-app-mcp/SKILL.md，
+公共网关统一按 suian-zcode-gateway/SKILL.md 配置，复用同一网关，
+保留已有授权、模型选择和其他配置。
+完成后分别检查插件与网关；需要我操作界面或重启时，说明保存工作、完整退出
+和从正确环境重开的方法，不要自行重启 ZCode。
 ```
+
+本插件的获取范围是 **MCP 目录 + 公共网关 + 仓库根文件**，可以不检出命名插件。克隆命令与已有稀疏检出的扩展方式统一见 [根 README 的代码获取范围](../README.md#代码获取范围)。如果两个插件都要，可使用根 README 的组合提示词，由 Agent 询问插件选择。
 
 [本插件 skill](./SKILL.md) 负责服务注册与只读验证，[公共网关 skill](../suian-zcode-gateway/SKILL.md) 统一负责启动、Desktop 环境变量和恢复。`node install.mjs` 幂等部署本插件 skill 到 `~/.zcode/skills/suian-zcode-app-mcp`；该命令不会自动注册 MCP 服务。
 
