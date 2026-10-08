@@ -90,11 +90,13 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 
 ### 手动接入 MCP
 
-需要 Node.js 24+。在本插件目录安装锁定依赖：
+需要 Node.js 24+，使用 Node 内置 SQLite，无需另装 sqlite3 命令行程序。在本插件目录安装锁定依赖：
 
 ```powershell
 npm ci --ignore-scripts --no-fund --no-audit
 ```
+
+同级公共层也需按公共 skill 安装依赖。注册服务前运行 `node install.mjs --check-only`，确认 Node 与 npm 依赖可用；检查失败时先补齐再继续。正常安装入口也会执行这些检查。
 
 在 MCP 客户端添加下面的 stdio 服务。将 `{{plugin_root}}` 替换为本插件目录的绝对路径，建议使用 `/` 分隔符；服务入口必须是 `cli.mjs`。配置示例见 [mcp.config.example.json](./mcp.config.example.json)。
 

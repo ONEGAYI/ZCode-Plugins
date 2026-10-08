@@ -138,5 +138,27 @@
     "有效授权下 probe_ok 实测",
     "真实远控失败场景的 Toast 冷却体验（断开移动端后连续两轮 Stop 只弹一次）"
   ],
+  "followUpValidation": [
+    {
+      "date": "2026-10-08",
+      "scope": "安装依赖检查与 doctor 的真实 Hook 配置诊断",
+      "red": [
+        "旧命名安装器在检测 sqlite3 缺失前尝试通知系统写入，隔离拦截器使测试失败且未修改用户系统",
+        "旧 MCP 安装器在模拟 Node 22 时仍部署技能，缺少预期失败；--check-only 未支持",
+        "doctor 新契约在诊断模块未实现时失败；旧 CLI 的 hook:not_configured 是硬编码"
+      ],
+      "green": { "common": 87, "mcp": 43, "title": 42, "passed": 172, "failed": 0, "skipped": 0 },
+      "contracts": [
+        "正常安装和仅检查都校验 Node.js 24+、所需 npm 依赖；依赖失败时不写用户配置或技能",
+        "仅命名插件检查 sqlite3 CLI 的只读 JSON 查询；MCP 使用 Node 内置 SQLite",
+        "命名安装与运行共用 sqliteBin > SQLITE_BIN > PATH 顺序，显式无效路径不回退",
+        "sqliteBin:null 在检查与运行中都按未指定处理；--check-only 与 --remove 互斥，拒绝时不执行卸载",
+        "doctor 读取用户级 Stop Hook 的实际命令、全局及单条启用状态、async；缺失、停用或前台条目时 not_ready",
+        "配置损坏明确报错；检查不修改 Hook 文件；execution:not_verified 保留真实触发验收边界"
+      ],
+      "tests": ["../../suian-zcode-common/tests/prerequisites.test.mjs", "../../suian-zcode-app-mcp/tests/install.test.mjs", "tests/install.test.mjs", "tests/cli.test.mjs", "tests/doctor.test.mjs"],
+      "limits": ["Hook 诊断检查用户级安装条目，不证明当前会话加载或触发了 Hook", "本轮没有安装或卸载真实通知资产、修改用户 Hook/MCP 设置或调用原 Host"]
+    }
+  ],
   "secrets": "无凭据；授权 blob 为 DPAPI 密文，链接明文未落任何文件或日志"
 }

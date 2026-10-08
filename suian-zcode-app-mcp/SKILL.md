@@ -15,7 +15,7 @@ description: 当用户要求初始化、升级或排查 ZCode 会话 MCP，查�
 
 ## 初始化与更新
 
-1. 确认 Node.js 24+，在插件根执行 `npm ci --ignore-scripts --no-audit --no-fund`，然后 `node "{{plugin_root}}/install.mjs"`。安装器幂等部署 `~/.zcode/skills/suian-zcode-app-mcp/SKILL.md`，不自动写 MCP 配置。
+1. **先检查依赖，再写配置**。在插件根和同级公共根分别执行 `npm ci --ignore-scripts --no-audit --no-fund`，然后 `node "{{plugin_root}}/install.mjs" --check-only`。检查当前 Node.js 24+、MCP SDK / zod 和公共 ws 依赖；MCP 使用 Node 内置 SQLite，不要求 sqlite3 CLI。此步不写 skill 或 MCP 配置，失败时先协助补齐依赖并重查，不能忽略失败注册服务。通过后执行 `node "{{plugin_root}}/install.mjs"`；正常安装也先强制检查依赖，再幂等部署 `~/.zcode/skills/suian-zcode-app-mcp/SKILL.md`，不自动写 MCP 配置。
 2. **调用公共网关 skill**：优先读取仓库同级的最新 `../suian-zcode-common/SKILL.md`；源码尚未定位时用已安装的 `~/.zcode/skills/suian-zcode-common/SKILL.md` 定位。完成其依赖与分层检查；首次安装用 Install，升级按公共 skill 的 Restart 流程，不把正在运行的旧代码视为已升级。网关启动、用户环境变量、重启方法和恢复流程以公共 skill 为唯一来源，不在本插件复制实现。缺少公共子项目时说明仓库不完整，先补齐同一版本源码。
 3. 注册本服务。默认使用用户级 `~/.zcode/cli/config.json`；用户明确要求仅当前工作区时使用该工作区 `.zcode/config.json`。先读取并解析已有文件，仅合并本服务，保留其他服务、Hook、模型配置，以及已有的数据库参数。JSON 损坏时明确报错，不覆盖整个文件。
 

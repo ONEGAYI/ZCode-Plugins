@@ -14,7 +14,7 @@
 
 ### 环境要求
 
-Node.js 24+、sqlite3（PATH 可达，或经 `SQLITE_BIN` 环境变量 / 配置项 `sqliteBin` 指定）、已打开目标工作区的 ZCode。无需 npm install。
+Node.js 24+、sqlite3（配置项 `sqliteBin` → `SQLITE_BIN` 环境变量 → PATH）、已打开目标工作区的 ZCode。插件自身无需 npm install；公共层按其 skill 安装锁定 npm 依赖。命名安装入口先检查 Node、公共依赖与 sqlite3 只读 JSON 能力，检查失败不安装 Hook 或通知。
 
 ### CLI
 
@@ -38,7 +38,7 @@ node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
 # auth / unauth：stdin 带 authorization_url 加密保存 / 清除授权
 ```
 
-默认调用通过公共网关 connectHost，无需远控链接；gatewayConfigPath 可指定公共配置文件。auth/unauth 只保留旧凭据管理，不能据其状态判断网关是否就绪。安装与卸载：`node .\install.mjs (Resolve-Path .\.local)`，加 `--remove`。
+默认调用通过公共网关 connectHost，无需远控链接；gatewayConfigPath 可指定公共配置文件。auth/unauth 只保留旧凭据管理，不能据其状态判断网关是否就绪。安装：`node .\install.mjs .\.local`；仅检查加 `--check-only`，自定义配置加 `--config {{path}}`。卸载加 `--remove`，不能与仅检查同时使用。
 
 ### 链路概要
 
@@ -74,6 +74,7 @@ node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
 | ../suian-zcode-common/auth-store.mjs | 公共 DPAPI 存取；仍使用本插件 `.local/remote.blob` |
 | toast.mjs / toast-action.mjs | 命名失败文案、排障提示词与自有协议动作；系统通知、冷却和剪贴板交给公共层 |
 | install.mjs | 自有通知身份、Stop Hook 配置与技能副本；协议桥及 AUMID 系统安装调用公共层 |
+| doctor.mjs | 只读双库/模型与实际用户级 Stop Hook 配置检查；明确区分配置就绪和执行待验证 |
 | prompt.md | 命名规则（沿用自 oil-codex-title 的 prompts/naming.md，只调整编辑器名称） |
 | SKILL.md | 自然语言操作入口、插件根定位与 Hook；公共网关配置委托同级 `suian-zcode-common` skill |
 | ../suian-zcode-common/vendor/ | 两个插件共用的固定投影库与远控协议库，见公共 NOTICE.md |

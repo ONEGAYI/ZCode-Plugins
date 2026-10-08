@@ -35,7 +35,7 @@ local-only 只保留本机插件控制，官方手机页面不能连接，ZCode 
 ## 首次安装
 
 1. 确认 Windows、Node.js 24+ 和公共根，在公共根运行 `npm ci --ignore-scripts --no-audit --no-fund`。不初始化或安装 `sources/` 的依赖。
-2. 执行 Status。未配置才执行 Install；已有配置按后文复用或升级，不另建实例。
+2. 按所选插件的 skill 完成安装器 `--check-only`，依赖缺失时先补齐再重查。两个插件都要求 Node.js 24+ 和各自 npm 依赖，只有自动命名需要 sqlite3 CLI；不要给 MCP 强加该依赖。检查通过后才执行 Status 与配置写入。未配置才执行 Install；已有配置按后文复用或升级，不另建实例。
 
 ```powershell
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{common_root}}/setup.ps1" -Action Status

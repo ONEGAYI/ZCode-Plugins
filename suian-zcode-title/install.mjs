@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-import {join,dirname} from "node:path";
+import {join,dirname,resolve} from "node:path";
 import {fileURLToPath,pathToFileURL} from "node:url";
+import {homedir} from "node:os";
+import {parseArgs} from "node:util";
+import {checkRuntime} from "../suian-zcode-common/prerequisites.mjs";
 import {fileShell as defaultShell} from "../suian-zcode-common/windows.mjs";
 import {installToastAssets as installNotificationAssets,removeToastAssets as removeNotificationAssets,ensureToastAppId as ensureNotificationAppId} from "../suian-zcode-common/notification-install.mjs";
 
@@ -76,14 +79,27 @@ export async function removeStopHook({pluginRoot,configFile,shell=defaultShell})
   return{action:"removed"};
 }
 
+export async function installPlugin({pluginRoot,dataDir,configPath,checkOnly=false,shell=defaultShell}) {
+  let config={};
+  try {config=JSON.parse(await shell.readText(configPath??join(pluginRoot,"config.local.json")));}
+  catch(error) {if(error.code!=="ENOENT"||configPath)throw error;}
+  const dependencies=await checkRuntime({sqliteBin:config.sqliteBin??process.env.SQLITE_BIN??"sqlite3",run:shell.run});
+  if(checkOnly)return{ok:true,action:"checked",dependencies};
+  const toast=await installToastAssets({pluginRoot,dataDir,shell});
+  const hook=await installStopHook({pluginRoot,configFile:join(homedir(),".zcode","cli","config.json"),shell});
+  const skill=await installSkill({pluginRoot,skillFile:join(homedir(),".zcode","skills",PROTOCOL,"SKILL.md"),shell});
+  return{ok:true,appId:toast.appId,dependencies,actions:{...toast.actions,hook:hook.action,skill:skill.action}};
+}
+
 const isMain=process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href;
 if(isMain) {
-  const {homedir}=await import("node:os");
   const pluginRoot=fileURLToPath(new URL(".",import.meta.url));
-  const dataDir=process.argv[2];
-  const remove=process.argv.includes("--remove");
+  const {values,positionals}=parseArgs({allowPositionals:true,options:{remove:{type:"boolean"},config:{type:"string"},"check-only":{type:"boolean"}}});
+  if(values.remove&&values["check-only"]) {console.error("--remove 与 --check-only 不能同时使用");process.exit(2);}
+  const dataDir=positionals[0];
+  const remove=values.remove;
   const configFile=join(homedir(),".zcode","cli","config.json");
-  if(!dataDir) {console.error("用法：node install.mjs <dataDir> [--remove]");process.exit(2);}
+  if(!dataDir||positionals.length!==1) {console.error("用法：node install.mjs <dataDir> [--config 文件] [--check-only | --remove]");process.exit(2);}
   const run=remove
     ?async()=>{
       const hook=await removeStopHook({pluginRoot,configFile});
@@ -91,13 +107,8 @@ if(isMain) {
       const skill=await removeSkill({skillFile:join(homedir(),".zcode","skills",PROTOCOL,"SKILL.md")});
       return{ok:true,actions:{hook:hook.action,toast:"removed",skill:skill.action}};
     }
-    :async()=>{
-      const toast=await installToastAssets({pluginRoot,dataDir});
-      const hook=await installStopHook({pluginRoot,configFile});
-      const skill=await installSkill({pluginRoot,skillFile:join(homedir(),".zcode","skills",PROTOCOL,"SKILL.md")});
-      return{ok:true,appId:toast.appId,actions:{...toast.actions,hook:hook.action,skill:skill.action}};
-    };
+    :()=>installPlugin({pluginRoot,dataDir,configPath:values.config?resolve(values.config):undefined,checkOnly:values["check-only"]});
   run()
     .then(result=>{console.log(JSON.stringify(result));})
-    .catch(error=>{console.log(JSON.stringify({ok:false,error:error.message}));process.exit(1);});
+    .catch(error=>{console.log(JSON.stringify({ok:false,error:error.name==="SyntaxError"?"配置 JSON 格式无效":error.message}));process.exit(1);});
 }

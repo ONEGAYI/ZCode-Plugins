@@ -34,6 +34,7 @@
 | notification-action.mjs | 复制调用方提示词、打开固定默认工作区 |
 | notification-install.mjs | 按调用方身份安装/移除协议桥、快捷方式与 AUMID |
 | windows.mjs | 公共 PowerShell 执行与安装用文件/系统边界 |
+| prerequisites.mjs | 两插件共用的安装检查：Node 版本、公共依赖；仅命名调用方要求 sqlite3 CLI 只读 JSON 能力 |
 | vendor/ | 固定消息投影和远控协议库，见 NOTICE.md |
 | SKILL.md / README.md | Agent 公共配置流程与模块接口、运行边界 |
 | tests/ | 回环网关、隔离 Windows 配置、远控、DPAPI 与通知契约 |

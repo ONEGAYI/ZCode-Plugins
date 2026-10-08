@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import {installToastAssets,removeToastAssets,ensureToastAppId,installStopHook,removeStopHook,buildHookCommand,installSkill,removeSkill,AUMID,PROTOCOL} from "../install.mjs";
 
 import {buildVbsContent,buildProtocolCommand} from "../../suian-zcode-common/notification-install.mjs";
+import {mkdtemp,writeFile,stat,rm} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {fileURLToPath,pathToFileURL} from "node:url";
+import {execFile} from "node:child_process";
+import {promisify} from "node:util";
 
 const makeShell=()=>{
   const state={files:new Map(),reg:[],ps:[],removed:[]};
@@ -98,4 +104,58 @@ test("技能副本由安装器部署：注入本机插件根，幂等，卸载�
   assert.equal(second.action,"unchanged","内容一致不得重写");
   await removeSkill({skillFile,shell});
   assert.ok(shell.state.removed.includes(skillFile));
+});
+
+test("CLI 缺少 sqlite3 时先报依赖错误，不安装通知资产或 Hook",async t=>{
+  const dir=await mkdtemp(join(tmpdir(),"z-title-missing-sqlite-"));
+  t.after(()=>rm(dir,{recursive:true}));
+  const preload=join(dir,"deny-system.mjs"),config=join(dir,"config.json"),dataDir=join(dir,"data");
+  // 旧安装器会先注册协议：禁止系统写入，让红灯复现也不会改用户环境。
+  await writeFile(preload,`import cp from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';const original=cp.execFile;cp.execFile=(command,...args)=>{if(command==='reg.exe'||command==='powershell.exe')throw new Error('UNEXPECTED_SYSTEM_MUTATION');return original(command,...args);};syncBuiltinESMExports();`);
+  await writeFile(config,"{}");
+  const cli=fileURLToPath(new URL("../install.mjs",import.meta.url));
+  const missing=join(dir,"missing-sqlite3.exe");
+  await assert.rejects(promisify(execFile)(process.execPath,["--import",pathToFileURL(preload).href,cli,dataDir,"--config",config],{windowsHide:true,env:{...process.env,SQLITE_BIN:missing}}),error=>{
+    assert.equal(error.code,1);
+    const result=JSON.parse(error.stdout);
+    assert.equal(result.ok,false);
+    assert.match(result.error,/sqlite3/);
+    assert.match(result.error,/sqliteBin/);
+    assert.match(result.error,/SQLITE_BIN/);
+    assert.equal(result.error.includes("UNEXPECTED_SYSTEM_MUTATION"),false);
+    return true;
+  });
+  await assert.rejects(stat(dataDir),{code:"ENOENT"});
+});
+
+test("CLI 拒绝把仅检查和卸载组合，不能执行系统变更",async t=>{
+  const dir=await mkdtemp(join(tmpdir(),"z-title-check-remove-"));
+  t.after(()=>rm(dir,{recursive:true}));
+  const preload=join(dir,"deny-system.mjs");
+  await writeFile(preload,`import cp from 'node:child_process';import fs from 'node:fs/promises';import {syncBuiltinESMExports} from 'node:module';const original=fs.readFile;fs.readFile=(path,...args)=>String(path).endsWith('config.json')?Promise.resolve('{}'):original(path,...args);fs.writeFile=async()=>{throw new Error('UNEXPECTED_SYSTEM_MUTATION');};fs.unlink=async()=>{throw new Error('UNEXPECTED_SYSTEM_MUTATION');};cp.execFile=()=>{throw new Error('UNEXPECTED_SYSTEM_MUTATION');};syncBuiltinESMExports();`);
+  const cli=fileURLToPath(new URL("../install.mjs",import.meta.url));
+  await assert.rejects(promisify(execFile)(process.execPath,["--import",pathToFileURL(preload).href,cli,join(dir,"data"),"--check-only","--remove"],{windowsHide:true}),error=>{
+    assert.equal(error.code,2);
+    assert.match(error.stdout+error.stderr,/不能同时使用/);
+    assert.equal((error.stdout+error.stderr).includes("UNEXPECTED_SYSTEM_MUTATION"),false);
+    return true;
+  });
+});
+
+test("CLI 检查配置中的 sqliteBin，失败不回退环境变量；仅检查不写资产",async t=>{
+  const dir=await mkdtemp(join(tmpdir(),"z-title-check-sqlite-"));
+  t.after(()=>rm(dir,{recursive:true}));
+  const config=join(dir,"config.json"),dataDir=join(dir,"data"),cli=fileURLToPath(new URL("../install.mjs",import.meta.url));
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
+  await writeFile(config,JSON.stringify({sqliteBin}));
+  const {stdout}=await promisify(execFile)(process.execPath,[cli,dataDir,"--config",config,"--check-only"],{windowsHide:true,env:{...process.env,SQLITE_BIN:join(dir,"missing-environment.exe")}});
+  const result=JSON.parse(stdout);
+  assert.equal(result.ok,true);
+  assert.equal(result.action,"checked");
+  assert.equal(result.dependencies.sqlite_bin,sqliteBin);
+  await assert.rejects(stat(dataDir),{code:"ENOENT"});
+  await writeFile(config,JSON.stringify({sqliteBin:join(dir,"missing-config.exe")}));
+  await assert.rejects(promisify(execFile)(process.execPath,[cli,dataDir,"--config",config,"--check-only"],{windowsHide:true}),error=>{
+    assert.match(JSON.parse(error.stdout).error,/sqlite3/);return true;
+  });
 });
