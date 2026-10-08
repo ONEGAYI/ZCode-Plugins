@@ -90,3 +90,7 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 - 标题生成使用你自己的模型额度，每次用量会保存在本机，可以让 Agent 帮忙查看。
 
 MIT 许可证。CLI 命令、探活分层、链路细节等技术文档见 [AGENTS.md](./AGENTS.md)。
+
+## 致谢
+
+感谢 [oil-codex-title](https://github.com/oil-oil/oil-codex-title) 提供的灵感和提示词参考。
