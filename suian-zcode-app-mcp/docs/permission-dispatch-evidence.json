@@ -1,6 +1,6 @@
 {
   "date": "2026-10-08",
-  "scope": "CLI 权限继承、父会话调用约束与 relay 回执隔离",
+  "scope": "CLI 权限继承、父会话调用约束、relay 回执隔离与可选发信策略",
   "readonly_observations": {
     "parent_permission": {
       "cli_session_mode": "yolo",
@@ -40,11 +40,20 @@
     }
   ],
   "validation": {
-    "mcp_tests": { "command": "npm test", "passed": 64, "failed": 0, "exit_code": 0 },
+    "mcp_tests": { "command": "npm test", "passed": 68, "failed": 0, "exit_code": 0 },
     "common_tests": { "command": "npm test", "passed": 88, "failed": 0, "exit_code": 0 },
     "rpc_without_ack": "隔离客户端显式设为 1000 ms，按既有 deadline 返回 gateway_timeout",
     "tool_schema": "真实 MCP SDK initialize/tools/list 公布九个工具；permission_mode 包含就地说明，创建与改名描述包含调用约束",
-    "diff_check": "git diff --check 通过"
+    "diff_check": "git diff --check 通过",
+    "message_delivery": {
+      "input": "delivery_mode 可省略或为 guide/queue；缺省不发送 requestedDelivery，跟随宿主",
+      "output": "requested_delivery_mode 是请求策略，admitted_delivery 原样报告 Host inputAccepted.delivery",
+      "red_green": "旧接口无法透传策略，MCP 拒绝新参数；改为原 Host zcode-agent/sendConversationCommandV4 的 sendText 后契约通过",
+      "ack_boundary": "隔离 Host 仍报告目标 running；发送方先等待 ACK，ACK 返回后即回执并释放连接，不等待目标处理或回复",
+      "invalid_ack": "Host 拒绝报告 rejected；ACK 缺失或串号、提交异常报告 unknown，保留本次 input_id 且不重发",
+      "published_package_check": "只读核对本机 app.asar 包含 sendConversationCommandV4 与 requestedDelivery；不是运行中真实发信验收",
+      "protocol_source": "sources/official-zcode @ 29628c9：zcodeAgent.ts、zcodeV4HostCommand.ts、zcode-protocol-v4/command.ts 与 session-flow.ts"
+    }
   },
   "limits": [
     "本轮不创建真实会话、不发送真实消息、不写用户会话数据库",

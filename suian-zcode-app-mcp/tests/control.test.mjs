@@ -23,6 +23,8 @@ async function fixture(overrides = {}) {
         if (method === 'renameTask') return { taskId: params[0].taskId, workspacePath: workspace, title: params[0].title };
         if (method === 'getTaskSnapshot') return { meta: { taskId: 'sess_new', status: 'completed' }, runtime: { plan: null, backgroundBashJobs: [], pendingCommands: [], pendingPermissions: [] } };
         if (method === 'archiveTask' || method === 'unarchiveTask') { archived = method === 'archiveTask'; return { taskId: params[0].taskId }; }
+        if (method === 'sendConversationCommandV4') return { commandId: params[0].envelope.commandId, status: 'accepted', revisionAtDecision: 1,
+          result: { type: 'inputAccepted', inputId: params[0].envelope.commandId, delivery: 'startNow' } };
       } };
     }
   });
@@ -43,12 +45,88 @@ test('创建使用指定模型，先命名后发送带来源标识的开局信�
   assert.equal(f.connections[0].args.sessionId, undefined);
   const sent = await f.controller.sendMessage({ session_id: created.session_id, message: '第二次测试' });
   assert.notEqual(sent.input_id, created.input_id);
-  assert.equal(f.calls.at(-1).params[0].content, wrapped('第二次测试'));
-  assert.deepEqual(f.calls.slice(-3).map(c => c.method), ['getTaskMeta', 'resumeTask', 'sendPrompt']);
+  assert.equal(f.calls.at(-1).params[0].envelope.payload.text, wrapped('第二次测试'));
+  assert.deepEqual(f.calls.slice(-3).map(c => c.method), ['getTaskMeta', 'resumeTask', 'sendConversationCommandV4']);
   const renamed = await f.controller.renameSession({ session_id: created.session_id, title: '新标题' });
   assert.equal(renamed.title, '新标题');
   assert.deepEqual(f.calls.slice(-2).map(c => c.method), ['renameTask', 'getTaskMeta']);
   assert.ok(f.connections.every(c => c.closed));
+});
+
+test('发信策略可缺省跟随宿主或显式 guide/queue，回执报告 Host 实际接收方式', async () => {
+  for (const deliveryMode of [undefined, 'guide', 'queue']) {
+    const f = await fixture({ sendConversationCommandV4: ([{ envelope }]) => ({
+      commandId: envelope.commandId, status: 'accepted', revisionAtDecision: 1,
+      result: { type: 'inputAccepted', inputId: envelope.commandId, delivery: 'queue' }
+    }) });
+    const result = await f.controller.sendMessage({ session_id: 'sess_working', message: '状态更新',
+      ...(deliveryMode === undefined ? {} : { delivery_mode: deliveryMode }) });
+    const submitted = f.calls.at(-1);
+    assert.equal(submitted.channel, 'zcode-agent');
+    assert.equal(submitted.method, 'sendConversationCommandV4');
+    const { envelope } = submitted.params[0];
+    assert.equal(envelope.type, 'sendText');
+    assert.equal(envelope.sessionId, 'sess_working');
+    assert.equal(envelope.commandId, result.input_id);
+    assert.equal(envelope.payload.text, wrapped('状态更新'));
+    assert.equal(envelope.payload.heldQueueDisposition, 'keepQueueAndSend');
+    assert.equal(envelope.payload.requestedDelivery, deliveryMode);
+    assert.equal(Object.hasOwn(envelope.payload, 'requestedDelivery'), deliveryMode !== undefined);
+    assert.equal(result.requested_delivery_mode, deliveryMode ?? 'host_default');
+    assert.equal(result.admitted_delivery, 'queue');
+    assert.equal(result.delivery_status, 'accepted');
+    assert.equal(f.connections[0].closed, true);
+  }
+});
+
+test('发信等待 Host ACK 后即回执，不等待工作中接收方结束或回复', { timeout: 2000 }, async () => {
+  const submitted = Promise.withResolvers(), ackGate = Promise.withResolvers();
+  const f = await fixture({
+    getTaskMeta: () => ({ taskId: 'sess_working', workspacePath: workspace, status: 'running' }),
+    sendConversationCommandV4: async ([{ envelope }]) => {
+      submitted.resolve(); await ackGate.promise;
+      return { commandId: envelope.commandId, status: 'accepted', revisionAtDecision: 1,
+        result: { type: 'inputAccepted', inputId: envelope.commandId, delivery: 'queue' } };
+    }
+  });
+  let received = false;
+  const sending = f.controller.sendMessage({ session_id: 'sess_working', message: '报告' }).then(result => { received = true; return result; });
+  await submitted.promise;
+  assert.equal(received, false);
+  ackGate.resolve();
+  const receipt = await sending;
+  assert.equal(receipt.delivery_status, 'accepted');
+  assert.equal(receipt.admitted_delivery, 'queue');
+  assert.deepEqual(f.calls.map(c => c.method), ['getTaskMeta', 'resumeTask', 'sendConversationCommandV4']);
+  assert.equal(f.connections[0].closed, true);
+});
+
+test('Host 拒绝、回执缺失或串号时不报告 accepted，保留本次输入标识且不重发', async () => {
+  for (const [makeAck, pattern, deliveryStatus] of [
+    [() => undefined, /delivery_not_confirmed/, 'unknown'],
+    [envelope => ({ commandId: envelope.commandId, status: 'rejected', reasonCode: 'fixture.blocked' }), /send_not_accepted/, 'rejected'],
+    [envelope => ({ commandId: envelope.commandId, status: 'accepted' }), /delivery_not_confirmed/, 'unknown'],
+    [envelope => ({ commandId: envelope.commandId, status: 'accepted', result: { type: 'inputAccepted', inputId: 'wrong-input', delivery: 'queue' } }), /delivery_not_confirmed/, 'unknown']
+  ]) {
+    const f = await fixture({ sendConversationCommandV4: ([{ envelope }]) => makeAck(envelope) });
+    await assert.rejects(f.controller.sendMessage({ session_id: 'sess_new', message: 'hello' }), error => {
+      assert.match(error.message, pattern);
+      assert.equal(error.partial_result.input_id, f.calls.at(-1).params[0].envelope.commandId);
+      assert.equal(error.partial_result.session_id, 'sess_new');
+      assert.equal(error.partial_result.delivery_status, deliveryStatus);
+      return true;
+    });
+    assert.equal(f.calls.filter(c => c.method === 'sendConversationCommandV4').length, 1);
+    assert.equal(f.connections[0].closed, true);
+  }
+  const f = await fixture({ sendConversationCommandV4: () => { throw new Error('fixture disconnected'); } });
+  await assert.rejects(f.controller.sendMessage({ session_id: 'sess_new', message: 'hello' }), error => {
+    assert.match(error.message, /fixture disconnected/);
+    assert.equal(error.partial_result.input_id, f.calls.at(-1).params[0].envelope.commandId);
+    assert.equal(error.partial_result.delivery_status, 'unknown');
+    return true;
+  });
+  assert.equal(f.connections[0].closed, true);
 });
 
 test('开局标明 creator，后续信息标明 deliverer，来源与接收方 ID 分开', async () => {
@@ -61,8 +139,8 @@ test('开局标明 creator，后续信息标明 deliverer，来源与接收方 I
   const sent = await f.controller.sendMessage({ session_id: created.session_id, deliverer: 'sess_sender', message: '后续正文' });
   assert.equal(sent.deliverer, 'sess_sender');
   assert.equal(sent.session_id, 'sess_new');
-  assert.equal(f.calls.at(-1).params[0].taskId, 'sess_new');
-  assert.equal(f.calls.at(-1).params[0].content, '<delivered-by-other-session deliverer="sess_sender">\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n后续正文\n</delivered-by-other-session>');
+  assert.equal(f.calls.at(-1).params[0].envelope.sessionId, 'sess_new');
+  assert.equal(f.calls.at(-1).params[0].envelope.payload.text, '<delivered-by-other-session deliverer="sess_sender">\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n后续正文\n</delivered-by-other-session>');
 });
 
 test('来源 ID 在 XML 属性中转义，正文原样保留；不提供 ID 时省略属性和回执字段', async () => {
@@ -72,13 +150,13 @@ test('来源 ID 在 XML 属性中转义，正文原样保留；不提供 ID 时�
   assert.ok(f.calls.at(-1).params[0].content.startsWith('<created-by-other-session creator="sess_&quot;&lt;&amp;&gt;">'));
   assert.ok(f.calls.at(-1).params[0].content.includes('</notice>\n' + body + '\n</created-by-other-session>'));
   await f.controller.sendMessage({ session_id: created.session_id, deliverer: origin, message: body });
-  assert.ok(f.calls.at(-1).params[0].content.startsWith('<delivered-by-other-session deliverer="sess_&quot;&lt;&amp;&gt;">'));
+  assert.ok(f.calls.at(-1).params[0].envelope.payload.text.startsWith('<delivered-by-other-session deliverer="sess_&quot;&lt;&amp;&gt;">'));
   const anonymous = await f.controller.startSession({ workspace_path: workspace, message: body });
   assert.equal(Object.hasOwn(anonymous, 'creator'), false);
   assert.equal(f.calls.at(-1).params[0].content, opening(body));
   const sent = await f.controller.sendMessage({ session_id: anonymous.session_id, message: body });
   assert.equal(Object.hasOwn(sent, 'deliverer'), false);
-  assert.equal(f.calls.at(-1).params[0].content, wrapped(body));
+  assert.equal(f.calls.at(-1).params[0].envelope.payload.text, wrapped(body));
 });
 
 test('归档检测主代理、后台/子代理、未完成任务及待交互，默认阻止且 force 后才写入', async () => {

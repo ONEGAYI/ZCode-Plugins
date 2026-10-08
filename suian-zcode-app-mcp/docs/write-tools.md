@@ -1,6 +1,6 @@
 # 会话写工具
 
-五个写工具通过公共远控客户端附着原 ZCode Desktop Host，调用 `zcode-task` 服务；不启动独立 CLI app-server、不直接写会话数据库。读取与分页仍按 [读取契约](./readonly-tools.md)。
+五个写工具通过公共远控客户端附着原 ZCode Desktop Host。任务操作调用 `zcode-task`，`send_message` 通过 `zcode-agent` 的 v4 `sendText` 提交消息并取得投递回执；不启动独立 CLI app-server、不直接写会话数据库。读取与分页仍按 [读取契约](./readonly-tools.md)。
 
 ## 连接与授权
 
@@ -38,13 +38,28 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`permission_mode`（宿主创建响应读回的生效权限；旧版 Host 响应缺该字段时缺席并附 `permission_unverified`）、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。显式或继承的权限读回值不一致时报 `permission_not_confirmed`，携带已创建会话的 partial_result，不发送开局；响应缺失权限字段属无法核实而非不一致，放行并附 `permission_unverified` 警告，不阻断开局。
 
-`send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。可直接使用创建工具返回的 ID：
+`send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。`delivery_mode` 可省略，建议通常省略以跟随宿主当前输入策略；显式覆盖只影响本次消息，不改变会话设置：
+
+| `delivery_mode` | 处理方式 |
+| --- | --- |
+| 省略 | 不传 v4 `requestedDelivery`，由宿主当前输入策略决定 |
+| `guide` | 工作中在可消费输入的边界引导当前轮；不能立即消费时暂存 |
+| `queue` | 工作中排队后续处理 |
+
+空闲时两种显式策略都可启动新一轮。接口不开放强制抢占的 `startNow` 输入。保留既有的 `keepQueueAndSend`：暂停队列需要发送裁决时保留旧队列，不清空它。可直接使用创建工具返回的 ID，通常不必填写投递策略：
 
 ```json
 {"name":"send_message","arguments":{"session_id":"sess_example","message":"继续测试，只回复 SECOND_OK"}}
 ```
 
-成功返回 `session_id`、`workspace_path`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `deliverer`，有冲突时附 `warnings`。不会在发送时切换用户指定会话的模型，也不改变目标会话的权限模式：恢复链路不携带 `mode`，权限保持会话现状。
+成功返回 `session_id`、`workspace_path`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `deliverer`，有冲突时附 `warnings`。投递回执另带两个字段：
+
+- `requested_delivery_mode`：调用方请求的 `guide` / `queue`；省略时为 `host_default`。
+- `admitted_delivery`：Host `inputAccepted` 回执的 `startNow` / `queue` / `guide` 原值。公开上游实现也会把尚待消费的 guide 返回为 queue；这只说明输入已接收，不证明已注入当前轮或已处理完。
+
+工具等待 Host 接受提交的 ACK 后即返回并释放连接，不等待接收方工作结束或回复；不能把“不等待处理”理解为无需等待网络和 Host 确认。Host 明确拒绝时返回 `send_not_accepted`、`delivery_status:rejected`；提交异常、缺少有效回执或输入标识不一致时返回 `delivery_status:unknown`，保留本次 `input_id` 供核对，不自动重发。Host 缺少 v4 命令接口时明确报错，不回退到无法表达策略和回执的旧发送接口。
+
+发信不改变目标会话的权限模式：恢复链路不携带 `mode`，权限保持会话现状；消息也不携带模型选择覆盖。
 
 所有工具拒绝未知参数和空白标题/信息。MCP 注解中两个读取工具保持 `readOnlyHint:true`；五个写工具为 false，创建和发信不是幂等操作。
 

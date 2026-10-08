@@ -46,6 +46,7 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
   delay = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false;
   const glmAttempts = new Map();
+  const deliveryClientId = `suian-zcode-app-mcp-${randomUUID()}`;
   const targetOf = args => ({ sessionId: args.session_id,
     workspacePath: args.workspace_path ?? reader.readSession({ session_id: args.session_id, workspace_key: args.workspace_key, limit: 1 }).session.workspace_path });
   const attached = async (target, run, timeoutMs = 120000) => {
@@ -152,9 +153,32 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
         const meta = await remote.call('zcode-task', 'getTaskMeta', [params]);
         if (!meta || meta.taskId !== args.session_id) throw new Error('session_not_found: 原 Host 未确认目标会话');
         await remote.call('zcode-task', 'resumeTask', [params]);
-        return { source: 'original_host', session_id: args.session_id, workspace_path: remote.workspacePath,
+        const input_id = randomUUID();
+        const result = { source: 'original_host', session_id: args.session_id, workspace_path: remote.workspacePath, input_id,
+          requested_delivery_mode: args.delivery_mode ?? 'host_default',
           ...(args.deliverer === undefined ? {} : { deliverer: args.deliverer }), ...(args.originWarning ? { warnings: [args.originWarning] } : {}),
-          ...await send(remote, args.session_id, deliveredMessage(args.message, args.deliverer, args.originWarning)) };
+        };
+        let ack;
+        try {
+          ack = await remote.call('zcode-agent', 'sendConversationCommandV4', [{ workspacePath: remote.workspacePath,
+            envelope: { commandId: input_id, clientId: deliveryClientId, sessionId: args.session_id, type: 'sendText', issuedAt: now(),
+              payload: { text: deliveredMessage(args.message, args.deliverer, args.originWarning), heldQueueDisposition: 'keepQueueAndSend',
+                ...(args.delivery_mode === undefined ? {} : { requestedDelivery: args.delivery_mode }) } } }]);
+        } catch (error) {
+          error.partial_result = { ...result, delivery_status: 'unknown' };
+          throw error;
+        }
+        if (ack?.commandId !== input_id)
+          throw Object.assign(new Error('delivery_not_confirmed: 原 Host 未返回本次输入的有效投递回执'),
+            { partial_result: { ...result, delivery_status: 'unknown' } });
+        if (!['accepted', 'duplicate'].includes(ack.status))
+          throw Object.assign(new Error(`send_not_accepted: ${ack.reasonCode ?? ack.status}${ack.message ? ': ' + ack.message : ''}`),
+            { partial_result: { ...result, delivery_status: 'rejected' } });
+        if (ack.result?.type !== 'inputAccepted' || ack.result.inputId !== input_id ||
+            !['startNow', 'queue', 'guide'].includes(ack.result.delivery))
+          throw Object.assign(new Error('delivery_not_confirmed: 原 Host 未返回本次输入的有效投递回执'),
+            { partial_result: { ...result, delivery_status: 'unknown' } });
+        return { ...result, delivery_status: 'accepted', admitted_delivery: ack.result.delivery };
       });
     },
     async archiveSession(args) {
