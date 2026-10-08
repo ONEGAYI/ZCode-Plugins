@@ -67,6 +67,25 @@ function Wait-GatewayExit {
     throw 'Gateway or launcher did not exit; configuration was not changed'
 }
 
+function Send-EnvironmentChange {
+    if (-not ('SuianZcodeGateway.EnvironmentBroadcast' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace SuianZcodeGateway {
+    public static class EnvironmentBroadcast {
+        [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode, SetLastError=true)]
+        public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wparam, string area, uint flags, uint timeout, out UIntPtr result);
+    }
+}
+'@
+    }
+    $messageResult = [UIntPtr]::Zero
+    # HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG；每个窗口最多等待一秒。
+    $sent = [SuianZcodeGateway.EnvironmentBroadcast]::SendMessageTimeout([IntPtr]65535, 26, [UIntPtr]::Zero, 'Environment', 2, 1000, [ref]$messageResult)
+    if ($sent -eq [IntPtr]::Zero) { throw 'Environment change broadcast failed or timed out; user environment was already updated. Use the explicit launch steps to load it' }
+}
+
 if ($Port -lt 1 -or $Port -gt 65535) { throw 'Invalid gateway port' }
 if ($Action -eq 'Status') {
     $health = $null
@@ -109,6 +128,8 @@ if ($Action -eq 'Remove') {
         else { New-ItemProperty -LiteralPath 'HKCU:\Environment' -Name $relayVariable -Value $config.previous_user_relay -PropertyType String -Force | Out-Null }
         $environmentAction = 'restored'
     }
+    $environmentBroadcast = 'not_needed'
+    if ($environmentAction -eq 'restored') { Send-EnvironmentChange; $environmentBroadcast = 'sent' }
     if ($null -ne $task) {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
     }
@@ -121,7 +142,7 @@ if ($Action -eq 'Remove') {
     }
     Remove-Item -LiteralPath $configFile
     if (Test-Path -LiteralPath $launcherFile) { Remove-Item -LiteralPath $launcherFile }
-    [ordered]@{ ok=$true; action='removed'; user_env_action=$environmentAction; restart_required=$true } | ConvertTo-Json -Compress
+    [ordered]@{ ok=$true; action='removed'; user_env_action=$environmentAction; environment_broadcast=$environmentBroadcast; restart_required=$true } | ConvertTo-Json -Compress
     return
 }
 
@@ -197,6 +218,7 @@ if ($null -ne $config -and (Test-Path -LiteralPath $legacySkillFile)) {
     $legacySkill = Get-Content -LiteralPath $legacySkillFile -Raw -Encoding UTF8
     if ($legacySkill.Contains(('**本机网关根**：`' + $config.gateway_root + '`'))) { Remove-Item -LiteralPath $legacySkillFile }
 }
-# 仅写用户级值；当前 Desktop 主进程不会重新读取。
+# 写入后通知 Explorer 等启动器；当前 Desktop 主进程仍需事后重开。
 New-ItemProperty -LiteralPath 'HKCU:\Environment' -Name $relayVariable -Value $relayUrl -PropertyType String -Force | Out-Null
-[ordered]@{ ok=$true; action=$(if ($restarting) { 'restarted' } else { 'installed' }); mode=$Mode; relay_url=$relayUrl; health_url=$healthUrl; gateway_running=$true; task_running=$taskRunning; health_status='reachable'; desktop_connected=$health.desktop_connected; paired=$health.paired; vbs_launcher=$vbsLauncher; launcher_update_required=(-not $vbsLauncher -or -not $taskRunning); restart_required=(-not $health.desktop_connected -or -not $vbsLauncher -or -not $taskRunning) } | ConvertTo-Json -Compress
+Send-EnvironmentChange
+[ordered]@{ ok=$true; action=$(if ($restarting) { 'restarted' } else { 'installed' }); mode=$Mode; relay_url=$relayUrl; health_url=$healthUrl; gateway_running=$true; task_running=$taskRunning; health_status='reachable'; desktop_connected=$health.desktop_connected; paired=$health.paired; vbs_launcher=$vbsLauncher; launcher_update_required=(-not $vbsLauncher -or -not $taskRunning); environment_broadcast='sent'; restart_required=(-not $health.desktop_connected -or -not $vbsLauncher -or -not $taskRunning) } | ConvertTo-Json -Compress

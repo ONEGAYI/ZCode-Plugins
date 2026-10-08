@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-08",
+  "base": "97660b9db1e5b08d19dc72fd10f51cfd9b94387f",
+  "scope": "用户环境写入或恢复后广播变更，让处理通知的启动器可在同次登录获取新值",
+  "contracts": [
+    "Install 与 Restart 写入注册表后才广播，重复安装也发送通知",
+    "Remove 恢复原值或删除本工具变量后广播；保留外部改动不广播",
+    "环境恢复后立即广播，随后清理任务或文件失败也不会漏掉通知；清理错误仍明确报出",
+    "Status 不广播，未安装的 Remove 不改变环境",
+    "使用 HWND_BROADCAST、WM_SETTINGCHANGE、空 wParam 和 Unicode Environment",
+    "SMTO_ABORTIFHUNG 与每窗口 1000ms 超时；检查 API 返回值而非消息处理结果",
+    "广播失败明确报错，不回滚已写用户值、不宣称安装成功"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-settingchange",
+    "https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendmessagetimeoutw",
+    "https://learn.microsoft.com/en-us/windows/win32/procthread/environment-variables"
+  ],
+  "validation": { "common": 84, "mcp": 40, "title": 37, "passed": 161, "failed": 0, "skipped": 0 },
+  "native_probe": {
+    "used_production_function": true,
+    "real_win32_api": true,
+    "environment_broadcast": "sent",
+    "elapsed_ms": 1029,
+    "changed_registry": false,
+    "restarted_desktop": false,
+    "regular_shortcut_start_verified": false
+  },
+  "limits": [
+    "契约测试以合成原生方法替换 User32，不修改真实用户环境或广播到真实桌面",
+    "广播成功不是所有启动器更新环境的证明；已运行的 ZCode 与终端不会自动继承新值",
+    "真实探针只检查广播 API 返回成功，未退出宿主或从普通快捷方式启动新 ZCode",
+    "新建 ZCode 的普通快捷方式启动效果仍以实际连接检查为准"
+  ]
+}
