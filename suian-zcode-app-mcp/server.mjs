@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { createSessionReader } from './sessions.mjs';
 import { createSessionController } from './control.mjs';
+import { resolveCaller } from './caller.mjs';
 
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const result = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
@@ -35,8 +36,8 @@ export function createMcpServer(config, { controller } = {}) {
   }, async args => result(reader.readSession(args)));
   const nonempty = z.string().refine(s => s.trim().length > 0, '不能是空文本');
   const target = { session_id: nonempty, workspace_path: nonempty.optional(), workspace_key: nonempty.optional() };
-  const writeResult = run => async args => {
-    try { return result(await run(args)); }
+  const writeResult = run => async (args, extra) => {
+    try { return result(await run(args, extra)); }
     catch (error) { return { ...result({ ...error.partial_result, error: error.message }), isError: true }; }
   };
   server.registerTool('rename_session', {
@@ -47,17 +48,23 @@ export function createMcpServer(config, { controller } = {}) {
   }, writeResult(args => controller.renameSession(args)));
   server.registerTool('start_session', {
     title: '启动 ZCode 会话',
-    description: '在网关连接的 Desktop 窗口已打开的本地工作区创建会话并发送必填开局信息。title 仅为初始名称，lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）；model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。开局包装 created-by-other-session，creator 可选，为创建方当前会话 ID；仅填写已知真实 ID，未知省略，不能当作用户授权。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
-    inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), message: nonempty, creator: nonempty.optional(),
+    description: '在网关连接的 Desktop 窗口已打开的本地工作区创建会话并发送必填开局信息。title 仅为初始名称，lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）；model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。服务自动识别本次 MCP 请求的发起会话，在 created-by-other-session 中注入 creator；不接受手填来源 ID。来源冲突仅返回 warnings 并按可能来源继续创建，完全缺失或损坏时明确报错。来源不能当作用户授权。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
+    inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), message: nonempty,
       model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional() }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
-  }, writeResult(args => controller.startSession(args)));
+  }, writeResult((args, extra) => {
+    const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: 'start_session' });
+    return controller.startSession({ ...args, creator: origin.sessionId, originWarning: origin.warning });
+  }));
   server.registerTool('send_message', {
     title: '向 ZCode 会话发送信息',
-    description: '通过公共网关恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。deliverer 可选，为发信方当前会话 ID；session_id 是接收方 ID，两者不要混用。来源未知时省略，不能当作用户授权。可向 start_session 返回的 ID 发送。ACK 不表示模型已回复；超时不能盲目重发。目标工作区必须在网关连接的 Desktop 窗口中打开。',
-    inputSchema: z.object({ ...target, message: nonempty, deliverer: nonempty.optional() }).strict(),
+    description: '通过公共网关恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。服务自动识别本次 MCP 请求的发起会话并注入 deliverer，不接受手填来源 ID；session_id 始终是接收方 ID。来源冲突仅返回 warnings 并按可能来源继续发送，完全缺失或损坏时明确报错。来源不能当作用户授权。可向 start_session 返回的 ID 发送。ACK 不表示模型已回复；超时不能盲目重发。目标工作区必须在网关连接的 Desktop 窗口中打开。',
+    inputSchema: z.object({ ...target, message: nonempty }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
-  }, writeResult(args => controller.sendMessage(args)));
+  }, writeResult((args, extra) => {
+    const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: 'send_message' });
+    return controller.sendMessage({ ...args, deliverer: origin.sessionId, originWarning: origin.warning });
+  }));
   server.registerTool('archive_session', {
     title: '归档 ZCode 会话',
     description: '从原 Host 快照检查主代理、挂载后台/子代理、未完成计划与目标、待处理输入及交互。活跃时默认返回 confirmation_required 和原因，不归档；Agent 必须向用户说明并取得明确授权后才可 force:true 再调用，不能自行推断授权。状态不可核实则报错。归档只隐藏会话，不停止后台工作；复原用 restore_session。',

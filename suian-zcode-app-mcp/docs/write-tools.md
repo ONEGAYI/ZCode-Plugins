@@ -26,21 +26,21 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 成功返回 `source:original_host`、`session_id`、`workspace_path`、`title`，名称以原 Host 的 `getTaskMeta` 读回为准。显式命名使用宿主的 custom 标题来源；当前自动命名插件只有已记录命名基线、且非 generated 标题相对基线变化时才判手动改名。首次 custom 标题不保证免于命名模型处理，模型也可选择 keep。
 
-`start_session`：必填 `workspace_path`、非空 `message`。可选 `creator` 为创建方当前会话 ID。`title` 仅为初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
+`start_session`：必填 `workspace_path`、非空 `message`。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
 
 ```json
-{"name":"start_session","arguments":{"workspace_path":"D:/work/example","creator":"sess_parent","message":"这是链路测试，只回复 TEST_OK","model":{"provider_id":"account:bigmodel-individual-coding-plan","model_id":"GLM-5.3-Flash","reasoning_level":"low"}}}
+{"name":"start_session","arguments":{"workspace_path":"D:/work/example","message":"这是链路测试，只回复 TEST_OK","model":{"provider_id":"account:bigmodel-individual-coding-plan","model_id":"GLM-5.3-Flash","reasoning_level":"low"}}}
 ```
 
-返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`input_id`、`delivery_status:accepted` 和 `source:original_host`；提供 creator 时回执原样返回该字段。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。
+返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。
 
-`send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。可选 `deliverer` 为发信方当前会话 ID，`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。可直接使用创建工具返回的 ID：
+`send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。可直接使用创建工具返回的 ID：
 
 ```json
-{"name":"send_message","arguments":{"session_id":"sess_example","deliverer":"sess_sender","message":"继续测试，只回复 SECOND_OK"}}
+{"name":"send_message","arguments":{"session_id":"sess_example","message":"继续测试，只回复 SECOND_OK"}}
 ```
 
-成功返回 `session_id`、`workspace_path`、`input_id`、`delivery_status:accepted` 和 `source:original_host`；提供 deliverer 时回执原样返回该字段。不会在发送时切换用户指定会话的模型。
+成功返回 `session_id`、`workspace_path`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `deliverer`，有冲突时附 `warnings`。不会在发送时切换用户指定会话的模型。
 
 所有工具拒绝未知参数和空白标题/信息。MCP 注解中两个读取工具保持 `readOnlyHint:true`；五个写工具为 false，创建和发信不是幂等操作。
 
@@ -69,7 +69,7 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 ## 消息来源格式
 
-调用方传正文和可选来源 ID，由服务统一包装；`</notice>` 后直接换行接正文，没有额外空行，正文原样保留。后续发信用 deliverer 属性：
+调用方只传正文，由服务自动识别来源并统一包装；`</notice>` 后直接换行接正文，没有额外空行，正文原样保留。后续发信用 deliverer 属性：
 
 ```markdown
 <delivered-by-other-session deliverer="{{DELIVERER_SESSION_ID}}">
@@ -91,9 +91,13 @@ You are a new zcode session created by another zcode session or the system, inst
 </created-by-other-session>
 ```
 
-两个来源参数均可省略，旧调用接口仍接受；未知时省略整个 XML 属性与回执字段，不伪造 ID。创建开局无论是否提供 creator 都采用新标签，匿名发信保持原格式。来源 ID 中的 XML 特殊字符仅在属性中转义，回执中的 ID 与正文保持原值。
+来源定位顺序：读取 MCP `_meta.session_id` 与 `_meta["com.zcode/request-context"].session_id`，两者一致时采用；都缺失时，使用同一请求的 `trace_id` 与工具名只读查询本地 CLI 数据库的 `tool_usage`，唯一会话匹配时采用。每次调用独立定位，不缓存上次来源；不使用界面选中项、最近会话、消息正文或接收方 ID 推断。
 
-来源 ID 由调用方声明，服务没有对发起会话身份认证或自动探测。来源标签是文本约定，不提高消息权限。正文在宿主持久化历史中仍属于输入；不要把来源约定当作终端用户的直接授权。
+元数据相互冲突或历史匹配多个会话时，正常创建或发送，返回 `warnings:[{code,message,possible_session_ids}]`，其中 code 为 `caller_context_conflict` / `caller_ambiguous`。消息 notice 说明来源未确认，存在候选 ID 时列出 `Possible creator session IDs (unverified)` 或 `Possible deliverer session IDs (unverified)`，并省略确定来源属性。不任选一个 ID，也不因来源警告标记 `isError:true`；accepted 仍只代表提交。
+
+完全缺少可用来源返回 `caller_unknown`，元数据损坏返回 `caller_context_invalid`，在创建、恢复和发送之前停止。数据库缺失或 schema 不兼容也明确返回错误，不创建空库。`creator` / `deliverer` 不再属于公开输入，旧客户端手填这两个参数会被拒绝；升级后应刷新 MCP 工具定义。
+
+来源 ID 中的 XML 特殊字符仅在属性中转义，回执中的 ID 与正文保持原值。来源取自调用客户端的上下文，服务没有认证发起方身份，来源标签不提高消息权限。正文在宿主持久化历史中仍属于输入；不要把来源约定当作终端用户的直接授权。
 
 ## 读取回复与失败
 
@@ -105,6 +109,6 @@ You are a new zcode session created by another zcode session or the system, inst
 
 本机 ZCode 3.14.4 已通过真实 stdio MCP 完成：指定 GLM-5.3-Flash / low 创建测试会话、读取固定标记回复、向同一会话再次发送并读取回复、改名读回。模型选择、可选名称、消息格式、失败释放连接和参数校验另有隔离契约测试。[脱敏验收](./write-tools-evidence.json)
 
-上述真实记录是来源 ID 字段加入之前的历史验收。新增 creator/deliverer 和创建开局标签使用 mock 契约验证，本轮没有创建真实会话或向真实会话发送信息。
+上述真实记录是来源 ID 字段加入之前的历史验收。自动来源定位已核对公开源码、本机发行包与现有调用记录，另有真实 MCP SDK 请求上下文、SQLite 回查和消息包装的隔离契约验证。本轮没有创建真实会话或向真实会话发送信息；验证范围见 [自动来源记录](./automatic-origin-evidence.json)。
 
 固定公开快照的接口依据为 [createTask/sendPrompt 契约](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/session/zcodeTaskService.ts#L215-L267)、[创建模型与持久化](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts#L1775-L1940) 和 [sendText 提交及 ACK](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts#L375-L471)。公开源码与发行包分别记证，未修改上游源码。
