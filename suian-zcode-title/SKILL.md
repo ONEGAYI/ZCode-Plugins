@@ -22,7 +22,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 ### "初始化 / 安装 / 升级自动命名插件"
 
-1. `node <插件根>/install.mjs <插件根>/.local`——幂等安装协议桥、开始菜单快捷方式、自建通知标识（AUMID）。重复执行安全；输出 `ok:true` 表示本地安装完成，远控与生效状态仍要分别验证。
+1. **先检查依赖，再写配置**。在同级公共根运行 `npm ci --ignore-scripts --no-audit --no-fund`，然后执行 `node "{{plugin_root}}/install.mjs" "{{plugin_root}}/.local" --check-only`。检查当前 Node.js 24+、公共 npm 依赖和 sqlite3 的只读 JSON 查询；此步不写 Hook、通知资产或 skill。sqlite3 必须是 CLI 可执行文件，安装 npm 同名包不能代替。取值顺序为默认 config.local.json 中的 sqliteBin → SQLITE_BIN → PATH 的 sqlite3；自定义配置加 `--config {{config_path}}`，显式无效路径不回退。缺依赖时先协助补齐再重查，内网使用已有程序或离线包；建议将确认可执行的绝对路径写入 sqliteBin，确保后台 Hook 使用同一程序。全部通过后，执行不带 `--check-only` 的同一命令，幂等安装协议桥、开始菜单快捷方式、自建通知标识（AUMID）、Hook 与 skill。正常安装也强制先检查依赖，不能忽略失败继续配置。
 2. **配置公共网关**：优先读取仓库同级的最新 `../suian-zcode-common/SKILL.md`；源码尚未定位时用已安装的 `~/.zcode/skills/suian-zcode-common/SKILL.md` 定位。按其流程完成依赖、Status → Install 和分层验证。后台启动、Desktop 用户级环境变量、重启方法及恢复流程只维护在公共 skill，不在本插件复制脚本。缺少该子项目时先补齐同一版本的公共层目录。
 3. 完成本地配置并用 `node cli.mjs status --config config.local.json`（stdin 传会话）检查。保留已有模型选择；新安装从 config.example.json 建立配置，再按用户选择调整，原 Host 模型清单尚不可用时标明待核验。核对安装器已写入 Stop Hook、已启用及通知资产。公共目录非默认时，config.local.json 的 gatewayConfigPath 指向同一公共 config.json。公共 Status 要有 rpc_available:true；旧网关先按公共 skill 暂停远控并重载，保留当前 Agent 完成配置。
 4. **先完成全部安装或升级，应用重启只放在最后**。地址未变且原窗口已连接正确网关时，重新开启远控验证即可。首次接入或修改启动地址也先完成上述本机配置与检查，再按公共 skill 交付择时重开的步骤；原 Host、模型和真实 Hook 验证留到重开后，不以连接未生效为由中止配置。提醒用户重启可能中断运行中任务与未保存工作，不能自动退出承载配置的 ZCode。
@@ -51,7 +51,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 按顺序分层定位，先本地后远端：
 
 1. `node cli.mjs status --config config.local.json`：enabled、模型选择、Toast 资产（协议/快捷方式/冷却）、最近一次命名结果。
-2. `node cli.mjs doctor --config config.local.json`：双库与目标会话。
+2. `node cli.mjs doctor --config config.local.json`：双库、目标会话、模型清单与用户级 Stop Hook。hook 为 configured / disabled / not_configured；hookDetails 报告所检查的 configFile、enabled、async 和 execution:not_verified。ready 表示这些读取与静态配置检查通过；缺少 Hook、停用或不是后台条目时为 not_ready。不能把 ready 当作当前会话已加载或真实执行过 Hook 的证据，仍按“Hook 配置”节验收。
 3. `node cli.mjs probe`：无需链接，输出分层结果——
 
 | reasonCode | 含义 | 处理方向 |

@@ -33,6 +33,21 @@ test("--help 不需要远控凭据，说明 run / doctor / models / probe",()=>{
   const run=spawnSync(process.execPath,[cli,"--help"],{encoding:"utf8",windowsHide:true});
   assert.equal(run.status,0);for(const name of ["run","doctor","models","probe"])assert.ok(run.stdout.includes(name));
 });
+test("CLI 实际使用 SQLITE_BIN，显式环境路径无效时不静默改用 PATH",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-sqlite-env-")),config=join(root,"config.json");
+  try {
+    const missing=join(root,"missing-sqlite3.exe");
+    for(const sqliteBin of [undefined,null]) {
+      writeFileSync(config,JSON.stringify({sessionDb:join(root,"session.sqlite"),indexDb:join(root,"index.sqlite"),dataDir:join(root,"state"),sqliteBin}));
+      const run=spawnSync(process.execPath,[cli,"run","--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"}),windowsHide:true,env:{...process.env,SQLITE_BIN:missing,OIL_ZCODE_TITLE_DISABLE_TOAST:"1"}});
+      assert.equal(run.status,1);
+      const result=JSON.parse(run.stdout);
+      assert.equal(result.status,"failed");
+      assert.ok(result.error.includes(missing),result.error);
+      assert.match(result.error,/ENOENT/);
+    }
+  } finally {rmSync(root,{recursive:true});}
+});
 test("auth 子命令加密落盘不回显，unauth 清除",()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-auth-cli-")),config=join(root,"config.json");
   try {

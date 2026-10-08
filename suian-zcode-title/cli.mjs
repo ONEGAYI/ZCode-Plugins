@@ -13,6 +13,7 @@ import {notifyOnce} from "../suian-zcode-common/notifications.mjs";
 import {ensureToastAppId,PROTOCOL} from "./install.mjs";
 import {shouldNotify} from "../suian-zcode-common/cooldown.mjs";
 import {saveAuthorization as storeAuthorization,clearAuthorization} from "../suian-zcode-common/auth-store.mjs";
+import {runDoctor} from "./doctor.mjs";
 
 const args=process.argv.slice(2);
 if(args.includes("--help")||!args.length) {
@@ -36,8 +37,9 @@ if(args.includes("--help")||!args.length) {
     const config={
       sessionDb:join(homedir(),".zcode","cli","db","db.sqlite"),
       indexDb:join(homedir(),".zcode","v2","tasks-index.sqlite"),
-      sqliteBin:"sqlite3",timeoutMs:120000,maxOutputTokens:2048,
-      ...supplied
+      timeoutMs:120000,maxOutputTokens:2048,
+      ...supplied,
+      sqliteBin:supplied.sqliteBin??process.env.SQLITE_BIN??"sqlite3"
     };
     if(!Number.isInteger(config.timeoutMs)||config.timeoutMs<1000||config.timeoutMs>300000)throw new Error("timeoutMs 应在 1000–300000 范围内");
     dataDir=resolve(configPath?dirname(configPath):process.cwd(),process.env.OIL_ZCODE_TITLE_DATA??config.dataDir??join(homedir(),".zcode","suian-zcode-title"));
@@ -100,9 +102,7 @@ if(args.includes("--help")||!args.length) {
         const probed=await probeHost({workspacePath:event.workspace_path??event.cwd,sessionId:event.session_id,gatewayConfigPath:config.gatewayConfigPath,timeoutMs:config.probeTimeoutMs??8000});
         result={status:probed.ok?"probe_ok":"probe_failed",...probed};
       } else if(command==="doctor") {
-        const snapshot=await backend.read();
-        const view=await backend.models();
-        result={status:"ready",sessionId:event.session_id,title:snapshot.title,turnCount:snapshot.turnCount,selectedTurns:snapshot.context.recent_turns.length,configuredModel:config.selection,providerCount:view.providers.length,hook:"not_configured"};
+        result=await runDoctor({backend,event,config});
       } else {
         let state={};
         try {state=JSON.parse(await readFile(statePath,"utf8"));}

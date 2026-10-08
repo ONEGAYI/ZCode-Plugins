@@ -7,7 +7,7 @@ export function runPowerShell(script,{env={},timeout}={}) {
 }
 
 export const fileShell={
-  run:(cmd,args)=>promisify(execFile)(cmd,args,{windowsHide:true}).then(r=>r.stdout),
+  run:(cmd,args,{timeout}={})=>promisify(execFile)(cmd,args,{windowsHide:true,timeout}).then(r=>r.stdout),
   ps:script=>runPowerShell(script),
   writeText:(path,text)=>writeFile(path,text,"utf8"),
   readText:path=>readFile(path,"utf8"),
