@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {spawnSync,execFileSync} from "node:child_process";
-import {mkdtempSync,mkdirSync,rmSync,writeFileSync,readFileSync} from "node:fs";
+import {mkdtempSync,mkdirSync,rmSync,writeFileSync,readFileSync,existsSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -31,7 +31,7 @@ test("CLI 接收会话事件，无正文时跳过；非法事件不回显凭据"
 });
 test("--help 不需要远控凭据，说明 run / doctor / models / probe",()=>{
   const run=spawnSync(process.execPath,[cli,"--help"],{encoding:"utf8",windowsHide:true});
-  assert.equal(run.status,0);for(const name of ["run","doctor","models","probe"])assert.ok(run.stdout.includes(name));
+  assert.equal(run.status,0);for(const name of ["run","doctor","models","probe","lock","unlock","policy"])assert.ok(run.stdout.includes(name));
 });
 test("CLI 实际使用 SQLITE_BIN，显式环境路径无效时不静默改用 PATH",()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-sqlite-env-")),config=join(root,"config.json");
@@ -149,6 +149,50 @@ test("probe 网关未配置时不建立连接且尊重共享锁",()=>{
     const busy=spawnSync(process.execPath,[cli,"probe","--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_probe_case",cwd:"D:\\fixture"}),windowsHide:true,env});
     assert.equal(busy.status,1);
     assert.ok(JSON.parse(busy.stdout).error.includes("busy"),"持锁时 probe 应让位给命名进程");
+  } finally {rmSync(root,{recursive:true});}
+});
+test("lock/unlock/policy 写公共策略：查询、幂等、读回复核与落盘格式",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-policy-")),db=join(root,"session.sqlite"),index=join(root,"index.sqlite"),config=join(root,"config.json"),policyDir=join(root,"policy");
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
+  const invoke=(command,sessionId)=>spawnSync(process.execPath,[cli,command,"--config",config],{encoding:"utf8",input:JSON.stringify({session_id:sessionId,cwd:"D:\\fixture"}),windowsHide:true});
+  try {
+    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'generated');"]);
+    execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','原名',0,0,'completed');"]);
+    writeFileSync(config,JSON.stringify({sessionDb:db,indexDb:index,sqliteBin,dataDir:join(root,"state"),titlePolicyDirectory:policyDir}));
+    const before=invoke("policy","sess_fixture");
+    assert.equal(before.status,0,before.stderr);
+    assert.deepEqual(JSON.parse(before.stdout),{status:"policy",sessionId:"sess_fixture",policy:null},"未设置策略时 policy 为 null");
+    const lock=invoke("lock","sess_fixture");
+    assert.equal(lock.status,0,lock.stderr);
+    assert.deepEqual(JSON.parse(lock.stdout),{status:"locked",sessionId:"sess_fixture",previous:null,policy:{version:1,locked:true}},"首次固定 previous 为 null，policy 透传公共策略结构");
+    assert.deepEqual(JSON.parse(readFileSync(join(policyDir,"sess_fixture.json"),"utf8")),{version:1,locked:true},"落盘必须是公共策略 v1 格式");
+    const reread=invoke("policy","sess_fixture");
+    assert.deepEqual(JSON.parse(reread.stdout).policy,{version:1,locked:true},"查询须反映写入结果");
+    const again=invoke("lock","sess_fixture");
+    assert.equal(again.status,0,again.stderr);
+    assert.deepEqual(JSON.parse(again.stdout),{status:"locked",sessionId:"sess_fixture",previous:{version:1,locked:true},policy:{version:1,locked:true}},"重复固定幂等成功且 previous 如实");
+    const unlock=invoke("unlock","sess_fixture");
+    assert.equal(unlock.status,0,unlock.stderr);
+    assert.deepEqual(JSON.parse(unlock.stdout),{status:"unlocked",sessionId:"sess_fixture",previous:{version:1,locked:true},policy:{version:1,locked:false}},"解除固定返回 previous 与新策略");
+    assert.deepEqual(JSON.parse(readFileSync(join(policyDir,"sess_fixture.json"),"utf8")),{version:1,locked:false},"解除固定落盘 locked:false 而非删除文件");
+  } finally {rmSync(root,{recursive:true});}
+});
+test("lock/unlock/policy 目标会话不存在时报错，不静默写策略",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-policy-missing-")),db=join(root,"session.sqlite"),index=join(root,"index.sqlite"),config=join(root,"config.json"),policyDir=join(root,"policy");
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
+  const invoke=(command,sessionId)=>spawnSync(process.execPath,[cli,command,"--config",config],{encoding:"utf8",input:JSON.stringify({session_id:sessionId,cwd:"D:\\fixture"}),windowsHide:true});
+  try {
+    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);INSERT INTO session VALUES('sess_other','他者','D:\\fixture',NULL,NULL,'generated');"]);
+    execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_other','D:\\fixture','他者',0,0,'completed');"]);
+    writeFileSync(config,JSON.stringify({sessionDb:db,indexDb:index,sqliteBin,dataDir:join(root,"state"),titlePolicyDirectory:policyDir}));
+    for(const command of ["lock","unlock","policy"]) {
+      const run=invoke(command,"sess_missing");
+      assert.equal(run.status,1,run.stderr);
+      const parsed=JSON.parse(run.stdout);
+      assert.equal(parsed.status,"failed",command+" 对不存在会话必须显式失败");
+      assert.ok(parsed.error.includes("不存在"),command+" 的报错须说明目标会话不存在");
+    }
+    assert.ok(!existsSync(join(policyDir,"sess_missing.json")),"失败后不得残留策略文件");
   } finally {rmSync(root,{recursive:true});}
 });
 

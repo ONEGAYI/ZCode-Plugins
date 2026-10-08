@@ -7,7 +7,7 @@
 - Toast 按钮的打开动作固定指向用户自带默认工作区 `%USERPROFILE%\.zcode\workspace\default`，不随插件位置变化。
 - 自动化测试与脚本严禁触发 `suian-zcode-title://` 协议激活链路（会弹 ZCode 官方确认模态框，无人值守时无限阻塞）。
 - 公共 vendor 是固定来源的协议与投影库；版本信息见 ../suian-zcode-common/vendor/NOTICE.md，不自动更新。
-- 新行为先写契约测试，记录红绿验证日志（docs/round2-evidence.json）；不添加无关功能。
+- 新行为先写契约测试，记录红绿验证日志（docs/ 下按功能分卷，现有 round2-evidence.json 与 title-lock-evidence.json）；不添加无关功能。
 - MCP 创建会话的公共命名策略优先：locked:true 不生成；false 不推断手动保护、要求格式合规。不合规 keep 最多纠正一次并记录理由。既有无策略会话保留原规则。
 
 ## 技术参考（面向维护者）
@@ -35,10 +35,13 @@ node .\cli.mjs status --config .\config.local.json      # 配置、Toast 资产�
 node .\cli.mjs run    --config .\config.local.json      # 只生成候选
 node .\cli.mjs run --apply --config .\config.local.json # 经官方接口写入
 node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
+node .\cli.mjs lock   --config .\config.local.json      # 固定目标会话标题（命名插件不再自动改名）
+node .\cli.mjs unlock --config .\config.local.json      # 解除固定，恢复滚动命名
+node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会话标题策略
 # auth / unauth：stdin 带 authorization_url 加密保存 / 清除授权
 ```
 
-默认调用通过公共网关 connectHost，无需远控链接；gatewayConfigPath 可指定公共配置文件。auth/unauth 只保留旧凭据管理，不能据其状态判断网关是否就绪。安装：`node .\install.mjs .\.local`；仅检查加 `--check-only`，自定义配置加 `--config {{path}}`。卸载加 `--remove`，不能与仅检查同时使用。
+默认调用通过公共网关 connectHost，无需远控链接；gatewayConfigPath 可指定公共配置文件。auth/unauth 只保留旧凭据管理，不能据其状态判断网关是否就绪。lock/unlock/policy 不连网关：先做存在性校验（CLI 会话库与任务索引任一命中，查询异常上抛不吞），不存在报错退出码 1；输出 `previous`/`policy` 透传公共策略对象，重复执行幂等。config 的 `titlePolicyDirectory` 可覆盖策略目录（默认公共目录，供测试隔离）。安装：`node .\install.mjs .\.local`；仅检查加 `--check-only`，自定义配置加 `--config {{path}}`。卸载加 `--remove`，不能与仅检查同时使用。
 
 ### 链路概要
 
@@ -56,7 +59,7 @@ node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
 |---|---|
 | preview / renamed / kept | 候选、已写入并核验、模型决定保留 |
 | unchanged | 同一内容已处理，跳过模型 |
-| manual_title / locked | 无公共策略时，成功命名后非 generated 标题变化则保护；MCP 的公共 locked:true 优先阻止生成，false 明确不锁。公共锁需改公共策略，删除旧状态仅解除旧锁 |
+| manual_title / locked | 无公共策略时，成功命名后非 generated 标题变化则保护；MCP 的公共 locked:true 优先阻止生成，false 明确不锁。公共锁经 cli.mjs lock/unlock 修改，删除旧状态仅解除旧锁 |
 | stale_result / outdated_event | 内容已更新或事件过期，丢弃结果 |
 | archived / running / empty / disabled / busy | 不适合命名或已暂停，不调用模型 |
 | failed | 连接、模型或核验失败，退出码 1（附 `stage/reasonCode/toast`） |
@@ -65,7 +68,7 @@ node .\cli.mjs disable --config .\config.local.json     # 暂停；enable 恢复
 
 | 文件 | 职责 |
 |---|---|
-| cli.mjs | 命令入口：stdin 事件、配置、共享锁、结果与日志；status/enable/disable/auth/unauth |
+| cli.mjs | 命令入口：stdin 事件、配置、共享锁、结果与日志；status/enable/disable/auth/unauth/lock/unlock/policy |
 | hook.mjs | Stop Hook 派发器：续跑保护、会话元数据、8 秒延迟、后台 worker |
 | naming.mjs | 命名决策、去重、手动锁定保护、写前写后复核 |
 | backend.mjs | 只读双库与原 Host 服务适配 |
