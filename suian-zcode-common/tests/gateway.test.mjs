@@ -26,7 +26,9 @@ test('健康入口区分网关、设备连接和配对，拒绝浏览器连接�
   const browserRejected = new Promise((resolve) => browser.once('unexpected-response', (_request, rejected) => { rejected.resume(); browser.terminate(); resolve(rejected.statusCode); }));
   assert.equal(await browserRejected, 403);
   assert.equal(relay.clients.size, 1);
-  assert.equal((await fetch(healthUrl.replace('/health', '/shutdown'), { method: 'POST', headers: { Authorization: 'Bearer fixture-health-token' } })).status, 409);
+  const shutdown = await fetch(healthUrl.replace('/health', '/shutdown'), { method: 'POST', headers: { Authorization: 'Bearer fixture-health-token' } });
+  assert.equal(shutdown.status, 409);
+  assert.match(await shutdown.text(), /Stop mobile remote control in ZCode/);
   const disconnected = once(desktop, 'close');
   desktop.terminate();
   await disconnected;

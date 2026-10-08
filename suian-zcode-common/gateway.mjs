@@ -24,7 +24,7 @@ export async function startGateway({ upstreamUrl = OFFICIAL_RELAY, port = 0, ins
     if (request.headers.origin !== undefined) { response.writeHead(403).end(); return; }
     if (request.method === 'POST' && request.url === '/shutdown' && controlToken) {
       if (request.headers.authorization !== `Bearer ${controlToken}`) { response.writeHead(401).end(); return; }
-      if (active) { response.writeHead(409).end('Fully quit ZCode first'); return; }
+      if (active) { response.writeHead(409).end('Stop mobile remote control in ZCode first'); return; }
       response.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' }).end('{"ok":true}');
       await closeGateway();
       return;

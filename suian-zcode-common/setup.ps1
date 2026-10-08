@@ -15,9 +15,11 @@ $configFile = Join-Path $DataDir 'config.json'
 $config = if (Test-Path -LiteralPath $configFile) { Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
 $restarting = $Action -eq 'Restart'
 if ($restarting -and $null -eq $config) { throw 'Shared gateway is not installed; use Install first' }
+$runningPort = $Port
 if ($null -ne $config) {
     if ($config.version -ne 1) { throw 'Unsupported gateway config version' }
-    if (-not $PSBoundParameters.ContainsKey('Port')) { $Port = $config.port }
+    if (-not [int]::TryParse([string]$config.port, [ref]$runningPort) -or $runningPort -lt 1 -or $runningPort -gt 65535) { throw 'Installed gateway port must be an integer from 1 to 65535' }
+    if (-not $PSBoundParameters.ContainsKey('Port')) { $Port = $runningPort }
     if (-not $PSBoundParameters.ContainsKey('UpstreamUrl')) { $UpstreamUrl = $config.upstream_url }
 }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -26,7 +28,7 @@ $task = Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName -and $_.Tas
 $property = (Get-ItemProperty -LiteralPath 'HKCU:\Environment').PSObject.Properties[$relayVariable]
 $userRelay = if ($null -ne $property) { [string]$property.Value } else { $null }
 $relayUrl = "ws://127.0.0.1:$Port/ws"
-$healthUrl = "http://127.0.0.1:$Port/health"
+$healthUrl = "http://127.0.0.1:$runningPort/health"
 $launcherFile = Join-Path $DataDir 'gateway-launch.vbs'
 $scriptHost = Join-Path $env:SystemRoot 'System32\wscript.exe'
 $vbsLauncher = $null -ne $task -and @($task.Actions)[0].Execute -eq $scriptHost
@@ -85,12 +87,12 @@ if ($Action -eq 'Remove') {
     if ($null -ne $health) {
         if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url) { throw 'Gateway health does not match the installed configuration' }
         if ($health.desktop_connected) { throw 'Finish running work and fully quit ZCode before removing the shared gateway' }
-        $stopped = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/shutdown" -Method Post -Headers @{ Authorization=('Bearer ' + $config.control_token) } -TimeoutSec 5 -UseBasicParsing
+        $stopped = Invoke-RestMethod -Uri "http://127.0.0.1:$runningPort/shutdown" -Method Post -Headers @{ Authorization=('Bearer ' + $config.control_token) } -TimeoutSec 5 -UseBasicParsing
         if (-not $stopped.ok) { throw 'Gateway did not accept shutdown' }
         Wait-GatewayExit
     }
     $environmentAction = 'preserved_external'
-    if ($userRelay -eq $relayUrl) {
+    if ($userRelay -eq "ws://127.0.0.1:$runningPort/ws") {
         if ($null -eq $config.previous_user_relay) { Remove-ItemProperty -LiteralPath 'HKCU:\Environment' -Name $relayVariable }
         else { New-ItemProperty -LiteralPath 'HKCU:\Environment' -Name $relayVariable -Value $config.previous_user_relay -PropertyType String -Force | Out-Null }
         $environmentAction = 'restored'
@@ -134,18 +136,19 @@ if ($taskRunning -and $null -eq $health) { throw 'Gateway task is running but he
 if ($null -ne $health) {
     if ($restarting) {
         if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url) { throw 'Gateway health does not match the installed configuration' }
-        if ($health.desktop_connected) { throw 'Finish running work and fully quit ZCode before restarting the shared gateway' }
-        $stopped = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/shutdown" -Method Post -Headers @{ Authorization=('Bearer ' + $config.control_token) } -TimeoutSec 5 -UseBasicParsing
+        if ($health.desktop_connected) { throw 'Stop mobile remote control in ZCode before restarting the shared gateway; keep ZCode open to finish the upgrade' }
+        $stopped = Invoke-RestMethod -Uri "http://127.0.0.1:$runningPort/shutdown" -Method Post -Headers @{ Authorization=('Bearer ' + $config.control_token) } -TimeoutSec 5 -UseBasicParsing
         if (-not $stopped.ok) { throw 'Gateway did not accept shutdown' }
         Wait-GatewayExit
         $health = $null
-    } elseif ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $instanceId -or $health.upstream_url -ne $UpstreamUrl) {
-        throw 'Running gateway differs from requested configuration; finish work, quit ZCode and use Restart to load the updated code'
+    } elseif ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $instanceId -or $health.upstream_url -ne $UpstreamUrl -or $runningPort -ne $Port) {
+        throw 'Running gateway differs from requested configuration; stop mobile remote control in ZCode and use Restart; keep ZCode open to finish the upgrade'
     }
 }
 $previousRelay = if ($null -ne $config) { $config.previous_user_relay } else { $userRelay }
 $controlToken = if ($null -ne $config) { $config.control_token } else { [Guid]::NewGuid().ToString('N') }
 $nextConfig = [ordered]@{ version=1; gateway_root=$PSScriptRoot; instance_id=$instanceId; port=$Port; upstream_url=$UpstreamUrl; previous_user_relay=$previousRelay; control_token=$controlToken }
+$healthUrl = "http://127.0.0.1:$Port/health"
 [IO.Directory]::CreateDirectory($DataDir) | Out-Null
 [IO.File]::WriteAllText($configFile, ($nextConfig | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 if ($null -eq $health) {

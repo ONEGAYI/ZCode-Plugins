@@ -18,8 +18,10 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 
 读取仓库中所选插件的最新 SKILL.md，公共层统一按 suian-zcode-common/SKILL.md 配置，
 复用同一网关，保留已有授权、模型选择和其他配置。
-完成后分别检查插件与网关；需要我操作界面或重启时，说明保存工作、完整退出
-和从正确环境重开的方法，不要自行重启 ZCode。
+保留当前 ZCode 和会话，先完成全部安装或升级以及本机检查。
+需要重载网关时，让我只暂停 ZCode 内的移动端远控，由你在当前会话继续完成。
+首次接入或修改启动地址也先完成配置，最后才提示我保存工作、择时重启生效；
+地址未变且已连接正确网关时，重新开启远控即可。不要自行退出或重启 ZCode。
 ```
 
 ### 代码获取范围
@@ -64,7 +66,9 @@ git -C "{{repo_dir}}" sparse-checkout set suian-zcode-title suian-zcode-common
 
 ## suian-zcode-common — 公共基础能力
 
-统一维护网关、远控协议与探活、DPAPI 授权存取、Toast 通知和消息投影。公共层包含可导入的模块，只有网关是常驻后台进程；命名规则和 MCP 工具契约留在各插件。网关的 Windows 启动、环境变量与恢复也只维护一份。两个插件的初始化 skill 都调用 [公共网关 skill](./suian-zcode-common/SKILL.md)，Agent 会完成配置并提示用户先处理运行中工作，再完整退出重开 ZCode。
+统一维护网关、远控协议与探活、DPAPI 授权存取、Toast 通知和消息投影。公共层包含可导入的模块，只有网关是常驻后台进程；命名规则和 MCP 工具契约留在各插件。网关的 Windows 启动、环境变量与恢复也只维护一份。两个插件的初始化 skill 都调用 [公共网关 skill](./suian-zcode-common/SKILL.md)。
+
+**可以在 ZCode 当前会话里完成安装或升级**。重载网关时，只需暂时关闭 ZCode 内的移动端远控，让 Agent 继续配置。首次接入或修改启动地址时，Agent 也会先完成配置和本机检查，最后再提示你择时重启生效；已经连接正确网关且地址未变时，重新开启远控即可。
 
 命名与 MCP 的原 Host 调用已接入网关本地 RPC，复用一个本地 Host 桥并隔离客户端编号，不另占官方席位。已实测本地工作区的 MCP 发信、改名和回复读取与官方手机共存，用户确认无需重连仍可操作；完整 Stop Hook 命名与手机同用尚未实测。手机使用远端工作区时本地 RPC 让位。说明与配置入口见 [suian-zcode-common](./suian-zcode-common/)。
 

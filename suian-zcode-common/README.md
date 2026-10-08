@@ -51,9 +51,11 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\setup.
 
 Install 通过 `wscript.exe` 的 VBS 启动桥立即启动当前用户的登录任务，验证健康接口后写用户级 `ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL`，默认 `ws://127.0.0.1:17329/ws`。默认数据目录 `~/.zcode/tools/suian-zcode-gateway` 由两个插件共用，路径为兼容旧安装保留；公共 skill 现在部署到 `~/.zcode/skills/suian-zcode-common`。重复安装复用运行中的实例和原始环境备份。
 
-**安装不会重启 ZCode**。该变量在 Desktop 主进程启动时读取，放在 Hook 或 MCP 子进程的环境中无法切换 Desktop。先完成运行中的任务、保存工作，再完整退出并从读取最新用户变量的外部 PowerShell 启动；同次登录中已有的终端或 Explorer 可能仍持有旧环境。具体启动命令与生效验证统一见 [公共 skill](./SKILL.md)。
+**先完成安装或升级，最后才安排应用重启**。Agent 留在当前 ZCode 会话里完成源码、依赖、插件配置和本机检查；首次接入或修改启动地址也遵循这个顺序。该变量在 Desktop 主进程启动时读取，因此这两种情况需要用户在配置完成后择时重开，连接验证留到重开后继续。放在 Hook 或 MCP 子进程的环境中无法切换 Desktop。具体启动命令与验证方法统一见 [公共 skill](./SKILL.md)。
 
-Install 可指定 `-Port {{port}}` 和 `-UpstreamUrl {{relay_url}}`。未指定时保留已配置值；上游默认为 `wss://zcode.z.ai/ws`。另一 endpoint 使用 `wss://zcode.chatglm.site/ws`，由实际 endpoint 选择，不能当作自动故障切换。Install 遇到不同运行根时明确失败，避免悄悄切断远控。更新代码或从旧 `suian-zcode-gateway` 目录迁移后，用 `setup.ps1 -Action Restart` 重载：Desktop 已断开才允许退出旧网关，等旧启动器退出后更新同一任务；保留端口、上游、控制令牌和原环境备份。
+Install 可指定 `-Port {{port}}` 和 `-UpstreamUrl {{relay_url}}`。未指定时保留已配置值；上游默认为 `wss://zcode.z.ai/ws`。另一 endpoint 使用 `wss://zcode.chatglm.site/ws`，由实际 endpoint 选择，不能当作自动故障切换。Install 遇到不同运行配置时明确失败，避免悄悄切断远控。
+
+更新常驻代码或迁移旧目录时，用 `setup.ps1 -Action Restart` 重载。用户先在 ZCode 内暂停移动端远控，Agent 确认 `desktop_connected:false` 后用本机 Shell 执行，应用与当前会话保留。脚本等待旧网关和启动器退出，再更新同一任务，保留端口、上游、控制令牌和原环境备份。更换端口用 Restart 的 `-Port {{port}}`，先停旧端口实例再启动新端口。地址未变且原窗口已连接正确网关时，重新开启远控即可；仅更新文档、skill 或业务配置，无需重载网关。
 
 VBS 使用 `Run(..., 0, True)` 隐藏 PowerShell，并等待子进程、返回真实退出码；PowerShell 再等待隐藏 Node。这使任务保持运行，并保留非零退出后每分钟重试、最多三次的设置。运行用 `gateway-launch.vbs` 部署在公共数据目录，避免让常驻 WScript 使用 Git 工作树中的模板。当前版本的模板为 `run.vbs`。
 
@@ -65,7 +67,7 @@ Remove 只在用户要求移除公共网关时执行，先完整退出 ZCode。�
 
 健康请求默认每次等 5 秒，仅超时时重试一次；需要调整时使用 `-HealthTimeoutSec {{seconds}}`（1–30）。`health_status` 区分未配置、可达和连接失败（`not_configured` / `reachable` / `unreachable`）。连续超时明确报运行状态未知，不输出一个成功的 `gateway_running:false` 来代替；其他错误照实报出。移除与重载直接检查网关，不依赖任务是否 Running；停止后须等 HTTP 监听与旧启动器都结束才改配置。
 
-`vbs_launcher` 表示任务是否使用 VBS。`launcher_update_required` 表示旧入口待切换或任务已结束、未继续监督存活网关；需要恢复时先结束运行中工作、完整退出 Desktop，再执行 Restart。安装会复用仍存活的网关，避免再开一个进程。
+`vbs_launcher` 表示任务是否使用 VBS。`launcher_update_required` 表示旧入口待切换或任务已结束、未继续监督存活网关；需要恢复时先暂停 ZCode 内的移动端远控，再执行 Restart，保留当前会话。安装会复用仍存活的网关，避免再开一个进程。`restart_required` 是尚未就绪的汇总标志，远控暂停时也为 true，不能据此一律要求退出应用。
 
 | 接口 | 范围 |
 | --- | --- |
