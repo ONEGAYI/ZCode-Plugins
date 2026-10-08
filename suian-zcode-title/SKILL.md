@@ -24,11 +24,13 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 1. **先检查依赖，再写配置**。在同级公共根运行 `npm ci --ignore-scripts --no-audit --no-fund`，然后执行 `node "{{plugin_root}}/install.mjs" "{{plugin_root}}/.local" --check-only`。检查当前 Node.js 24+、公共 npm 依赖和 sqlite3 的只读 JSON 查询；此步不写 Hook、通知资产或 skill。sqlite3 必须是 CLI 可执行文件，安装 npm 同名包不能代替。取值顺序为默认 config.local.json 中的 sqliteBin → SQLITE_BIN → PATH 的 sqlite3；自定义配置加 `--config {{config_path}}`，显式无效路径不回退。缺依赖时先协助补齐再重查，内网使用已有程序或离线包；建议将确认可执行的绝对路径写入 sqliteBin，确保后台 Hook 使用同一程序。全部通过后，执行不带 `--check-only` 的同一命令，幂等安装协议桥、开始菜单快捷方式、自建通知标识（AUMID）、Hook 与 skill。正常安装也强制先检查依赖，不能忽略失败继续配置。
 2. **配置公共网关**：优先读取仓库同级的最新 `../suian-zcode-common/SKILL.md`；源码尚未定位时用已安装的 `~/.zcode/skills/suian-zcode-common/SKILL.md` 定位。按其流程完成依赖、Status → Install 和分层验证。后台启动、Desktop 用户级环境变量、重启方法及恢复流程只维护在公共 skill，不在本插件复制脚本。缺少该子项目时先补齐同一版本的公共层目录。
-3. 完成本地配置并用 `node cli.mjs status --config config.local.json`（stdin 传会话）检查。保留已有模型选择；新安装从 config.example.json 建立配置，再按用户选择调整，原 Host 模型清单尚不可用时标明待核验。核对安装器已写入 Stop Hook、已启用及通知资产。公共目录非默认时，config.local.json 的 gatewayConfigPath 指向同一公共 config.json。公共 Status 要有 rpc_available:true；旧网关先按公共 skill 暂停远控并重载，保留当前 Agent 完成配置。
+3. 完成本地配置并用 `node cli.mjs status --config config.local.json`（stdin 传会话）检查。升级保留已有模型选择；首次安装从 config.example.json 建立配置时先设 enabled:false，示例 selection 只是占位，不能视作用户选择。模型选择或可用性尚未确认时，报告“本机配置完成，模型配置待确认”，保留当前会话完成其他配置；按第 7 步取得清单、选择和核验后再启用。核对安装器已写入 Stop Hook、Hook 已启用及通知资产，Hook 存在不表示命名插件已启用。公共目录非默认时，config.local.json 的 gatewayConfigPath 指向同一公共 config.json。公共 Status 要有 rpc_available:true；旧网关先按公共 skill 暂停远控并重载，保留当前 Agent 完成配置。
 4. **先完成全部安装或升级，应用重启只放在最后**。地址未变且原窗口已连接正确网关时，重新开启远控验证即可。首次接入或修改启动地址也先完成上述本机配置与检查，再按公共 skill 交付择时重开的步骤；原 Host、模型和真实 Hook 验证留到重开后，不以连接未生效为由中止配置。提醒用户重启可能中断运行中任务与未保存工作，不能自动退出承载配置的 ZCode。
 5. 用户在当前窗口开启"移动端远程控制"，确认 Desktop 连入网关。若需重开应用，这一步由重开后的会话继续验证。插件无需手机链接，不复制旧 blob，不把公共 control_token 放入配置、args/env 或输出。
 6. `node cli.mjs probe` 验证网关、原 Host、目标工作区与会话。先按公共 skill 确认连接模式；local-only 不需要官方上游或手机连接，所选模型服务仍需可达。relay 模式下，手机在本地工作区时可继续连接；远端工作区返回 remote_workspace_busy，等用户主动切回本地再验证，不切走手机。隔离测试不等于真实手机验收。
-7. 网关连接后用 models 核对配置中的 provider / model / reasoningLevel，并运行 doctor。Stop Hook 的本机配置已经完成；按"Hook 配置"节在用户选定的测试会话验证一次真实触发，分别报告配置完成和实际触发成功。
+7. **询问并核验命名模型**。网关连接后运行 `node cli.mjs models --config config.local.json`（stdin 传会话），从实际清单向用户展示可选模型和思考档位。首次安装请用户选择；用户已明确指定时核验后沿用，不重复询问。升级保留并核验已有选择，仅在用户要求更换或原选择不可用时再询问，不自动换成示例默认值。清单暂不可取时，明确报告原因并保留“模型配置待确认”，重开连接后继续，不猜 ID 或档位。
+
+   将用户选择对应的真实 providerId / modelId / reasoningLevel 写入 config.local.json 的 selection，复读确认与实际清单一致。首次安装完成选择与核验后才设 enabled:true；升级前已暂停的插件继续保持暂停，除非用户要求恢复。再运行 doctor，并按“Hook 配置”节在用户选定的测试会话验证一次真实触发，分别报告模型配置已确认、本机配置完成和实际触发成功。
 
 ### "更换远控链接"
 
