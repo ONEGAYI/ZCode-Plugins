@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-08",
+  "base": "43162d761410aa7ed015e894b254b765985bc063",
+  "scope": "显式 local-only 模式，消除本机插件控制对官方 relay 注册、配对和心跳的依赖",
+  "contracts": [
+    "本地注册与已有设备会话均可启动，不创建官方上游 WebSocket",
+    "持续回应 pair_status_query，最后一个本地客户端退出后仍保持设备配对",
+    "未就绪设备、terminal 角色和不匹配的本地注册标识被拒绝",
+    "本地 RPC 仍要求 Bearer 令牌，通过同一 Host 桥收发并成功探活",
+    "Install 与 Restart 显式配置 mode，切换先暂停远控，缺省保留已安装模式",
+    "旧配置和健康结果缺少 mode 时按 relay 兼容，保留原配置与环境备份"
+  ],
+  "validation": { "common": 81, "mcp": 40, "title": 37, "passed": 158, "failed": 0, "skipped": 0 },
+  "installed_transport_probe": {
+    "version": "3.14.4",
+    "artifact": "out/main/index.js",
+    "evaluated_original_transport_class": true,
+    "elapsed_ms": 45000,
+    "first_registration": { "ready_ms": 6, "heartbeat_queries": 8, "errors": 0, "reconnects": 0 },
+    "existing_device": { "ready_ms": 1, "heartbeat_queries": 8, "errors": 0, "reconnects": 0 },
+    "upstream_connected": false,
+    "used_real_credentials": false,
+    "dependencies": "合成日志与认证提供者；未调用的序列化依赖替身；真实回环 WebSocket、计时器与实际传输类",
+    "started_real_desktop_window": false
+  },
+  "limits": [
+    "用户目标为 3.14.0 内网机器，尚未运行 setup，兼容性与真实界面待用户验收",
+    "实际传输类隔离验证不等于完整 Desktop 窗口或内网机器验收",
+    "本地模式没有官方身份鉴权；设备入口信任本机进程，RPC 仍有令牌鉴权，监听仅在回环且拒绝浏览器 Origin",
+    "官方手机页面不适用于本地模式，界面二维码不能作为可用证据；本地新注册切回 relay 时可能重新注册并更换链接",
+    "模型生成、登录及套餐额度仍依赖相应服务的网络可达性",
+    "没有修改当前真实 ZCode 的连接模式，没有运行真实写会话或消耗重置卡"
+  ]
+}

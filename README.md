@@ -72,6 +72,8 @@ git -C "{{repo_dir}}" sparse-checkout set suian-zcode-title suian-zcode-common
 
 命名与 MCP 的原 Host 调用已接入网关本地 RPC，复用一个本地 Host 桥并隔离客户端编号，不另占官方席位。已实测本地工作区的 MCP 发信、改名和回复读取与官方手机共存，用户确认无需重连仍可操作；完整 Stop Hook 命名与手机同用尚未实测。手机使用远端工作区时本地 RPC 让位。说明与配置入口见 [suian-zcode-common](./suian-zcode-common/)。
 
+**内网机器可以选择本地模式**。当官方远控服务器不可达时，让 Agent 按公共 skill 配置 local-only，网关会在本机处理启动与心跳，供两个插件调用当前窗口。该模式不支持官方手机远控；模型生成和套餐查询仍需相应服务可达。首次配置仍先完成安装，最后才提示重启生效。
+
 ## 找到你想要的
 
 - **安装或升级自动命名** → [suian-zcode-title](./suian-zcode-title/)，提示词会让 Agent 询问操作并获取代码

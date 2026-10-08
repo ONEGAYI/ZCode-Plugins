@@ -2,6 +2,7 @@
 param(
     [ValidateSet('Install', 'Status', 'Remove', 'Restart')][string]$Action = 'Status',
     [ValidateRange(1, 65535)][int]$Port = 17329,
+    [ValidateSet('relay', 'local-only')][string]$Mode = 'relay',
     [ValidateRange(1, 30)][int]$HealthTimeoutSec = 5,
     [string]$UpstreamUrl = 'wss://zcode.z.ai/ws',
     [string]$DataDir = (Join-Path $env:USERPROFILE '.zcode\tools\suian-zcode-gateway'),
@@ -16,11 +17,16 @@ $config = if (Test-Path -LiteralPath $configFile) { Get-Content -LiteralPath $co
 $restarting = $Action -eq 'Restart'
 if ($restarting -and $null -eq $config) { throw 'Shared gateway is not installed; use Install first' }
 $runningPort = $Port
+$Mode = $Mode.ToLowerInvariant()
+$installedMode = 'relay'
 if ($null -ne $config) {
     if ($config.version -ne 1) { throw 'Unsupported gateway config version' }
     if (-not [int]::TryParse([string]$config.port, [ref]$runningPort) -or $runningPort -lt 1 -or $runningPort -gt 65535) { throw 'Installed gateway port must be an integer from 1 to 65535' }
     if (-not $PSBoundParameters.ContainsKey('Port')) { $Port = $runningPort }
     if (-not $PSBoundParameters.ContainsKey('UpstreamUrl')) { $UpstreamUrl = $config.upstream_url }
+    if ($config.PSObject.Properties['mode']) { $installedMode = $config.mode }
+    if ($installedMode -cnotin @('relay', 'local-only')) { throw 'Invalid installed gateway mode' }
+    if (-not $PSBoundParameters.ContainsKey('Mode')) { $Mode = $installedMode }
 }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $taskName = 'suian-zcode-gateway-' + $identity.User.Value
@@ -37,7 +43,12 @@ $taskRunning = $null -ne $task -and $task.State -eq 'Running'
 function Read-GatewayHealth {
     param([switch]$AllowUnavailable)
     for ($queryAttempt = 0; $queryAttempt -lt 2; $queryAttempt++) {
-        try { return Invoke-RestMethod -Uri $healthUrl -TimeoutSec $HealthTimeoutSec -UseBasicParsing }
+        try {
+            $result = Invoke-RestMethod -Uri $healthUrl -TimeoutSec $HealthTimeoutSec -UseBasicParsing
+            if (-not $result.PSObject.Properties['mode']) { Add-Member -InputObject $result -NotePropertyName mode -NotePropertyValue 'relay' }
+            if ($result.mode -cnotin @('relay', 'local-only')) { throw 'Unknown running gateway mode' }
+            return $result
+        }
         catch [Net.WebException] {
             if ($AllowUnavailable -and $_.Exception.Status -eq [Net.WebExceptionStatus]::ConnectFailure) { return $null }
             if ($_.Exception.Status -ne [Net.WebExceptionStatus]::Timeout) { throw }
@@ -61,7 +72,7 @@ if ($Action -eq 'Status') {
     $health = $null
     if ($null -ne $config) {
         $health = Read-GatewayHealth -AllowUnavailable
-        if ($null -ne $health -and ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url)) { throw 'Gateway health does not match the installed configuration' }
+        if ($null -ne $health -and ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url -or $health.mode -ne $installedMode)) { throw 'Gateway health does not match the installed configuration' }
     }
     $rpcAvailable = $false; $upstreamPaired = $null; $localClients = $null
     if ($null -ne $health) {
@@ -71,6 +82,7 @@ if ($Action -eq 'Status') {
     }
     [ordered]@{
         ok=$true; action='status'; configured=($null -ne $config); relay_url=$relayUrl; health_url=$healthUrl
+        mode=$(if ($null -ne $config) { $installedMode } else { $Mode }); desktop_ready=$(if ($null -ne $health -and $health.PSObject.Properties['desktop_ready']) { $health.desktop_ready } else { $null })
         user_env_matches=($null -ne $config -and $userRelay -eq $relayUrl); gateway_running=($null -ne $health)
         task_running=$taskRunning; health_status=$(if ($null -eq $config) { 'not_configured' } elseif ($null -eq $health) { 'unreachable' } else { 'reachable' })
         vbs_launcher=$vbsLauncher; launcher_update_required=($null -ne $config -and (-not $vbsLauncher -or -not $taskRunning))
@@ -85,7 +97,7 @@ if ($Action -eq 'Remove') {
     $health = Read-GatewayHealth -AllowUnavailable
     if ($taskRunning -and $null -eq $health) { throw 'Gateway task is running but health is unavailable; running state is unknown, configuration was not changed' }
     if ($null -ne $health) {
-        if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url) { throw 'Gateway health does not match the installed configuration' }
+        if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url -or $health.mode -ne $installedMode) { throw 'Gateway health does not match the installed configuration' }
         if ($health.desktop_connected) { throw 'Finish running work and fully quit ZCode before removing the shared gateway' }
         $stopped = Invoke-RestMethod -Uri "http://127.0.0.1:$runningPort/shutdown" -Method Post -Headers @{ Authorization=('Bearer ' + $config.control_token) } -TimeoutSec 5 -UseBasicParsing
         if (-not $stopped.ok) { throw 'Gateway did not accept shutdown' }
@@ -135,19 +147,19 @@ if ($null -ne $config -or $null -ne $task) { $health = Read-GatewayHealth -Allow
 if ($taskRunning -and $null -eq $health) { throw 'Gateway task is running but health is unavailable; running state is unknown, configuration was not changed' }
 if ($null -ne $health) {
     if ($restarting) {
-        if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url) { throw 'Gateway health does not match the installed configuration' }
+        if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $config.instance_id -or $health.upstream_url -ne $config.upstream_url -or $health.mode -ne $installedMode) { throw 'Gateway health does not match the installed configuration' }
         if ($health.desktop_connected) { throw 'Stop mobile remote control in ZCode before restarting the shared gateway; keep ZCode open to finish the upgrade' }
         $stopped = Invoke-RestMethod -Uri "http://127.0.0.1:$runningPort/shutdown" -Method Post -Headers @{ Authorization=('Bearer ' + $config.control_token) } -TimeoutSec 5 -UseBasicParsing
         if (-not $stopped.ok) { throw 'Gateway did not accept shutdown' }
         Wait-GatewayExit
         $health = $null
-    } elseif ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $instanceId -or $health.upstream_url -ne $UpstreamUrl -or $runningPort -ne $Port) {
+    } elseif ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $instanceId -or $health.upstream_url -ne $UpstreamUrl -or $runningPort -ne $Port -or $health.mode -ne $Mode) {
         throw 'Running gateway differs from requested configuration; stop mobile remote control in ZCode and use Restart; keep ZCode open to finish the upgrade'
     }
 }
 $previousRelay = if ($null -ne $config) { $config.previous_user_relay } else { $userRelay }
 $controlToken = if ($null -ne $config) { $config.control_token } else { [Guid]::NewGuid().ToString('N') }
-$nextConfig = [ordered]@{ version=1; gateway_root=$PSScriptRoot; instance_id=$instanceId; port=$Port; upstream_url=$UpstreamUrl; previous_user_relay=$previousRelay; control_token=$controlToken }
+$nextConfig = [ordered]@{ version=1; gateway_root=$PSScriptRoot; instance_id=$instanceId; port=$Port; upstream_url=$UpstreamUrl; mode=$Mode; previous_user_relay=$previousRelay; control_token=$controlToken }
 $healthUrl = "http://127.0.0.1:$Port/health"
 [IO.Directory]::CreateDirectory($DataDir) | Out-Null
 [IO.File]::WriteAllText($configFile, ($nextConfig | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
@@ -173,7 +185,7 @@ if ($null -eq $health) {
             Start-Sleep -Milliseconds 250
         }
     }
-    if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $instanceId -or $health.upstream_url -ne $UpstreamUrl) { throw 'Gateway health check returned a different instance; user environment was not changed' }
+    if ($health.service -ne 'suian-zcode-gateway' -or $health.version -ne 1 -or $health.instance_id -ne $instanceId -or $health.upstream_url -ne $UpstreamUrl -or $health.mode -ne $Mode) { throw 'Gateway health check returned a different instance; user environment was not changed' }
     $vbsLauncher = $true
     $taskRunning = $true
 }
@@ -187,4 +199,4 @@ if ($null -ne $config -and (Test-Path -LiteralPath $legacySkillFile)) {
 }
 # 仅写用户级值；当前 Desktop 主进程不会重新读取。
 New-ItemProperty -LiteralPath 'HKCU:\Environment' -Name $relayVariable -Value $relayUrl -PropertyType String -Force | Out-Null
-[ordered]@{ ok=$true; action=$(if ($restarting) { 'restarted' } else { 'installed' }); relay_url=$relayUrl; health_url=$healthUrl; gateway_running=$true; task_running=$taskRunning; health_status='reachable'; desktop_connected=$health.desktop_connected; paired=$health.paired; vbs_launcher=$vbsLauncher; launcher_update_required=(-not $vbsLauncher -or -not $taskRunning); restart_required=(-not $health.desktop_connected -or -not $vbsLauncher -or -not $taskRunning) } | ConvertTo-Json -Compress
+[ordered]@{ ok=$true; action=$(if ($restarting) { 'restarted' } else { 'installed' }); mode=$Mode; relay_url=$relayUrl; health_url=$healthUrl; gateway_running=$true; task_running=$taskRunning; health_status='reachable'; desktop_connected=$health.desktop_connected; paired=$health.paired; vbs_launcher=$vbsLauncher; launcher_update_required=(-not $vbsLauncher -or -not $taskRunning); restart_required=(-not $health.desktop_connected -or -not $vbsLauncher -or -not $taskRunning) } | ConvertTo-Json -Compress

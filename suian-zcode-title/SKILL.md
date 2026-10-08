@@ -27,7 +27,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 3. 完成本地配置并用 `node cli.mjs status --config config.local.json`（stdin 传会话）检查。保留已有模型选择；新安装从 config.example.json 建立配置，再按用户选择调整，原 Host 模型清单尚不可用时标明待核验。核对安装器已写入 Stop Hook、已启用及通知资产。公共目录非默认时，config.local.json 的 gatewayConfigPath 指向同一公共 config.json。公共 Status 要有 rpc_available:true；旧网关先按公共 skill 暂停远控并重载，保留当前 Agent 完成配置。
 4. **先完成全部安装或升级，应用重启只放在最后**。地址未变且原窗口已连接正确网关时，重新开启远控验证即可。首次接入或修改启动地址也先完成上述本机配置与检查，再按公共 skill 交付择时重开的步骤；原 Host、模型和真实 Hook 验证留到重开后，不以连接未生效为由中止配置。提醒用户重启可能中断运行中任务与未保存工作，不能自动退出承载配置的 ZCode。
 5. 用户在当前窗口开启"移动端远程控制"，确认 Desktop 连入网关。若需重开应用，这一步由重开后的会话继续验证。插件无需手机链接，不复制旧 blob，不把公共 control_token 放入配置、args/env 或输出。
-6. `node cli.mjs probe` 验证网关、原 Host、目标工作区与会话。手机在本地工作区时可继续连接；远端工作区返回 remote_workspace_busy，等用户主动切回本地再验证，不切走手机。隔离测试不等于真实手机验收。
+6. `node cli.mjs probe` 验证网关、原 Host、目标工作区与会话。先按公共 skill 确认连接模式；local-only 不需要官方上游或手机连接，所选模型服务仍需可达。relay 模式下，手机在本地工作区时可继续连接；远端工作区返回 remote_workspace_busy，等用户主动切回本地再验证，不切走手机。隔离测试不等于真实手机验收。
 7. 网关连接后用 models 核对配置中的 provider / model / reasoningLevel，并运行 doctor。Stop Hook 的本机配置已经完成；按"Hook 配置"节在用户选定的测试会话验证一次真实触发，分别报告配置完成和实际触发成功。
 
 ### "更换远控链接"
@@ -59,7 +59,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 | `gateway_not_configured` / `gateway_invalid_config` | 公共配置缺失或无效 | 按公共 skill 修复，不回显完整配置 |
 | `gateway_upgrade_required` | 文件与运行中网关版本不同 | 按公共 skill 暂停移动端远控后 Restart，保留当前会话完成升级 |
 | `gateway_unreachable` / `gateway_connection_failed` | 网关未运行或 RPC 连接失败 | 分别检查健康、任务与本地鉴权 |
-| `gateway_desktop_offline` | 原窗口或官方上游未连接 | 确认远控开启、Desktop 环境与网络 |
+| `gateway_desktop_offline` | 原窗口未就绪，或 relay 模式上游未连接 | 确认模式、远控开启、Desktop 环境与网络；local-only 不要求官方上游 |
 | `remote_workspace_busy` | 手机当前使用远端工作区 | 本地调用让位，不切走手机 |
 | `gateway_bridge_timeout` / `gateway_rpc_protocol_error` | 原 Host 桥超时或协议不符 | 查版本与原窗口状态，不重试已提交写操作 |
 | `gateway_connection_closed` / `gateway_timeout` | 连接中断或执行超时 | 结果可能未知，先检查标题与运行日志 |
