@@ -131,6 +131,8 @@ if(args.includes("--help")||!args.length) {
     }
   } catch(error) {
     const failure={status:"failed",error:error.name==="SyntaxError"?"JSON 格式无效":error.message};
+    // 本地数据类校验失败无 stage，也须透出 reasonCode 供日志与诊断（不触发远控失败的 Toast 路径）
+    if(error.reasonCode)failure.reasonCode=error.reasonCode;
     if(error.stage) {
       failure.stage=error.stage;
       failure.reasonCode=error.reasonCode??"unknown";

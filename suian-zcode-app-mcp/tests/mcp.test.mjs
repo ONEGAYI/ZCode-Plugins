@@ -287,3 +287,51 @@ test('三个写工具转交已验证参数，拒绝空开局和未知字段，�
   assert.equal(failed.isError, true);
   assert.equal(failed.structuredContent.session_id, 'sess_created');
 });
+
+test('renameSession 写后复核：CLI 会话库持续不一致时暴露 title_store_diverged，同步后无警告', async () => {
+  const { createSessionController } = await import('../control.mjs');
+  const probes = [];
+  const make = sessionTitle => createSessionController({
+    reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }),
+      sessionTitle: ({ session_id }) => { probes.push(session_id); return { index_title: '新标题', session_title: sessionTitle }; } },
+    connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method) => {
+      if (method === 'renameTask') return { taskId: 'sess_x', title: '新标题' };
+      if (method === 'getTaskMeta') return { taskId: 'sess_x', workspacePath: 'D:/fixture', title: '新标题' };
+    } }),
+    delay: async () => {}
+  });
+  const diverged = await make('旧标题').renameSession({ workspace_path: 'D:/fixture', session_id: 'sess_x', title: '新标题' });
+  assert.equal(diverged.title, '新标题', 'RPC 成功路径不受复核影响');
+  assert.equal(diverged.warnings.length, 1);
+  assert.equal(diverged.warnings[0].code, 'title_store_diverged');
+  assert.ok(diverged.warnings[0].detail.includes('旧标题'), '告警须带 CLI 库实际标题');
+  assert.equal(probes.length, 3, '持续不一致时重试 3 次');
+  const synced = await make('新标题').renameSession({ workspace_path: 'D:/fixture', session_id: 'sess_x', title: '新标题' });
+  assert.equal(synced.warnings, undefined, '两库一致时不产生警告');
+  assert.equal(probes.length, 4, '一致时只探测一次');
+});
+
+test('startSession 创建后复核：CLI 库有行但标题不符暴露分叉；行未落库或旧版 reader 不告警', async () => {
+  const { createSessionController } = await import('../control.mjs');
+  const prompts = [];
+  const make = sessionTitle => createSessionController({
+    reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }),
+      ...(sessionTitle === 'absent' ? {} : { sessionTitle: () => ({ index_title: '初始标题', session_title: sessionTitle }) }) },
+    setTitlePolicy: async () => {},
+    connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
+      if (method === 'createTask') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
+      if (method === 'renameTask') return { taskId: 'sess_child', title: '初始标题' };
+      if (method === 'sendPrompt') prompts.push(params[0]);
+    } }),
+    delay: async () => {}
+  });
+  const diverged = await make('宿主生成标题').startSession({ workspace_path: 'D:/fixture', title: '初始标题', message: '调研' });
+  assert.deepEqual(diverged.warnings.map(w => w.code), ['title_store_diverged'], '官方 v4 同步丢失时当场暴露分叉');
+  const notPersisted = await make(null).startSession({ workspace_path: 'D:/fixture', title: '初始标题', message: '调研' });
+  assert.equal(notPersisted.warnings, undefined, 'CLI 库尚无会话行时无法判定，不告警');
+  const legacy = await make('absent').startSession({ workspace_path: 'D:/fixture', title: '初始标题', message: '调研' });
+  assert.equal(legacy.warnings, undefined, '旧版 reader 无 sessionTitle 能力时不阻塞不误报');
+  const untitled = await make('任意值').startSession({ workspace_path: 'D:/fixture', message: '调研' });
+  assert.equal(untitled.warnings, undefined, '未指定标题时不复核');
+  assert.equal(prompts.length, 4, '复核不改变消息投递行为');
+});

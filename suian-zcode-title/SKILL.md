@@ -47,6 +47,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 - **滚动更新**：每轮 Stop 触发，但会话内容指纹没变就不调模型（`unchanged`）；内容变了模型对照现有标题输出 keep 或 rename，标题跟随主线缓慢演进，不逐轮翻新。
 - **既有手动保护**：无公共策略时，已有命名基线且标题相对基线变化、来源非 generated，才判为手动改名并锁定；仅 custom 来源不足以证明被跳过。旧锁定可通过删除 `.local/<session_id>.json` 解除。
 - **MCP 独立锁定**：MCP 的 lock_title 默认 false，提供初始名称不推断锁定。公共 `title-policy.mjs` 管理当前用户 `~/.zcode/tools/suian-zcode-common/session-titles/<session_id>.json`：locked:true 不调模型；false 允许滚动命名并要求格式合规，不合规 keep 最多纠正一次。先读公共策略再判断旧状态，删旧状态不能解除公共锁。Agent 修改策略走本插件 CLI（lock/unlock，内部即公共 writeTitlePolicy），按用户明确意图设置 locked；两个插件与公共层需同版本升级。
+- **双库一致性**：任务索引与 CLI 会话库标题不一致时，run 以 `index_title_mismatch` 跳过命名（本地校验失败不弹 Toast、不自愈）；MCP 侧改名/创建带标题时复核双库，分叉当场以 `title_store_diverged` 警告。修复＝对该会话经任一官方改名链路再改一次名（任意值）对齐两库。
 
 ### "检查 / 修复命名插件"
 

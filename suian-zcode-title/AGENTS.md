@@ -62,7 +62,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 | manual_title / locked | 无公共策略时，成功命名后非 generated 标题变化则保护；MCP 的公共 locked:true 优先阻止生成，false 明确不锁。公共锁经 cli.mjs lock/unlock 修改，删除旧状态仅解除旧锁 |
 | stale_result / outdated_event | 内容已更新或事件过期，丢弃结果 |
 | archived / running / empty / disabled / busy | 不适合命名或已暂停，不调用模型 |
-| failed | 连接、模型或核验失败，退出码 1（附 `stage/reasonCode/toast`） |
+| failed | 连接、模型或核验失败，退出码 1（附 `stage/reasonCode/toast`）。本地双库标题不一致为 `index_title_mismatch`、原 Host 与持久化不一致为 `host_title_mismatch`：均不弹 Toast、不改标题，需经官方改名链路对齐两库后自愈 |
 
 ### 文件职责
 

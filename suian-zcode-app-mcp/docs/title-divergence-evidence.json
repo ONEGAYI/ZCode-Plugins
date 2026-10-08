@@ -1,0 +1,47 @@
+{
+  "topic": "会话标题双库分叉：根因定位与复核告警（rename/start 双库复核 + 命名 reasonCode）",
+  "date": "2026-10-08T23:55:00+08:00",
+  "incident": {
+    "symptom": "两个经 MCP 创建并指定初始标题的会话（QuotaTray / obsidian-export-desktop 工作区）停留初始标题，自动命名静默不生效",
+    "evidence": "runner.log 每轮 Stop 后 50ms 内 failed「任务索引与 CLI 会话标题不一致」；两库标题分别为创建初始值与宿主生成值（title_source:generated）",
+    "rootCauseChain": [
+      "官方 renameTask 写任务索引（置 titleOverridden:true）后向宿主发 v4 renameSession 同步 CLI 会话库，失败仅记 warn、RPC 仍返回成功（zcodeTaskServiceAdapter.ts 的 catch 注释自述\"尽力同步\"）",
+      "start_session 以 deferPersistenceUntilFirstPrompt 创建会话：首条 prompt 前 CLI 会话库无该行，v4 同步无处落地，索引侧标题被 titleOverridden 锁定",
+      "宿主自身标题生成只写 CLI 会话库（generated），投影层对 titleOverridden:true 的索引行不采用新标题——两库各自稳定分叉，不再收敛",
+      "命名插件写前校验发现不一致即放弃（保护性设计），本地失败无 stage 不弹 Toast，静默且不自愈；重启窗口（gateway relay error INTERNAL）进一步放大 v4 同步失败概率"
+    ]
+  },
+  "fix": {
+    "mcp": "rename_session 与 startSession（带标题）在 RPC 读回确认后经 reader.sessionTitle 复核双库，CLI 库未同步时回执 warnings（code title_store_diverged）；CLI 库尚无会话行或旧版 reader 无此能力时不误报",
+    "title": "backend 双库不一致失败挂 reasonCode（index_title_mismatch / host_title_mismatch），cli catch 对无 stage 的本地校验失败透传 reasonCode，不触发 Toast"
+  },
+  "baselineBefore": { "mcp": 49, "title": 45, "result": "pass" },
+  "after": { "mcp": 51, "title": 46, "result": "pass" },
+  "redGreenLog": [
+    {
+      "feature": "renameSession/startSession 双库复核（control.confirmTitleSync + sessions.sessionTitle）",
+      "red": "两用例失败：复核不存在时 diverged.warnings 为 undefined、探测次数断言不符",
+      "green": "持续不一致重试 3 次后告警（rename）/2 次（创建）、一致或行未落库不告警、旧版 reader 兼容、未指定标题不复核",
+      "tests": ["suian-zcode-app-mcp/tests/mcp.test.mjs"]
+    },
+    {
+      "feature": "命名失败 reasonCode 透传（backend.mjs + cli.mjs catch）",
+      "red": "双库不一致 fixture 下 reasonCode 为 null",
+      "green": "index_title_mismatch 显式返回，无 stage 不弹 Toast",
+      "tests": ["suian-zcode-title/tests/cli.test.mjs"]
+    }
+  ],
+  "machineVerified": [
+    "真实事故会话经官方 RPC renameTask 对齐（workspacePath 须用反斜杠形式，正斜杠触发 relay error INTERNAL）：两会话 getTaskMeta 读回一致，双库 title 逐行相同",
+    "对齐后对新代码跑真实 run --apply：renamed「🔎 CI Rust 版本｜统一 1.98.0 锁定」，端到端命名链路恢复"
+  ],
+  "traps": [
+    "workspacePath 正斜杠在 probe 探活可用但 renameTask/getTaskMeta 的 workspaceKey 校验拒绝（relay error INTERNAL），必须传与会话 directory 一致的反斜杠形式",
+    "官方 renameTask 的 v4 同步失败被静默容忍：MCP 侧 RPC 响应校验（renamed.title===title）无法发现，必须读回双库"
+  ],
+  "pendingUserAcceptance": [
+    "obsidian-export-desktop 会话等待其下一轮 Stop 自然命名恢复（机制同 QuotaTray 已验证会话）"
+  ],
+  "followUpValidation": [],
+  "secrets": "无凭据；会话标识以工作区名指代，证据不保留完整 session_id"
+}
