@@ -42,7 +42,7 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{commo
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{common_root}}/setup.ps1" -Action Install
 ```
 
-Install 注册当前用户登录任务，由 `wscript.exe` 执行公共数据目录的 VBS 桥，以无窗口方式启动并监督 PowerShell → Node，健康检查通过后写用户级 `ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL`，并部署公共 skill。失败就读错误或 `gateway.error.log`，不把未启动的地址写到 MCP 的 env。
+Install 注册当前用户登录任务，由 `wscript.exe` 执行公共数据目录的 VBS 桥，以无窗口方式启动并监督 PowerShell → Node，健康检查通过后写用户级 `ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL`，广播环境变更，并部署公共 skill。成功输出 environment_broadcast:sent 表示广播 API 调用成功，不能据此宣称运行中的 Desktop 已重新读取变量。失败就读错误或 `gateway.error.log`，不把未启动的地址写到 MCP 的 env。
 
 首次选择本地模式时用 `-Action Install -Mode local-only`，仍先完成两个插件的本机配置，最后才安排 Desktop 读取新环境。需要的是**启用 ZCode 的移动端远控服务来连接本机网关**，不需要手机连接或二维码可访问公网。
 
@@ -77,18 +77,20 @@ Restart 等网关与旧启动器正常退出，再更新同一任务并启动新
 
 ## 配置完成后，让 Desktop 读取新环境
 
-变量在 **Desktop 主进程启动时**读取。MCP 的 env 只影响子进程。当前脚本写用户注册表，不刷新已有 Explorer/终端的进程环境。
+变量在 **Desktop 主进程启动时**读取。MCP 的 env 只影响子进程。脚本写用户注册表后发送 WM_SETTINGCHANGE / Environment，通知 Explorer 等处理该消息的启动器刷新环境；已运行的 ZCode、终端及未处理通知的第三方启动器不会自动更新。
 
 **应用重启是用户在配置完成后的生效操作，不是安装或升级的前置条件**。首次接入、启动地址改变或主进程仍持旧变量时，先完成所有本机配置与可执行的验证，明确报告「配置完成，原 Host 验证待重启」，再交付下面的方法。已连接正确网关且地址未变时跳过应用重启。
 
-在当前 Agent 仍可工作时先定位实际 Desktop exe，把下面命令中的 `{{zcode_exe}}` 替换成真实路径，不能填 CLI。用户随后自行安排时间，先完成或保存运行中工作，再从托盘完整退出；关窗口可能仅隐藏。重开命令由用户在外部 PowerShell 执行，不能要求已退出的 Agent 继续配置。
+默认指导用户在配置完成后，自行安排时间保存工作，从托盘完整退出 ZCode，再用桌面或开始菜单的普通快捷方式打开。通常无需注销账户或重启 Windows。启用移动端远控后，用 Status 与插件 probe 确认实际生效，不能以广播成功替代连接检查。
+
+若广播失败，或确认启动器仍传入旧变量，再使用下面的显式启动方法。广播失败会明确报错，但用户变量已写入或恢复，不回滚配置。在当前 Agent 仍可工作时先定位实际 Desktop exe，把 `{{zcode_exe}}` 替换成真实路径，不能填 CLI；命令交给用户在外部 PowerShell 执行，不能要求已退出的 Agent 继续配置。
 
 ```powershell
 $env:ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL = [Environment]::GetEnvironmentVariable('ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL', 'User')
 Start-Process -FilePath "{{zcode_exe}}" -WindowStyle Hidden
 ```
 
-**这不是永久启动要求**。重新登录 Windows 后，普通快捷方式通常会继承新用户环境。若同次登录从仍持旧环境的启动器打开，Status 显示 Desktop 未连到网关，再用上述方法重开；已有 Desktop 连接正确时不需要重复操作。不要要求用户以后每次都从 PowerShell 启动。
+**PowerShell 只用于排障，不是永久启动要求**。Desktop 未连到网关时先检查是否启用远控、运行模式及日志；不能仅凭 desktop_connected:false 判定继承了旧变量。已有 Desktop 连接正确时不需要重复重开，也不要要求用户为环境生效注销账户。
 
 ## 分层验证与数据归属
 
@@ -119,6 +121,6 @@ Start-Process -FilePath "{{zcode_exe}}" -WindowStyle Hidden
 
 单独卸载一个插件保留公共层和网关。只有用户要求恢复直连或移除公共工具时才执行 Remove。
 
-先完成或保存运行中工作并完整退出 ZCode，再执行 `setup.ps1 -Action Remove`。入口让网关自行退出，移除自己的任务，恢复安装前变量；外部改过的变量保留。恢复后仍按读取最新用户变量的方法启动 Desktop；没有原变量时读取结果为空，使用官方默认值。分别报告移除结果与用户重开后的实际状态。
+先完成或保存运行中工作并完整退出 ZCode，再执行 `setup.ps1 -Action Remove`。入口让网关自行退出，移除自己的任务，恢复安装前变量并广播变更；外部改过的变量保留且不广播。恢复后优先用普通快捷方式打开，仍持旧环境时再显式读取用户变量启动；没有原变量时读取结果为空，使用官方默认值。分别报告移除结果与用户重开后的实际状态。
 
 Remove 只移除网关配置、运行用 VBS 桥和归属匹配的公共 skill，不删除任何插件的授权、通知身份、Hook 或 MCP 设置。

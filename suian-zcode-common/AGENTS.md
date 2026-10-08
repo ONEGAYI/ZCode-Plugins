@@ -14,6 +14,7 @@
 - 健康检查默认每次 5 秒、仅超时重试一次；连续超时报未知，不能掩盖为网关已停止。
 - 网关健康和任务状态分别检查；任务 Ready 不代表网关停止。重载/移除检查实际连接，等待监听与启动器都退出后再修改配置。
 - Windows 网关配置只管理当前用户任务和 `ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL`。不退出或重启 Desktop；Restart/Remove 在 Desktop 已断开时才允许网关自行退出。
+- 写入或恢复用户环境后广播 WM_SETTINGCHANGE / Environment；Status 与保留外部环境值不广播。使用 Unicode SendMessageTimeoutW，等待有超时，失败明确报出，不把已运行进程视为已更新。自动测试替换原生广播边界，不通知真实桌面。
 - 为兼容既有安装，网关数据仍在 `~/.zcode/tools/suian-zcode-gateway`，任务名和健康接口 service 仍为网关身份。公共 skill 部署到 `~/.zcode/skills/suian-zcode-common`；迁移不另建任务或丢失原环境备份。
 - 新行为先写契约测试。Windows 设置测试使用隔离文件与模拟系统命令，不修改真实用户环境、计划任务或正在运行的 ZCode。
 - `vendor/` 固定第三方来源并保留许可；不修改 `../sources/`。验证日志落忽略的 `.scratch/`，入库只保留脱敏汇总。

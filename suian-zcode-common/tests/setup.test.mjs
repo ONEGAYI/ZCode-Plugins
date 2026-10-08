@@ -19,6 +19,37 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $global:fixture = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
 function Save-Fixture { [IO.File]::WriteAllText($StateFile, ($global:fixture | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding($false))) }
+function Add-Type {
+    param([string]$TypeDefinition)
+    $global:fixture.broadcast_declaration=$TypeDefinition; Save-Fixture
+    Microsoft.PowerShell.Utility\Add-Type -TypeDefinition @'
+using System;
+namespace SuianZcodeGateway {
+    public static class EnvironmentBroadcast {
+        public static Action OnSend;
+        public static bool Fail;
+        public static IntPtr Window;
+        public static uint Message, Flags, Timeout;
+        public static UIntPtr WParam;
+        public static string Area;
+        public static IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wparam, string area, uint flags, uint timeout, out UIntPtr result) {
+            Window=window; Message=message; WParam=wparam; Area=area; Flags=flags; Timeout=timeout;
+            OnSend(); result=UIntPtr.Zero;
+            return Fail ? IntPtr.Zero : new IntPtr(1);
+        }
+    }
+}
+'@
+    [SuianZcodeGateway.EnvironmentBroadcast]::Fail=$global:fixture.broadcast_fail
+    [SuianZcodeGateway.EnvironmentBroadcast]::OnSend=[Action]{
+        $global:fixture.broadcasts += [pscustomobject]@{
+            window=[SuianZcodeGateway.EnvironmentBroadcast]::Window.ToInt64(); message=[SuianZcodeGateway.EnvironmentBroadcast]::Message
+            wparam=[SuianZcodeGateway.EnvironmentBroadcast]::WParam.ToUInt64(); area=[SuianZcodeGateway.EnvironmentBroadcast]::Area
+            flags=[SuianZcodeGateway.EnvironmentBroadcast]::Flags; timeout=[SuianZcodeGateway.EnvironmentBroadcast]::Timeout; registry_relay=$global:fixture.relay
+        }
+        Save-Fixture
+    }
+}
 function Get-ItemProperty { param([string]$LiteralPath) if ($LiteralPath -ne 'HKCU:\Environment') { throw '禁止访问其他注册表路径' }; if ($null -eq $global:fixture.relay) { return [pscustomobject]@{} }; return [pscustomobject]@{ ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL = $global:fixture.relay } }
 function New-ItemProperty { param([string]$LiteralPath, [string]$Name, [string]$Value, [string]$PropertyType, [switch]$Force) if ($LiteralPath -ne 'HKCU:\Environment' -or $Name -ne 'ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL') { throw '修改了非目标变量' }; $global:fixture.relay = $Value; Save-Fixture }
 function Remove-ItemProperty { param([string]$LiteralPath, [string]$Name) if ($LiteralPath -ne 'HKCU:\Environment' -or $Name -ne 'ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL') { throw '删除了非目标变量' }; $global:fixture.relay = $null; Save-Fixture }
@@ -30,7 +61,7 @@ function New-ScheduledTaskSettingsSet { param([TimeSpan]$ExecutionTimeLimit, [in
 function Register-ScheduledTask { param([string]$TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) $global:fixture.task = [pscustomobject]@{ TaskName=$TaskName; TaskPath='\'; Actions=$Action; Trigger=$Trigger; Principal=$Principal; Settings=$Settings; State='Ready' }; $global:fixture.registrations++; Save-Fixture }
 function Start-ScheduledTask { param([string]$TaskName) if ($TaskName -ne $global:fixture.task.TaskName) { throw '启动了其他任务' }; $global:fixture.task.State='Running'; $global:fixture.health_available=$true; $global:fixture.starts++; Save-Fixture }
 function Stop-ScheduledTask { throw 'Gateway already accepted self shutdown; do not terminate its exiting launcher' }
-function Unregister-ScheduledTask { param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; $global:fixture.task=$null; Save-Fixture }
+function Unregister-ScheduledTask { param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; if ($global:fixture.unregister_fail) { throw 'fixture: task cleanup failed' }; $global:fixture.task=$null; Save-Fixture }
 function Invoke-RestMethod {
     param([string]$Uri, [int]$TimeoutSec, [switch]$UseBasicParsing, [string]$Method, $Headers)
     $global:fixture.http_attempts++; Save-Fixture
@@ -71,7 +102,7 @@ async function fixture(t, overrides = {}) {
   const script = join(root, 'Windows 边界 fixture.ps1');
   const dataDir = join(root, '公共 data');
   const skillsDir = join(root, 'skills');
-  const initial = { relay: 'wss://previous.example/ws', task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', desktop: false, legacy_health: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, http_attempts: 0, health_available: false, draining: false, shutdown_health_reads: 0, ...overrides };
+  const initial = { relay: 'wss://previous.example/ws', task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', desktop: false, legacy_health: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, http_attempts: 0, health_available: false, draining: false, shutdown_health_reads: 0, broadcasts: [], broadcast_fail: false, broadcast_declaration: null, unregister_fail: false, ...overrides };
   await writeFile(stateFile, JSON.stringify(initial));
   await writeFile(script, '\uFEFF' + systemFixture);
   const run = async (action, { healthTimeoutSec, port, mode } = {}) => {
@@ -110,6 +141,59 @@ test('公共安装部署唯一用户启动任务和 skill，网关就绪后才�
   const skill = await readFile(join(f.skillsDir, 'suian-zcode-common', 'SKILL.md'), 'utf8');
   assert.ok(skill.includes(gatewayRoot));
   assert.ok(!skill.includes('<!-- suian-zcode-common:root -->'));
+});
+
+test('安装和重载写用户变量后广播，移除恢复或删除后广播，保留外部值时不广播', { skip: process.platform !== 'win32' }, async t => {
+  for (const original of ['wss://previous.example/ws', null, 'external']) {
+    const f = await fixture(t, { relay: original === 'external' ? null : original });
+    const installed = await f.run('Install');
+    assert.equal(installed.environment_broadcast, 'sent');
+    assert.equal((await f.state()).broadcasts.length, 1);
+    assert.equal((await f.run('Restart', { port: 17331 })).environment_broadcast, 'sent');
+    let state = await f.state();
+    assert.equal(state.broadcasts.length, 2);
+    assert.equal(state.broadcasts[0].registry_relay, 'ws://127.0.0.1:17329/ws');
+    assert.equal(state.broadcasts[1].registry_relay, 'ws://127.0.0.1:17331/ws');
+    for (const broadcast of state.broadcasts) assert.deepEqual(
+      { ...broadcast, registry_relay: null },
+      { window: 65535, message: 26, wparam: 0, area: 'Environment', flags: 2, timeout: 1000, registry_relay: null }
+    );
+    assert.ok(state.broadcast_declaration.includes('SendMessageTimeoutW'));
+    assert.ok(state.broadcast_declaration.includes('CharSet.Unicode'));
+    if (original === 'external') { state.relay = 'wss://external.example/ws'; await writeFile(f.stateFile, JSON.stringify(state)); }
+    const removed = await f.run('Remove');
+    assert.equal(removed.environment_broadcast, original === 'external' ? 'not_needed' : 'sent');
+    state = await f.state();
+    assert.equal(state.broadcasts.length, original === 'external' ? 2 : 3);
+    if (original !== 'external') assert.equal(state.broadcasts[2].registry_relay, original);
+    assert.equal((await f.run('Status')).configured, false);
+    assert.equal((await f.state()).broadcasts.length, state.broadcasts.length);
+  }
+});
+
+test('移除清理任务失败前已经广播恢复值，错误明确报出且配置留待处理', { skip: process.platform !== 'win32' }, async t => {
+  for (const original of ['wss://previous.example/ws', null]) {
+    const f = await fixture(t, { relay: original });
+    await f.run('Install');
+    const state = await f.state(); state.unregister_fail = true;
+    await writeFile(f.stateFile, JSON.stringify(state));
+    await assert.rejects(f.run('Remove'), /fixture: task cleanup failed/);
+    const failed = await f.state();
+    assert.equal(failed.relay, original);
+    assert.equal(failed.broadcasts.length, 2);
+    assert.equal(failed.broadcasts[1].registry_relay, original);
+    assert.equal(failed.task.State, 'Ready');
+    assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).previous_user_relay, original);
+  }
+});
+
+test('广播失败明确报错，已写入的用户变量保留且不宣称安装成功', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t, { broadcast_fail: true });
+  await assert.rejects(f.run('Install'), /Environment change broadcast failed or timed out; user environment was already updated/);
+  const state = await f.state();
+  assert.equal(state.relay, 'ws://127.0.0.1:17329/ws');
+  assert.equal(state.broadcasts.length, 1);
+  assert.equal(state.task.State, 'Running');
 });
 
 test('本地模式可首次安装，重载保留模式，切换模式先暂停远控并保留原环境备份', { skip: process.platform !== 'win32' }, async t => {
