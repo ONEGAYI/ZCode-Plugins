@@ -208,4 +208,21 @@ test("lock 双库不可读时上抛失败，不把“查不了”误报为“不
     assert.ok(!existsSync(join(policyDir,"sess_fixture.json")),"查询失败不得写策略");
   } finally {rmSync(root,{recursive:true});}
 });
+test("run 双库标题不一致时以 index_title_mismatch 显式失败，不弹 Toast",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-mismatch-")),db=join(root,"session.sqlite"),index=join(root,"index.sqlite"),config=join(root,"config.json");
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
+  const env={...process.env,OIL_ZCODE_TITLE_DISABLE_TOAST:"1"};delete env.OIL_ZCODE_REMOTE_URL;
+  try {
+    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session VALUES('sess_fixture','CLI 库标题','D:\\fixture',NULL,NULL,'generated');INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);INSERT INTO part VALUES('p1','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"调研内容"})+"',1);"]);
+    execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','索引标题',0,0,'completed');"]);
+    writeFileSync(config,JSON.stringify({sessionDb:db,indexDb:index,sqliteBin,dataDir:join(root,"state"),gatewayConfigPath:join(root,"missing-gateway.json")}));
+    const run=spawnSync(process.execPath,[cli,"run","--apply","--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"}),windowsHide:true,env});
+    assert.equal(run.status,1,run.stderr);
+    const parsed=JSON.parse(run.stdout);
+    assert.equal(parsed.status,"failed");
+    assert.equal(parsed.reasonCode,"index_title_mismatch","双库不一致须带可诊断 reasonCode");
+    assert.ok(parsed.error.includes("不一致"));
+    assert.equal(parsed.toast,undefined,"本地校验失败不弹 Toast");
+  } finally {rmSync(root,{recursive:true});}
+});
 

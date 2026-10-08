@@ -42,7 +42,8 @@ function archiveActivity(snapshot, sessionId) {
   return reasons;
 }
 
-export function createSessionController({ reader, gatewayConfigPath, connect = connectHost, setTitlePolicy = writeTitlePolicy, now = Date.now }) {
+export function createSessionController({ reader, gatewayConfigPath, connect = connectHost, setTitlePolicy = writeTitlePolicy, now = Date.now,
+  delay = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false;
   const glmAttempts = new Map();
   const targetOf = args => ({ sessionId: args.session_id,
@@ -60,6 +61,23 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
     const input_id = randomUUID();
     await remote.call('zcode-task', 'sendPrompt', [{ taskId: session_id, traceId: input_id, content }]);
     return { input_id, delivery_status: 'accepted' };
+  };
+  // 官方 renameTask 写任务索引后向宿主发 v4 renameSession 同步 CLI 会话库，失败仅记 warn、RPC 仍返回成功；
+  // deferPersistenceUntilFirstPrompt 创建的会话首条 prompt 前 CLI 库无行，同步极易丢失。写后读回复核两库，
+  // 分叉时以 warnings 暴露（对齐命名插件"写后读回核验"的纪律），不阻断 RPC 成功路径。探测异常（库缺失/繁忙）
+  // 视为无法核实：不告警、不外溢为工具错误；attempts<=0 时不探测。
+  const confirmTitleSync = async (session_id, title, attempts) => {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      if (attempt) await delay(300);
+      let session_title;
+      try { ({ session_title } = reader.sessionTitle?.({ session_id }) ?? {}); }
+      catch { return []; }
+      if (session_title === undefined || session_title === null) return [];
+      if (session_title === title) return [];
+      if (attempt === attempts - 1) return [{ code: 'title_store_diverged',
+        message: `标题已写入任务索引，但 CLI 会话库仍为「${session_title}」；两库不一致期间自动命名会跳过该会话，重新改名或手动改一次标题以对齐` }];
+    }
+    return [];
   };
   const archiveResult = (args, remote, archived) => {
     const rows = reader.listSessions({ query: args.session_id, workspace_path: remote.workspacePath, include_archived: true, limit: 200 }).sessions
@@ -82,7 +100,9 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
         await remote.call('zcode-task', 'renameTask', [params]);
         const meta = await remote.call('zcode-task', 'getTaskMeta', [{ taskId: args.session_id, workspacePath: remote.workspacePath }]);
         if (!meta || meta.taskId !== args.session_id || meta.title !== args.title) throw new Error('rename_not_confirmed: 原 Host 改名读回不一致');
-        return { source: 'original_host', session_id: args.session_id, workspace_path: meta.workspacePath, title: meta.title };
+        const warnings = await confirmTitleSync(args.session_id, args.title, 3);
+        return { source: 'original_host', session_id: args.session_id, workspace_path: meta.workspacePath, title: meta.title,
+          ...(warnings.length ? { warnings } : {}) };
       });
     },
     async startSession({ workspace_path, title, message, model, lock_title = false, creator, originWarning }) {
@@ -100,7 +120,9 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
           ...(modelSelection ? { modelSelection } : {}), deferPersistenceUntilFirstPrompt: true }]);
         if (!meta.taskId) throw new Error('create_not_confirmed: 原 Host 创建响应缺少 taskId');
         const result = { source: 'original_host', session_id: meta.taskId, workspace_path: meta.workspacePath, title: meta.title,
-          ...(creator === undefined ? {} : { creator }), ...(originWarning ? { warnings: [originWarning] } : {}) };
+          ...(creator === undefined ? {} : { creator }) };
+        // 来源警告在 try 外构造：部分失败的 partial_result 也要携带（PR #15 契约），复核警告只在成功路径合并
+        const warnings = [...(originWarning ? [originWarning] : [])];
         try {
           if (title !== undefined) {
             const renamed = await remote.call('zcode-task', 'renameTask', [{ taskId: meta.taskId, workspacePath: meta.workspacePath, title }]);
@@ -109,9 +131,11 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
           }
           await setTitlePolicy({ sessionId: meta.taskId, locked: lock_title });
           result.lock_title = lock_title;
-          return { ...result, ...await send(remote, meta.taskId, createdMessage(message, creator, originWarning)) };
+          if (title !== undefined) warnings.push(...await confirmTitleSync(meta.taskId, title, 2));
+          return { ...result, ...await send(remote, meta.taskId, createdMessage(message, creator, originWarning)),
+            ...(warnings.length ? { warnings } : {}) };
         } catch (error) {
-          error.partial_result = { ...result, delivery_status: 'unknown' };
+          error.partial_result = { ...result, ...(warnings.length ? { warnings } : {}), delivery_status: 'unknown' };
           throw error;
         }
       });

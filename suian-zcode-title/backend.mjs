@@ -52,10 +52,10 @@ export function createBackend({event,config,saveState,prompt,connect=connectHost
       const row=await loadIndexRow();
       // 新会话首轮索引行可能尚未写入：session.directory 已足以定位，不因缺行失败
       const history=await readHistory({dbPath:config.sessionDb,sqliteBin:config.sqliteBin,sessionId,workspacePath:ws});
-      if(row&&row.title!==history.session.title)throw new Error("任务索引与 CLI 会话标题不一致");
+      if(row&&row.title!==history.session.title){const mismatch=new Error("任务索引与 CLI 会话标题不一致");mismatch.reasonCode="index_title_mismatch";throw mismatch;}
       if(remote) {
         const meta=await remote.call("zcode-task","getTaskMeta",[{taskId:sessionId,workspacePath:ws}]);
-        if(meta.taskId!==sessionId||meta.workspacePath!==ws||meta.title!==history.session.title)throw new Error("原 Host 与持久化标题不一致");
+        if(meta.taskId!==sessionId||meta.workspacePath!==ws||meta.title!==history.session.title){const mismatch=new Error("原 Host 与持久化标题不一致");mismatch.reasonCode="host_title_mismatch";throw mismatch;}
       }
       return{...recentSnapshot(history,ws),titleSource:history.session.titleSource??null,titlePolicy:await readTitlePolicy({sessionId}),archived:!!row?.archived,deleted:!!row?.deleted,running:row?.task_status==="running"};
     },

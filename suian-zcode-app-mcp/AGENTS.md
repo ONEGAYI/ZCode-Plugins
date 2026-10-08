@@ -32,9 +32,9 @@
 | cli.mjs | stdio 入口、数据库/公共网关配置路径；旧 stdin DPAPI 保存入口兼容 |
 | server.mjs | MCP 工具注册、参数校验与结构化响应 |
 | caller.mjs | 每次请求的发起会话定位：MCP 元数据优先，trace_id 与工具名只读匹配本地调用记录 |
-| control.mjs | 原 Host 改名读回、指定模型创建、消息包装、归档保护与复原；按调用释放连接 |
+| control.mjs | 原 Host 改名读回、指定模型创建、消息包装、归档保护与复原；改名/创建后双库标题复核，分叉时回执 warnings；按调用释放连接 |
 | glm.mjs | GLM 个人套餐额度/卡片投影、确认后重置与同次尝试回执；共用 controller 远控互斥 |
-| sessions.mjs | 只读索引查询、会话定位、历史投影与分页 |
+| sessions.mjs | 只读索引查询、会话定位、历史投影与分页；sessionTitle 轻量双库标题读取供复核 |
 | package.json / package-lock.json | 固定依赖版本与测试入口 |
 | mcp.config.example.json | MCP 客户端连接示例 |
 | install.mjs / SKILL.md | skill 幂等部署与 Agent 初始化、原生 MCP 配置合并；公共网关流程委托同级子项目 |

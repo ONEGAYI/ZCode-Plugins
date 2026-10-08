@@ -16,6 +16,23 @@ const normalizeWorkspace = path => win32.normalize(path).replaceAll('\\', '/').r
 
 export function createSessionReader({ indexDbPath, sessionDbPath }) {
   return {
+    sessionTitle({ session_id }) {
+      // 复核用轻量读取：只查两库标题。session_title 为 null 表示 CLI 库尚无该会话行（deferPersistence 未落）。
+      // index_title 在跨工作区同 task_id 时取任意行，仅供诊断展示；分叉判定只用 session_title（CLI 库主键无歧义）
+      const index = openReadOnly(indexDbPath);
+      let index_title = null;
+      try {
+        const row = index.prepare('SELECT title FROM tasks WHERE task_id=? AND deleted=0').get(session_id);
+        if (row) index_title = row.title;
+      } finally { index.close(); }
+      const db = openReadOnly(sessionDbPath);
+      let session_title = null;
+      try {
+        const row = db.prepare('SELECT title FROM session WHERE id=?').get(session_id);
+        if (row) session_title = row.title;
+      } finally { db.close(); }
+      return { index_title, session_title };
+    },
     listSessions({ limit = 20, offset = 0, workspace_path, query, include_archived = false } = {}) {
       const db = openReadOnly(indexDbPath);
       try {
