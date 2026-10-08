@@ -105,7 +105,7 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
           ...(warnings.length ? { warnings } : {}) };
       });
     },
-    async startSession({ workspace_path, title, message, model, lock_title = false, creator, originWarning }) {
+    async startSession({ workspace_path, title, message, model, lock_title = false, creator, originWarning, permissionMode, permissionWarning }) {
       return attached({ workspacePath: workspace_path }, async remote => {
         let modelSelection;
         if (model) {
@@ -117,13 +117,18 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
             ...(model.reasoning_level ? { options: { reasoningLevel: model.reasoning_level } } : {}) };
         }
         const meta = await remote.call('zcode-task', 'createTask', [{ workspacePath: remote.workspacePath,
-          ...(modelSelection ? { modelSelection } : {}), deferPersistenceUntilFirstPrompt: true }]);
+          ...(modelSelection ? { modelSelection } : {}), ...(permissionMode ? { mode: permissionMode } : {}), deferPersistenceUntilFirstPrompt: true }]);
         if (!meta.taskId) throw new Error('create_not_confirmed: 原 Host 创建响应缺少 taskId');
         const result = { source: 'original_host', session_id: meta.taskId, workspace_path: meta.workspacePath, title: meta.title,
-          ...(creator === undefined ? {} : { creator }) };
+          ...(creator === undefined ? {} : { creator }), ...(meta.mode === undefined ? {} : { permission_mode: meta.mode }) };
         // 来源警告在 try 外构造：部分失败的 partial_result 也要携带（PR #15 契约），复核警告只在成功路径合并
-        const warnings = [...(originWarning ? [originWarning] : [])];
+        const warnings = [...(originWarning ? [originWarning] : []), ...(permissionWarning ? [permissionWarning] : [])];
+        // 旧版 Host 响应缺 mode 字段属"无法核实"而非"不一致"：放行并警告，不阻断已建会话的开局
+        if (permissionMode !== undefined && meta.mode === undefined)
+          warnings.push({ code: 'permission_unverified', message: '原 Host 创建响应未返回权限模式，已按请求提交但读回确认不可用' });
         try {
+          // 有期望权限（显式指定或继承）时核读回，防止后续发送方误判会话能力（如以为 yolo 实为 build）
+          if (permissionMode !== undefined && meta.mode !== undefined && meta.mode !== permissionMode) throw new Error('permission_not_confirmed: 原 Host 创建后权限模式读回不一致');
           if (title !== undefined) {
             const renamed = await remote.call('zcode-task', 'renameTask', [{ taskId: meta.taskId, workspacePath: meta.workspacePath, title }]);
             if (renamed.taskId !== meta.taskId || renamed.title !== title) throw new Error('rename_not_confirmed: 原 Host 创建后命名响应不一致');

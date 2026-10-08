@@ -26,13 +26,13 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 成功返回 `source:original_host`、`session_id`、`workspace_path`、`title`，名称以原 Host 的 `getTaskMeta` 读回为准。显式命名使用宿主的 custom 标题来源；当前自动命名插件只有已记录命名基线、且非 generated 标题相对基线变化时才判手动改名。首次 custom 标题不保证免于命名模型处理，模型也可选择 keep。
 
-`start_session`：必填 `workspace_path`、非空 `message`。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
+`start_session`：必填 `workspace_path`、非空 `message`。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。`permission_mode` 可选 `build`（变更前确认）/`plan`/`edit`/`auto`/`yolo` 五档：显式指定时透传宿主 `createTask` 并按读回值校验；缺省继承发起会话在任务索引中的当前权限（来源冲突时不继承，由来源警告说明）；发起会话不可读（含索引库缺失或繁忙的探测异常）、取值分叉或非规范值时回落为不传 `mode`，新会话使用 Host 默认权限，回执附 `permission_not_inherited` 警告及 `observed_modes` 原始取值（探测异常时无该字段）。显式请求 `yolo` 等高权限档位属高影响操作，调用方应先取得用户明确许可。
 
 ```json
 {"name":"start_session","arguments":{"workspace_path":"D:/work/example","message":"这是链路测试，只回复 TEST_OK","model":{"provider_id":"account:bigmodel-individual-coding-plan","model_id":"GLM-5.3-Flash","reasoning_level":"low"}}}
 ```
 
-返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。
+返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`permission_mode`（宿主创建响应读回的生效权限；旧版 Host 响应缺该字段时缺席并附 `permission_unverified`）、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。显式或继承的权限读回值不一致时报 `permission_not_confirmed`，携带已创建会话的 partial_result，不发送开局；响应缺失权限字段属无法核实而非不一致，放行并附 `permission_unverified` 警告，不阻断开局。
 
 `send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。可直接使用创建工具返回的 ID：
 
@@ -40,7 +40,7 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 {"name":"send_message","arguments":{"session_id":"sess_example","message":"继续测试，只回复 SECOND_OK"}}
 ```
 
-成功返回 `session_id`、`workspace_path`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `deliverer`，有冲突时附 `warnings`。不会在发送时切换用户指定会话的模型。
+成功返回 `session_id`、`workspace_path`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `deliverer`，有冲突时附 `warnings`。不会在发送时切换用户指定会话的模型，也不改变目标会话的权限模式：恢复链路不携带 `mode`，权限保持会话现状。
 
 所有工具拒绝未知参数和空白标题/信息。MCP 注解中两个读取工具保持 `readOnlyHint:true`；五个写工具为 false，创建和发信不是幂等操作。
 
@@ -107,8 +107,8 @@ You are a new zcode session created by another zcode session or the system, inst
 
 ## 证据与源码
 
-本机 ZCode 3.14.4 已通过真实 stdio MCP 完成：指定 GLM-5.3-Flash / low 创建测试会话、读取固定标记回复、向同一会话再次发送并读取回复、改名读回。模型选择、可选名称、消息格式、失败释放连接和参数校验另有隔离契约测试。[脱敏验收](./write-tools-evidence.json)
+本机 ZCode 3.14.4 已通过真实 stdio MCP 完成：指定 GLM-5.3-Flash / low 创建测试会话、读取固定标记回复、向同一会话再次发送并读取回复、改名读回。模型选择、可选名称、消息格式、失败释放连接、参数校验和权限模式（透传、继承、回落与读回校验）另有隔离契约测试。[脱敏验收](./write-tools-evidence.json)
 
 上述真实记录是来源 ID 字段加入之前的历史验收。自动来源定位已核对公开源码、本机发行包与现有调用记录，另有真实 MCP SDK 请求上下文、SQLite 回查和消息包装的隔离契约验证。本轮没有创建真实会话或向真实会话发送信息；验证范围见 [自动来源记录](./automatic-origin-evidence.json)。
 
-固定公开快照的接口依据为 [createTask/sendPrompt 契约](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/session/zcodeTaskService.ts#L215-L267)、[创建模型与持久化](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts#L1775-L1940) 和 [sendText 提交及 ACK](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts#L375-L471)。公开源码与发行包分别记证，未修改上游源码。
+固定公开快照的接口依据为 [createTask/sendPrompt 契约](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/session/zcodeTaskService.ts#L215-L267)、[创建模型与持久化](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts#L1775-L1940) 和 [sendText 提交及 ACK](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts#L375-L471)。权限模式的枚举与默认回落依据 [ZCodeTaskMode 定义](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/shared/src/zcode-task-types-core.ts#L149)（六档，`autoEdit` 为 `build` 旧别名）与 CLI 侧 [`config.mode ?? "build"` 默认值](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/apps/zcode-cli/packages/core/src/runtime/methods/config.ts#L87)；发信不改权限依据 `resumeTask` 实现不处理 `mode` 字段。公开源码与发行包分别记证，未修改上游源码。

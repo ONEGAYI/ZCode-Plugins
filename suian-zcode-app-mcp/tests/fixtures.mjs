@@ -13,7 +13,7 @@ export function fixture(t) {
   const history = new DatabaseSync(sessionDbPath);
   index.exec(`CREATE TABLE tasks (
     workspace_key TEXT, workspace_path TEXT, workspace_identity TEXT,
-    task_id TEXT, title TEXT, provider TEXT, task_status TEXT,
+    task_id TEXT, title TEXT, provider TEXT, mode TEXT NOT NULL DEFAULT 'build', task_status TEXT,
     created_at INTEGER, updated_at INTEGER, pinned INTEGER DEFAULT 0,
     archived INTEGER DEFAULT 0, deleted INTEGER DEFAULT 0,
     PRIMARY KEY (workspace_key, task_id)
@@ -33,9 +33,9 @@ export function fixture(t) {
   return {
     indexDbPath, sessionDbPath, index, history,
     task({ id, title = id, workspace = 'D:\\work\\alpha', key = workspace,
-      identity = null, updated = 10, pinned = 0, archived = 0, deleted = 0 }) {
-      index.prepare('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(key, workspace, identity, id, title, 'glm', 'completed', 1, updated, pinned, archived, deleted);
+      identity = null, updated = 10, pinned = 0, archived = 0, deleted = 0, mode = 'build' }) {
+      index.prepare('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .run(key, workspace, identity, id, title, 'glm', mode, 'completed', 1, updated, pinned, archived, deleted);
     },
     session({ id, title = id, directory = 'D:\\work\\alpha', revert = null }) {
       history.prepare('INSERT INTO session VALUES (?,?,?,?,?)')

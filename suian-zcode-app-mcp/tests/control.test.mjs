@@ -18,7 +18,7 @@ async function fixture(overrides = {}) {
         calls.push({ channel, method, params });
         if (overrides[method]) return overrides[method](params);
         if (method === 'getView') return { providers: [{ providerId: 'fixture', models: [{ modelId: 'flash', config: { optionSpecs: { reasoningLevel: { values: ['low'] } } } }] }] };
-        if (method === 'createTask') return { taskId: 'sess_new', workspacePath: workspace, title: '默认标题' };
+        if (method === 'createTask') return { taskId: 'sess_new', workspacePath: workspace, title: '默认标题', mode: params[0].mode ?? 'build' };
         if (method === 'getTaskMeta') return { taskId: params[0].taskId, workspacePath: workspace, title: '新标题' };
         if (method === 'renameTask') return { taskId: params[0].taskId, workspacePath: workspace, title: params[0].title };
         if (method === 'getTaskSnapshot') return { meta: { taskId: 'sess_new', status: 'completed' }, runtime: { plan: null, backgroundBashJobs: [], pendingCommands: [], pendingPermissions: [] } };
@@ -127,6 +127,42 @@ test('锁名称是独立创建参数，true 在开局前写入公共策略', asy
   const result = await f.controller.startSession({ workspace_path: workspace, title: '固定名称', message: 'hello', lock_title: true });
   assert.equal(result.lock_title, true);
   assert.deepEqual(f.policies, [{ sessionId: 'sess_new', locked: true }]);
+});
+
+test('显式权限模式透传 createTask 并读回确认，继承警告随回执透出', async () => {
+  const f = await fixture();
+  const created = await f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' });
+  assert.equal(created.permission_mode, 'yolo');
+  assert.equal(f.calls[0].params[0].mode, 'yolo');
+  const originWarning = { code: 'caller_context_conflict', message: '来源冲突', possible_session_ids: [] };
+  const warned = await f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'plan',
+    originWarning, permissionWarning: { code: 'permission_not_inherited', message: '不可继承' } });
+  assert.deepEqual(warned.warnings, [originWarning, { code: 'permission_not_inherited', message: '不可继承' }]);
+  assert.equal(warned.permission_mode, 'plan');
+});
+
+test('未决权限不向 createTask 添加 mode 字段，读回值如实返回', async () => {
+  const f = await fixture();
+  const created = await f.controller.startSession({ workspace_path: workspace, message: 'hello' });
+  assert.equal(Object.hasOwn(f.calls[0].params[0], 'mode'), false);
+  assert.equal(created.permission_mode, 'build');
+  assert.equal(Object.hasOwn(created, 'warnings'), false);
+});
+
+test('显式权限读回不一致时报 permission_not_confirmed，不发送开局', async () => {
+  const f = await fixture({ createTask: () => ({ taskId: 'sess_new', workspacePath: workspace, title: '默认标题', mode: 'build' }) });
+  await assert.rejects(f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' }),
+    e => /permission_not_confirmed/.test(e.message) && e.partial_result.session_id === 'sess_new');
+  assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 0);
+});
+
+test('读回缺失权限字段视为无法核实而非不一致，放行并附 permission_unverified', async () => {
+  const f = await fixture({ createTask: () => ({ taskId: 'sess_new', workspacePath: workspace, title: '默认标题' }) });
+  const created = await f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' });
+  assert.equal(created.delivery_status, 'accepted');
+  assert.deepEqual(created.warnings.map(w => w.code), ['permission_unverified']);
+  assert.equal(Object.hasOwn(created, 'permission_mode'), false);
+  assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
 });
 
 test('省略名称和模型使用 Host 默认，RPC 参数不擅自添加选项', async () => {

@@ -19,6 +19,38 @@ test('按更新时间跨工作区列出最近 N 条，包含置顶但排除删�
   assert.equal(f.index.prepare('SELECT COUNT(*) n FROM tasks').get().n, 5);
 });
 
+test('列表与读取带 permission_mode，sessionMode 供继承发起者权限', async t => {
+  const f = fixture(t);
+  f.task({ id: 'sess_alpha', mode: 'yolo' });
+  f.task({ id: 'sess_beta', mode: 'plan' });
+  f.session({ id: 'sess_alpha' });
+  f.message({ id: 'msg_user', session: 'sess_alpha', sequence: 0 });
+  const { createSessionReader } = await import('../sessions.mjs');
+  const reader = createSessionReader(f);
+  assert.deepEqual(reader.listSessions({}).sessions.map(s => [s.session_id, s.permission_mode]),
+    [['sess_alpha', 'yolo'], ['sess_beta', 'plan']]);
+  assert.equal(reader.readSession({ session_id: 'sess_alpha' }).session.permission_mode, 'yolo');
+  assert.equal(reader.sessionMode({ session_id: 'sess_alpha' }).mode, 'yolo');
+  assert.deepEqual(reader.sessionMode({ session_id: 'sess_alpha' }).observed, ['yolo']);
+  assert.equal(reader.sessionMode({ session_id: 'sess_missing' }).mode, null);
+  assert.deepEqual(reader.sessionMode({ session_id: 'sess_missing' }).observed, []);
+  f.task({ id: 'sess_deleted', mode: 'yolo', deleted: 1 });
+  assert.equal(reader.sessionMode({ session_id: 'sess_deleted' }).mode, null);
+});
+
+test('sessionMode 在同 ID 跨工作区分叉时返回空，取值一致时才可继承', async t => {
+  const f = fixture(t);
+  f.task({ id: 'sess_dupe', mode: 'build' });
+  f.task({ id: 'sess_dupe', workspace: 'D:\\work\\beta', mode: 'yolo' });
+  const { createSessionReader } = await import('../sessions.mjs');
+  const diverged = createSessionReader(f).sessionMode({ session_id: 'sess_dupe' });
+  assert.equal(diverged.mode, null);
+  assert.deepEqual([...diverged.observed].sort(), ['build', 'yolo']);
+  f.task({ id: 'sess_same', mode: 'edit' });
+  f.task({ id: 'sess_same', workspace: 'D:\\work\\beta', mode: 'edit' });
+  assert.equal(createSessionReader(f).sessionMode({ session_id: 'sess_same' }).mode, 'edit');
+});
+
 test('损坏的消息角色或 text 数据形状明确报错，不能当作空聊天', async t => {
   const f = fixture(t);
   f.task({ id: 'sess_alpha' }); f.session({ id: 'sess_alpha' });

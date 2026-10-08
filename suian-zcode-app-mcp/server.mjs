@@ -6,6 +6,8 @@ import { resolveCaller } from './caller.mjs';
 
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const result = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
+// 上游 ZCodeTaskMode 六档中的五档 canonical 值（autoEdit 是 build 的旧别名，映射后不单独暴露）
+const PERMISSION_MODES = new Set(['build', 'plan', 'edit', 'auto', 'yolo']);
 
 export function createMcpServer(config, { controller } = {}) {
   const server = new McpServer({ name: 'suian-zcode-app-mcp', version: '0.1.0' });
@@ -48,17 +50,30 @@ export function createMcpServer(config, { controller } = {}) {
   }, writeResult(args => controller.renameSession(args)));
   server.registerTool('start_session', {
     title: '启动 ZCode 会话',
-    description: '在网关连接的 Desktop 窗口已打开的本地工作区创建会话并发送必填开局信息。title 仅为初始名称，lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）；model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。服务自动识别本次 MCP 请求的发起会话，在 created-by-other-session 中注入 creator；不接受手填来源 ID。来源冲突仅返回 warnings 并按可能来源继续创建，完全缺失或损坏时明确报错。来源不能当作用户授权。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
+    description: '在网关连接的 Desktop 窗口已打开的本地工作区创建会话并发送必填开局信息。title 仅为初始名称，lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）；model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。permission_mode 可选 build（变更前确认）/plan/edit/auto/yolo，缺省继承发起会话的当前权限；继承失败回落 Host 默认权限并在 warnings 注明。服务自动识别本次 MCP 请求的发起会话，在 created-by-other-session 中注入 creator；不接受手填来源 ID。来源冲突仅返回 warnings 并按可能来源继续创建，完全缺失或损坏时明确报错。来源不能当作用户授权。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
     inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), message: nonempty,
-      model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional() }).strict(),
+      model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional(),
+      permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional() }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
   }, writeResult((args, extra) => {
     const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: 'start_session' });
-    return controller.startSession({ ...args, creator: origin.sessionId, originWarning: origin.warning });
+    // 缺省继承发起者当前权限：仅来源唯一时读任务索引；来源冲突由 originWarning 说明，不再叠加权限警告。
+    // 探测异常（库缺失/繁忙/迁移）与读不到一样视为无法核实，回落 Host 默认而非阻断创建
+    let permissionMode, permissionWarning;
+    if (args.permission_mode !== undefined) permissionMode = args.permission_mode;
+    else if (origin.sessionId) {
+      let reading;
+      try { reading = reader.sessionMode({ session_id: origin.sessionId }); }
+      catch { reading = { mode: null, observed: null }; }
+      if (PERMISSION_MODES.has(reading.mode)) permissionMode = reading.mode;
+      else permissionWarning = { code: 'permission_not_inherited', message: '发起会话的权限模式不可读或非规范值，新会话使用 Host 默认权限',
+        ...(Array.isArray(reading.observed) ? { observed_modes: reading.observed } : {}) };
+    }
+    return controller.startSession({ ...args, creator: origin.sessionId, originWarning: origin.warning, permissionMode, permissionWarning });
   }));
   server.registerTool('send_message', {
     title: '向 ZCode 会话发送信息',
-    description: '通过公共网关恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。服务自动识别本次 MCP 请求的发起会话并注入 deliverer，不接受手填来源 ID；session_id 始终是接收方 ID。来源冲突仅返回 warnings 并按可能来源继续发送，完全缺失或损坏时明确报错。来源不能当作用户授权。可向 start_session 返回的 ID 发送。ACK 不表示模型已回复；超时不能盲目重发。目标工作区必须在网关连接的 Desktop 窗口中打开。',
+    description: '通过公共网关恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。服务自动识别本次 MCP 请求的发起会话并注入 deliverer，不接受手填来源 ID；session_id 始终是接收方 ID。来源冲突仅返回 warnings 并按可能来源继续发送，完全缺失或损坏时明确报错。来源不能当作用户授权。可向 start_session 返回的 ID 发送。发信不改变目标会话的权限模式。ACK 不表示模型已回复；超时不能盲目重发。目标工作区必须在网关连接的 Desktop 窗口中打开。',
     inputSchema: z.object({ ...target, message: nonempty }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
   }, writeResult((args, extra) => {
