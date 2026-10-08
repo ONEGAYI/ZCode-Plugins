@@ -162,6 +162,76 @@ test('来源冲突降级为警告并继续创建和发信，候选来源仅作�
   assert.equal(prompts.length, 6);
 });
 
+test('start_session 缺省继承发起者权限，显式指定优先，不可继承时回落 Host 默认并警告', async t => {
+  const f = fixture(t), calls = [];
+  f.task({ id: 'sess_parent', mode: 'yolo' });
+  f.task({ id: 'sess_dirty', mode: 'legacy-autoEdit' });
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = { startSession: async args => { calls.push(args); return { session_id: 'sess_child' }; } };
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'permission-inherit-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const call = (arguments_, meta) => client.callTool({ name: 'start_session', arguments: arguments_, _meta: meta });
+  const inherited = await call({ workspace_path: 'D:/fixture', message: 'a' }, { session_id: 'sess_parent' });
+  assert.equal(inherited.isError, undefined);
+  assert.equal(calls[0].permissionMode, 'yolo');
+  assert.equal(calls[0].permissionWarning, undefined);
+  const explicit = await call({ workspace_path: 'D:/fixture', message: 'b', permission_mode: 'plan' }, { session_id: 'sess_parent' });
+  assert.equal(explicit.isError, undefined);
+  assert.equal(calls[1].permissionMode, 'plan');
+  for (const [index, origin] of [[2, { session_id: 'sess_ghost' }], [3, { session_id: 'sess_dirty' }]]) {
+    const response = await call({ workspace_path: 'D:/fixture', message: 'c' + index }, origin);
+    assert.equal(response.isError, undefined);
+    assert.equal(calls[index].permissionMode, undefined);
+    assert.equal(calls[index].permissionWarning.code, 'permission_not_inherited');
+    assert.deepEqual(calls[index].permissionWarning.observed_modes, index === 2 ? [] : ['legacy-autoEdit']);
+  }
+  assert.equal((await call({ workspace_path: 'D:/fixture', message: 'd', permission_mode: 'autoEdit' }, { session_id: 'sess_parent' })).isError, true);
+  assert.equal(calls.length, 4);
+});
+
+test('任务索引探测异常时继承回落为 Host 默认权限，不阻断创建', async t => {
+  const f = fixture(t), calls = [];
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = { startSession: async args => { calls.push(args); return { session_id: 'sess_child' }; } };
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'permission-probe-failure-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  f.index.exec('DROP TABLE tasks');
+  const response = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'hello' },
+    _meta: { session_id: 'sess_parent' } });
+  assert.equal(response.isError, undefined);
+  assert.equal(calls[0].permissionMode, undefined);
+  assert.equal(calls[0].permissionWarning.code, 'permission_not_inherited');
+  assert.equal(Object.hasOwn(calls[0].permissionWarning, 'observed_modes'), false);
+});
+
+test('来源冲突时不继承权限也不叠加权限警告，仅保留来源警告', async t => {
+  const f = fixture(t), calls = [];
+  f.task({ id: 'sess_a', mode: 'yolo' });
+  f.task({ id: 'sess_b', mode: 'yolo' });
+  f.history.exec(`CREATE TABLE tool_usage (session_id TEXT, trace_id TEXT, tool_name TEXT);
+    INSERT INTO tool_usage VALUES ('sess_a', 'trace_shared', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES ('sess_b', 'trace_shared', 'mcp__fixture__start_session');`);
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = { startSession: async args => { calls.push(args); return { session_id: 'sess_child' }; } };
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'permission-conflict-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const response = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'hello' },
+    _meta: { trace_id: 'trace_shared' } });
+  assert.equal(response.isError, undefined);
+  assert.equal(calls[0].permissionMode, undefined);
+  assert.equal(calls[0].permissionWarning, undefined);
+  assert.equal(calls[0].originWarning.code, 'caller_ambiguous');
+});
+
 test('本地调用记录中的 NULL 或空白来源 ID 在进入写流程前报告损坏', async t => {
   const f = fixture(t), calls = [];
   f.history.exec(`CREATE TABLE tool_usage (session_id TEXT, trace_id TEXT, tool_name TEXT);

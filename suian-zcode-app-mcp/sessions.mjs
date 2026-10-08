@@ -9,7 +9,7 @@ function openReadOnly(path) {
 }
 
 const taskColumns = `task_id AS session_id, title, workspace_path, workspace_key,
-  workspace_identity, provider, task_status AS status, created_at, updated_at, pinned, archived`;
+  workspace_identity, provider, mode AS permission_mode, task_status AS status, created_at, updated_at, pinned, archived`;
 const taskItem = row => ({ ...row, pinned: !!row.pinned, archived: !!row.archived });
 
 const normalizeWorkspace = path => win32.normalize(path).replaceAll('\\', '/').replace(/\/$/, '').toLowerCase();
@@ -32,6 +32,15 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
         if (row) session_title = row.title;
       } finally { db.close(); }
       return { index_title, session_title };
+    },
+    // 继承发起者权限用轻量读取：只查任务索引的 mode 列。跨工作区同 task_id 取值分叉时
+    // 无法确定继承谁，mode 返回 null 交由调用方回落；observed 携带原始取值供警告诊断成因。
+    sessionMode({ session_id }) {
+      const index = openReadOnly(indexDbPath);
+      try {
+        const observed = index.prepare('SELECT DISTINCT mode FROM tasks WHERE task_id=? AND deleted=0').all(session_id).map(row => row.mode);
+        return { mode: observed.length === 1 ? observed[0] : null, observed };
+      } finally { index.close(); }
     },
     listSessions({ limit = 20, offset = 0, workspace_path, query, include_archived = false } = {}) {
       const db = openReadOnly(indexDbPath);

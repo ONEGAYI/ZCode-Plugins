@@ -27,7 +27,7 @@
 | `query` | 可选；在标题或 ID 中匹配字面子串，ASCII 字母不区分大小写。`%`、`_` 和引号没有特殊搜索含义 |
 | `include_archived` | 默认 false；true 将归档项一起列出 |
 
-按 `updated_at DESC, task_id, workspace_key` 排序。返回 `source: local_tasks_index`、`sessions`、筛选后的 `total` 和 `next_offset`。时间戳是 Unix 毫秒。每项包含 ID、标题、工作区路径与 key、远端身份、provider、持久化状态、时间和置顶/归档标记。
+按 `updated_at DESC, task_id, workspace_key` 排序。返回 `source: local_tasks_index`、`sessions`、筛选后的 `total` 和 `next_offset`。时间戳是 Unix 毫秒。每项包含 ID、标题、工作区路径与 key、远端身份、provider、`permission_mode` 权限模式、持久化状态、时间和置顶/归档标记。
 
 这里的“所有工作区”指本机索引已经收录的工作区，不保证存在另一台设备的全部记录。分批查询时，其他进程新增或更新会话会改变 offset 排序；本版不冻结跨调用快照。
 
@@ -43,6 +43,8 @@
 | `before_message_id` | 可选；用上页 `next_before_message_id` 读取更早消息 |
 
 返回 `source: local_cli_sqlite`、`branch`、会话元数据、`messages`、当前分支可见消息 `total` 和 `next_before_message_id`。`branch` 为 `persisted` 或 `persisted_revert`。
+
+会话元数据中的 `permission_mode` 来自任务索引的 `mode` 列，通常为 `build`（变更前确认，索引层默认值）、`plan`、`edit`、`auto`、`yolo` 五档之一，异常存量值如实透传、不做枚举校验；读取的是持久化值，宿主刚切换权限尚未同步索引的瞬间可能滞后。
 
 消息包含 ID、角色、父消息 ID、创建时间、完整 `text` 与附件文件名/类型。保留全部正文，不做单条文本截断。默认不返回工具执行内容、模型思考、隐藏通知、压缩摘要、附件二进制或 URL。超长聊天应使用较小 `limit` 翻页。
 
