@@ -57,7 +57,9 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 - `requested_delivery_mode`：调用方请求的 `guide` / `queue`；省略时为 `host_default`。
 - `admitted_delivery`：Host `inputAccepted` 回执的 `startNow` / `queue` / `guide` 原值。公开上游实现也会把尚待消费的 guide 返回为 queue；这只说明输入已接收，不证明已注入当前轮或已处理完。
 
-工具等待 Host 接受提交的 ACK 后即返回并释放连接，不等待接收方工作结束或回复；不能把“不等待处理”理解为无需等待网络和 Host 确认。Host 明确拒绝时返回 `send_not_accepted`、`delivery_status:rejected`；提交异常、缺少有效回执或输入标识不一致时返回 `delivery_status:unknown`，保留本次 `input_id` 供核对，不自动重发。Host 缺少 v4 命令接口时明确报错，不回退到无法表达策略和回执的旧发送接口。
+MCP 开始执行后，工具等待 Host 接受提交的 ACK 即返回并释放连接，不等待接收方工作结束或回复；不能把“不等待处理”理解为无需等待网络和 Host 确认。Host 明确拒绝时返回 `send_not_accepted`、`delivery_status:rejected`；提交异常、缺少有效回执或输入标识不一致时返回 `delivery_status:unknown`，保留本次 `input_id` 供核对，不自动重发。Host 缺少 v4 命令接口时明确报错，不回退到无法表达策略和回执的旧发送接口。
+
+**及时发信先单独调用**：先调用 `send_message` 并取得提交回执，再执行等待、轮询或长命令。不要与含 `sleep` 或长耗时 Bash 的调用放在同一批；宿主可能先串行执行前面的工具，发信工具卡已显示也不代表 MCP 已开始执行。`delivery_mode` 决定接收方的输入处理策略，不会改变发送方的工具调度。长命令支持后台参数时使用后台模式，不向不支持的工具添加后台参数。
 
 发信不改变目标会话的权限模式：恢复链路不携带 `mode`，权限保持会话现状；消息也不携带模型选择覆盖。
 

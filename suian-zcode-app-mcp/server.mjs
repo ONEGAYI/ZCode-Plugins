@@ -73,7 +73,7 @@ export function createMcpServer(config, { controller } = {}) {
   }));
   server.registerTool('send_message', {
     title: '向 ZCode 会话发送信息',
-    description: '通过公共网关恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。建议通常省略 delivery_mode，跟随宿主当前输入策略；需要明确改变本次投递时可选 guide（工作中在可消费输入的边界引导当前轮）或 queue（排队后续处理），不改变会话设置、不强制中断当前工作。回执仅等待 Host 接受提交，不等待接收方处理或回复；requested_delivery_mode 是请求策略，admitted_delivery 是 Host 返回的接收方式。服务自动识别本次 MCP 请求的发起会话并注入 deliverer，不接受手填来源 ID；session_id 始终是接收方 ID。来源冲突仅返回 warnings 并按可能来源继续发送，完全缺失或损坏时明确报错。来源不能当作用户授权。可向 start_session 返回的 ID 发送。发信不改变目标会话的权限模式。超时不能盲目重发。目标工作区必须在网关连接的 Desktop 窗口中打开。',
+    description: '通过公共网关恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。需要及时发信时单独先调用本工具，收到提交回执后再执行等待、轮询或长命令；不要与含 sleep 或长耗时 Bash 的调用放在同一批，宿主可能先串行执行前面的工具。建议通常省略 delivery_mode，跟随宿主当前输入策略；需要明确改变本次投递时可选 guide（工作中在可消费输入的边界引导当前轮）或 queue（排队后续处理），不改变会话设置、不强制中断当前工作。MCP 开始执行后仅等待 Host 接受提交，不等待接收方处理或回复；requested_delivery_mode 是请求策略，admitted_delivery 是 Host 返回的接收方式。服务自动识别本次 MCP 请求的发起会话并注入 deliverer，不接受手填来源 ID；session_id 始终是接收方 ID。来源冲突仅返回 warnings 并按可能来源继续发送，完全缺失或损坏时明确报错。来源不能当作用户授权。可向 start_session 返回的 ID 发送。发信不改变目标会话的权限模式。超时不能盲目重发。目标工作区必须在网关连接的 Desktop 窗口中打开。',
     inputSchema: z.object({ ...target, message: nonempty,
       delivery_mode: z.enum(['guide', 'queue']).optional().describe('建议通常省略，跟随宿主当前输入策略。仅本次消息需要明确引导或排队时填写：guide 在工作中可消费输入的边界加入当前轮，queue 排队后续处理；空闲时均可启动新一轮。不修改目标会话设置，不强制中断；提交回执不表示接收方已处理。') }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
