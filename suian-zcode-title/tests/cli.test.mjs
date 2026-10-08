@@ -195,4 +195,17 @@ test("lock/unlock/policy 目标会话不存在时报错，不静默写策略",()
     assert.ok(!existsSync(join(policyDir,"sess_missing.json")),"失败后不得残留策略文件");
   } finally {rmSync(root,{recursive:true});}
 });
+test("lock 双库不可读时上抛失败，不把“查不了”误报为“不存在”",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-policy-unreadable-")),config=join(root,"config.json"),policyDir=join(root,"policy");
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
+  try {
+    writeFileSync(config,JSON.stringify({sessionDb:join(root,"missing-session.sqlite"),indexDb:join(root,"missing-index.sqlite"),sqliteBin,dataDir:join(root,"state"),titlePolicyDirectory:policyDir}));
+    const run=spawnSync(process.execPath,[cli,"lock","--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"}),windowsHide:true});
+    assert.equal(run.status,1,run.stderr);
+    const parsed=JSON.parse(run.stdout);
+    assert.equal(parsed.status,"failed");
+    assert.ok(!parsed.error.includes("不存在"),"查询异常不得误报为会话不存在");
+    assert.ok(!existsSync(join(policyDir,"sess_fixture.json")),"查询失败不得写策略");
+  } finally {rmSync(root,{recursive:true});}
+});
 

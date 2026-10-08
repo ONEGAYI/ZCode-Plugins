@@ -41,7 +41,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 # auth / unauth：stdin 带 authorization_url 加密保存 / 清除授权
 ```
 
-默认调用通过公共网关 connectHost，无需远控链接；gatewayConfigPath 可指定公共配置文件。auth/unauth 只保留旧凭据管理，不能据其状态判断网关是否就绪。lock/unlock/policy 不连网关：先做存在性校验（CLI 会话库与任务索引任一命中，查询异常上抛不吞），不存在报错退出码 1；输出 `previous`/`policy` 透传公共策略对象，重复执行幂等。config 的 `titlePolicyDirectory` 可覆盖策略目录（默认公共目录，供测试隔离）。安装：`node .\install.mjs .\.local`；仅检查加 `--check-only`，自定义配置加 `--config {{path}}`。卸载加 `--remove`，不能与仅检查同时使用。
+默认调用通过公共网关 connectHost，无需远控链接；gatewayConfigPath 可指定公共配置文件。auth/unauth 只保留旧凭据管理，不能据其状态判断网关是否就绪。lock/unlock/policy 不连网关：先做存在性校验（CLI 会话库与任务索引任一命中，查询异常上抛不吞），不存在报错退出码 1；输出 `previous`/`policy` 透传公共策略对象，重复执行幂等。config 的 `titlePolicyDirectory` 可覆盖策略目录（默认公共目录，供测试隔离；误留在日常配置会使 CLI 与命名进程读写不同目录，固定不生效且无告警）。安装：`node .\install.mjs .\.local`；仅检查加 `--check-only`，自定义配置加 `--config {{path}}`。卸载加 `--remove`，不能与仅检查同时使用。
 
 ### 链路概要
 

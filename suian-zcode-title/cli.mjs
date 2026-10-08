@@ -106,7 +106,7 @@ if(args.includes("--help")||!args.length) {
         result=await runDoctor({backend,event,config});
       } else if(command==="lock"||command==="unlock"||command==="policy") {
         if(!await backend.sessionExists())throw new Error("目标会话在索引与会话库中均不存在");
-        const policyDirectory=config.titlePolicyDirectory??undefined;
+        const policyDirectory=config.titlePolicyDirectory||undefined;
         if(command==="policy") {
           result={status:"policy",sessionId:event.session_id,policy:await readTitlePolicy({sessionId:event.session_id,directory:policyDirectory})};
         } else {
