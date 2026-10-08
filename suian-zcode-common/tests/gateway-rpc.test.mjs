@@ -358,7 +358,12 @@ test('connectHost 遇到旧网关明确要求升级，不建立远控连接', { 
   t.after(() => rm(dir, { recursive: true }));
   const gatewayConfigPath = join(dir, 'config.json');
   await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: legacy.address().port, control_token: 'fixture-only' }));
-  await assert.rejects(connectHost({ workspacePath: workspace, gatewayConfigPath }), error => error.reasonCode === 'gateway_upgrade_required');
+  await assert.rejects(connectHost({ workspacePath: workspace, gatewayConfigPath }), error => {
+    assert.equal(error.reasonCode, 'gateway_upgrade_required');
+    assert.match(error.message, /暂停移动端远控/);
+    assert.ok(!error.message.includes('完整退出'));
+    return true;
+  });
 });
 
 test('connectHost 配置格式错误不回显令牌或原 JSON', async t => {

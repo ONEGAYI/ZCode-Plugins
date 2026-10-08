@@ -14,7 +14,7 @@ const nativeExec = promisify(execFile);
 
 // 只替换 Windows 系统边界，真实执行 setup.ps1 与临时目录内的文件读写。
 const systemFixture = String.raw`
-param([string]$Script, [string]$Action, [string]$DataDir, [string]$SkillsDir, [string]$StateFile, [int]$HealthTimeoutSec)
+param([string]$Script, [string]$Action, [string]$DataDir, [string]$SkillsDir, [string]$StateFile, [int]$HealthTimeoutSec, [int]$Port)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $global:fixture = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
@@ -33,8 +33,10 @@ function Stop-ScheduledTask { throw 'Gateway already accepted self shutdown; do 
 function Unregister-ScheduledTask { param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; $global:fixture.task=$null; Save-Fixture }
 function Invoke-RestMethod {
     param([string]$Uri, [int]$TimeoutSec, [switch]$UseBasicParsing, [string]$Method, $Headers)
+    $global:fixture.http_attempts++; Save-Fixture
     if ($global:fixture.health -eq 'failure') { throw 'fixture: 网关启动失败' }
     $config = Get-Content -LiteralPath (Join-Path $DataDir 'config.json') -Raw | ConvertFrom-Json
+    if (([Uri]$Uri).Port -ne $config.port) { throw [Net.WebException]::new('fixture: wrong health port', [Net.WebExceptionStatus]::ConnectFailure) }
     if ($Method -eq 'Post') {
         if ($Headers.Authorization -ne ('Bearer ' + $config.control_token)) { throw '控制令牌错误' }
         $global:fixture.shutdowns++; $global:fixture.draining=($global:fixture.shutdown_health_reads -gt 0); $global:fixture.health_available=$global:fixture.draining; if ($null -ne $global:fixture.task) { $global:fixture.task.State='Ready' }; Save-Fixture
@@ -54,6 +56,7 @@ function Invoke-RestMethod {
 }
 $params = @{ Action=$Action; DataDir=$DataDir; SkillsDir=$SkillsDir }
 if ($PSBoundParameters.ContainsKey('HealthTimeoutSec')) { $params.HealthTimeoutSec=$HealthTimeoutSec }
+if ($PSBoundParameters.ContainsKey('Port')) { $params.Port=$Port }
 & $Script @params
 `;
 
@@ -64,11 +67,11 @@ async function fixture(t, overrides = {}) {
   const script = join(root, 'Windows 边界 fixture.ps1');
   const dataDir = join(root, '公共 data');
   const skillsDir = join(root, 'skills');
-  const initial = { relay: 'wss://previous.example/ws', task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', desktop: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, health_available: false, draining: false, shutdown_health_reads: 0, ...overrides };
+  const initial = { relay: 'wss://previous.example/ws', task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', desktop: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, http_attempts: 0, health_available: false, draining: false, shutdown_health_reads: 0, ...overrides };
   await writeFile(stateFile, JSON.stringify(initial));
   await writeFile(script, '\uFEFF' + systemFixture);
-  const run = async (action, { healthTimeoutSec } = {}) => {
-    const { stdout } = await nativeExec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Script', setup, '-Action', action, '-DataDir', dataDir, '-SkillsDir', skillsDir, '-StateFile', stateFile, ...(healthTimeoutSec === undefined ? [] : ['-HealthTimeoutSec', String(healthTimeoutSec)])], { windowsHide: true });
+  const run = async (action, { healthTimeoutSec, port } = {}) => {
+    const { stdout } = await nativeExec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Script', setup, '-Action', action, '-DataDir', dataDir, '-SkillsDir', skillsDir, '-StateFile', stateFile, ...(healthTimeoutSec === undefined ? [] : ['-HealthTimeoutSec', String(healthTimeoutSec)]), ...(port === undefined ? [] : ['-Port', String(port)])], { windowsHide: true });
     return JSON.parse(stdout.trim());
   };
   const state = async () => JSON.parse(await readFile(stateFile, 'utf8'));
@@ -144,7 +147,7 @@ test('移除前拒绝切断 Desktop；退出后恢复原用户环境或保留外
     state.desktop = false;
     if (original === 'external') state.relay = 'wss://external.example/ws';
     await writeFile(f.stateFile, JSON.stringify(state));
-    const result = await f.run('Remove');
+    const result = await f.run('Remove', { port: 17331 });
     state = await f.state();
     assert.equal(state.task, null);
     assert.equal(state.shutdowns, 1);
@@ -167,7 +170,7 @@ test('启动失败或健康接口属于其他实例时明确失败，不写网�
   }
 });
 
-test('重载拒绝切断 Desktop；退出后迁移旧目录并保留端口、上游、环境备份与控制令牌', { skip: process.platform !== 'win32' }, async (t) => {
+test('重载拒绝切断远控；暂停远控后迁移旧目录并保留端口、上游、环境备份与控制令牌', { skip: process.platform !== 'win32' }, async (t) => {
   const f = await fixture(t);
   await f.run('Install');
   const configFile = join(f.dataDir, 'config.json');
@@ -184,7 +187,7 @@ test('重载拒绝切断 Desktop；退出后迁移旧目录并保留端口、上
   let state = await f.state();
   state.desktop = true;
   await writeFile(f.stateFile, JSON.stringify(state));
-  await assert.rejects(f.run('Restart'), /quit ZCode/);
+  await assert.rejects(f.run('Restart'), /Stop mobile remote control in ZCode.*keep ZCode open/);
   assert.equal((await f.state()).shutdowns, 0);
   assert.deepEqual(JSON.parse(await readFile(configFile, 'utf8')), old);
   state.desktop = false;
@@ -201,6 +204,53 @@ test('重载拒绝切断 Desktop；退出后迁移旧目录并保留端口、上
   assert.equal(state.shutdowns, 1);
   assert.equal(state.relay, 'ws://127.0.0.1:17330/ws');
   await assert.rejects(readFile(oldSkillFile), { code: 'ENOENT' });
+});
+
+test('修改端口先停止旧端口实例，再完成新配置；应用重启留到安装完成后', { skip: process.platform !== 'win32' }, async (t) => {
+  const f = await fixture(t);
+  await f.run('Install');
+  const configFile = join(f.dataDir, 'config.json');
+  const before = await readFile(configFile, 'utf8');
+  let state = await f.state();
+  state.desktop = true;
+  await writeFile(f.stateFile, JSON.stringify(state));
+  await assert.rejects(f.run('Install', { port: 17331 }), /use Restart/);
+  await assert.rejects(f.run('Restart', { port: 17331 }), /Stop mobile remote control in ZCode.*keep ZCode open/);
+  assert.equal(await readFile(configFile, 'utf8'), before);
+  assert.equal((await f.state()).shutdowns, 0);
+  state = await f.state();
+  state.desktop = false;
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const result = await f.run('Restart', { port: 17331 });
+  assert.equal(result.action, 'restarted');
+  assert.equal(result.gateway_running, true);
+  assert.equal(result.relay_url, 'ws://127.0.0.1:17331/ws');
+  assert.equal(result.health_url, 'http://127.0.0.1:17331/health');
+  assert.equal(result.desktop_connected, false);
+  assert.equal(result.restart_required, true);
+  const updated = JSON.parse(await readFile(configFile, 'utf8'));
+  assert.equal(updated.port, 17331);
+  for (const field of ['control_token', 'previous_user_relay']) assert.equal(updated[field], JSON.parse(before)[field]);
+  assert.equal((await f.state()).shutdowns, 1);
+  assert.equal((await f.state()).relay, 'ws://127.0.0.1:17331/ws');
+});
+
+test('显式指定新端口也先验证旧配置端口，非法值不发请求或改配置', { skip: process.platform !== 'win32' }, async (t) => {
+  for (const port of ['17329@example.invalid', 0, 65536, 17329.5]) {
+    const f = await fixture(t);
+    await f.run('Install');
+    const configFile = join(f.dataDir, 'config.json');
+    const config = JSON.parse(await readFile(configFile, 'utf8'));
+    config.port = port;
+    const before = JSON.stringify(config);
+    await writeFile(configFile, before);
+    const state = await f.state();
+    await assert.rejects(f.run('Restart', { port: 17331 }), /Installed gateway port must be an integer from 1 to 65535/);
+    assert.equal((await f.state()).http_attempts, state.http_attempts);
+    assert.equal((await f.state()).shutdowns, 0);
+    assert.equal((await f.state()).relay, state.relay);
+    assert.equal(await readFile(configFile, 'utf8'), before);
+  }
 });
 
 test('健康响应需要超过一秒时仍可确认运行，偶发超时只重试一次', { skip: process.platform !== 'win32' }, async (t) => {
@@ -247,7 +297,7 @@ test('旧 PowerShell 启动任务在活跃连接时只报告待升级，安全�
   const installed = await f.run('Install');
   assert.equal(installed.launcher_update_required, true);
   assert.equal((await f.state()).registrations, 1);
-  await assert.rejects(f.run('Restart'), /quit ZCode/);
+  await assert.rejects(f.run('Restart'), /Stop mobile remote control in ZCode.*keep ZCode open/);
   state = await f.state();
   state.desktop = false;
   await writeFile(f.stateFile, JSON.stringify(state));
@@ -278,7 +328,7 @@ test('任务已结束但网关仍存活时状态以健康为准，活跃 Desktop
   assert.equal((await f.state()).registrations, 1);
   const before = await readFile(join(f.dataDir, 'config.json'), 'utf8');
   await assert.rejects(f.run('Remove'), /quit ZCode/);
-  await assert.rejects(f.run('Restart'), /quit ZCode/);
+  await assert.rejects(f.run('Restart'), /Stop mobile remote control in ZCode.*keep ZCode open/);
   assert.equal(await readFile(join(f.dataDir, 'config.json'), 'utf8'), before);
   assert.equal((await f.state()).shutdowns, 0);
   state = await f.state();

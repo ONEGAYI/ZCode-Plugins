@@ -15,6 +15,8 @@ description: 管理 ZCode 插件共用的基础能力。当用户初始化或升
 
 初始化或升级优先读取仓库中的最新 skill，保留所选插件与公共层的同一版本。稀疏检出须补齐公共层，保留其他已安装插件目录；缺少公共层时先按根 README 获取代码。
 
+**先完成安装或升级，最后才安排应用重启**。首次接入、修改启动地址也遵循这个顺序。保留承载配置的 ZCode 与当前 Agent 会话，先完成源码、依赖、网关、插件配置、skill 和本机检查。需要重载网关时只暂停 ZCode 内的移动端远控；不能让用户先退出应用，再等待已经退出的 Agent 继续升级。
+
 **共存范围**：命名与 MCP 的原 Host 调用统一走网关本地 RPC，不再新建官方 terminal。本地工作区共享窗口 Host 的一个物理桥，隔离请求、回复与订阅；隔离契约已验证，真实手机验收以当前证据为准。手机独用远端工作区仍走原通道；此时本地 RPC 返回 remote_workspace_busy，不切走手机。两个 SQLite 读取工具继续独立运行。
 
 ## 首次安装
@@ -31,11 +33,11 @@ Install 注册当前用户登录任务，由 `wscript.exe` 执行公共数据目
 
 网关数据保留 `~/.zcode/tools/suian-zcode-gateway`，默认端口 `17329`。只有用户需要别的端口才指定 `-Port {{port}}`；上游默认 `wss://zcode.z.ai/ws`，实际使用另一 endpoint 时才指定 `-UpstreamUrl "wss://zcode.chatglm.site/ws"`。已有端口、上游和原环境备份保留，不放到插件各自的 `.local`。
 
-3. 继续对应插件配置。安装不退出 Desktop；分别报告配置已写入与 Desktop 是否已经连接。需重开时按后文提供外部步骤。
+3. 回到对应插件 skill，完成全部本机配置与检查。首次接入时 Desktop 尚未连接新网关是待生效状态，不是安装失败，也不能因此提前要求退出应用。全部配置完成后，才按后文交付重启步骤；原 Host 与模型验证留到用户重开后执行。
 
 ## 升级与旧目录迁移
 
-**更新文件和加载新代码是两件事**。网关模块在进程中缓存，更新 Git 文件不会自动重载。Windows 隔离实验已验证运行中可替换 JS 与重命名源码目录，但不能据此保证其他进程、文件权限或原生扩展不会占用文件。避免在插件处理运行中工作时更新实际安装目录；先安排完成或保存工作，按用户选择的升级窗口操作。
+**更新文件和加载新代码是两件事**。网关模块在进程中缓存，更新 Git 文件不会自动重载。Windows 隔离实验已验证运行中可替换 JS 与重命名源码目录，但不能据此保证其他进程、文件权限或原生扩展不会占用文件。更新前等待相关命名 worker 与 MCP 调用收尾，避免文件与调用混用版本；当前执行安装或升级的 Agent 留在原会话继续工作，不要求其先结束。
 
 更新源码后，在公共根安装锁定依赖并执行 Status。旧任务和数据目录仍沿用网关身份；不要新建 `suian-zcode-common` 的第二个任务或清空配置。需要加载更新后的代码、迁移旧根路径或将旧 PowerShell 任务切换为 VBS 时执行 Restart，保留端口、上游、停止令牌和原环境备份。
 
@@ -45,15 +47,24 @@ RPC 升级还要检查 `rpc_available:true`。文件已更新但该字段为 fal
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{common_root}}/setup.ps1" -Action Restart
 ```
 
-若 `desktop_connected:true`，Restart 会拒绝断开。不要终止 Agent 或强行停止网关。给用户提供外部操作：完成运行中任务、保存工作，完整退出 ZCode；在外部 PowerShell 执行上述 Restart，再按下一节启动 Desktop。不要在承载配置的 ZCode 中自行退出宿主。无 Desktop 连接时可直接重载网关，之后检查 Status。
+若 `desktop_connected:true`，Restart 会拒绝切断远控。按下面顺序操作，**全过程保留 ZCode 和当前会话**：
+
+1. 等相关插件的远控调用完成，再请用户在 ZCode 内暂停「移动端远程控制」。只关闭手机网页不够；不要求结束普通 Agent 任务或退出应用。
+2. 用本机 Shell 执行 Status，确认 `desktop_connected:false`；然后执行 Restart。暂停期间原 Host RPC 不可用，不能依赖会话 MCP 来执行升级。
+3. 完成剩余插件配置、skill 部署及本机检查。地址未变且升级前已连接正确网关时，请用户重新开启远控，检查 `desktop_connected:true` 与插件连接，无需重启应用。
+4. 首次接入、修改 Desktop 启动地址或当前主进程仍持旧变量时，先交付全部配置结果与待验证事项，最后才提示用户择时重开。不要在重启前阻塞本机配置步骤。
+
+无 Desktop 连接时直接重载网关。修改端口用 Restart 的 `-Port {{port}}`；脚本先检查并停止旧端口的实例，再启动新端口，保留控制令牌与原环境备份。只更新 README、skill 或业务配置且不涉及常驻网关代码时，无需 Restart 网关。
 
 Restart 等网关与旧启动器正常退出，再更新同一任务并启动新根的代码。成功输出 `action:"restarted"`、`vbs_launcher:true`；启动失败照实报错。旧任务健康且有活跃 Desktop 时，Install 只复用，不强行改为 VBS；`launcher_update_required:true` 表示需要按上述步骤重载。旧公共网关 skill 只有归属与旧配置匹配才移除。
 
-## 让 Desktop 读取新环境
+## 配置完成后，让 Desktop 读取新环境
 
 变量在 **Desktop 主进程启动时**读取。MCP 的 env 只影响子进程。当前脚本写用户注册表，不刷新已有 Explorer/终端的进程环境。
 
-安装或变更后第一次重开，提供下面的方法。用户先完成或保存所有运行中工作，再从托盘完整退出；关窗口可能仅隐藏。Agent 先定位实际 Desktop exe，`{{zcode_exe}}` 不能填 CLI。
+**应用重启是用户在配置完成后的生效操作，不是安装或升级的前置条件**。首次接入、启动地址改变或主进程仍持旧变量时，先完成所有本机配置与可执行的验证，明确报告「配置完成，原 Host 验证待重启」，再交付下面的方法。已连接正确网关且地址未变时跳过应用重启。
+
+在当前 Agent 仍可工作时先定位实际 Desktop exe，把下面命令中的 `{{zcode_exe}}` 替换成真实路径，不能填 CLI。用户随后自行安排时间，先完成或保存运行中工作，再从托盘完整退出；关窗口可能仅隐藏。重开命令由用户在外部 PowerShell 执行，不能要求已退出的 Agent 继续配置。
 
 ```powershell
 $env:ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL = [Environment]::GetEnvironmentVariable('ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL', 'User')
@@ -74,12 +85,13 @@ Start-Process -FilePath "{{zcode_exe}}" -WindowStyle Hidden
 - `upstream_connected`：官方上游是否连接；`rpc_available`：运行中的网关是否提供 RPC。
 - `upstream_paired`：官方链路是否配对，不标识具体客户端身份；`local_clients`：本地 RPC 客户端数。旧网关缺少后两字段时为 null。
 - `paired`：Desktop 的有效配对状态，包含本地调用期间的虚拟配对，不能据此宣称手机仍在线。共存验收需用户实际确认手机还能操作。
+- `restart_required`：配置或连接仍待就绪的汇总标志，不等于必须退出应用；远控暂停时也会为 true。按上述流程判断是重新开启远控、重载网关，还是配置完成后重开应用。
 
 健康检查默认单次 5 秒，仅超时重试一次；连续超时报运行状态未知，不据此断言网关停止。必要时可给 Status 指定 `-HealthTimeoutSec {{seconds}}`（1–30）。不把历史 `LastTaskResult` 当作当前进程状态；分别读取本次健康结果和任务状态。
 
 网关可达但任务未运行时，报告启动链需要恢复，不另开第二个实例。Restart/Remove 仍先检查实际 Desktop 连接；等待网关 HTTP 监听和启动器都退出后才改配置。任务正在运行但健康端点不可达时，重载或移除明确拒绝，先查启动日志。
 
-重开后在原窗口启用移动端远控，检查 Desktop 状态，再用手机刷新页面验证配对。不要创建真实 Agent 任务探活。端口占用、网络或任务权限错误照实处理，不擅自提权、杀进程或改其他插件配置。
+重新开启远控后检查 Desktop 状态，再用手机验证配对；若刚重载网关导致手机断线，可刷新手机页面。需要应用重启时，这些检查留给重开后的会话，不能提前宣称全部生效。不要创建真实 Agent 任务探活。端口占用、网络或任务权限错误照实处理，不擅自提权、杀进程或改其他插件配置。
 
 公共 DPAPI 与 Toast 实现按调用方 `dataDir` 存储状态：命名插件的授权密文、冷却、协议桥与 AUMID 仍在原位置，通知标题和排障提示词由命名插件提供。无需为代码迁移重新取得链接。MCP 的原 Host 工具读取公共网关配置，不增加 Toast；手机链接只留作旧凭据管理。诊断通知时读取调用方 skill，公共配置不承担业务文案或自动 Hook 配置。
 
