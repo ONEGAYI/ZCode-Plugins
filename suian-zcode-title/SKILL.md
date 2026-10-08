@@ -1,6 +1,6 @@
 ---
 name: suian-zcode-title
-description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初始化安装并配置公共网关 RPC、更换命名模型与思考档位、检查与修复 Stop 自动命名、暂停恢复命名、诊断 Windows 通知提醒及管理旧授权。当用户要求"初始化/安装自动命名插件"、"更换远控链接"、"命名插件换模型/思考档"、"命名插件检查/修复"、"暂停/恢复自动命名"、"命名通知总是弹/不弹"时使用；不用于普通对话内容处理，也不用于手动改标题。
+description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初始化安装并配置公共网关 RPC、更换命名模型与思考档位、检查与修复 Stop 自动命名、暂停恢复命名、固定或解除固定单会话标题、诊断 Windows 通知提醒及管理旧授权。当用户要求"初始化/安装自动命名插件"、"更换远控链接"、"命名插件换模型/思考档"、"命名插件检查/修复"、"暂停/恢复自动命名"、"固定/解除固定会话标题"、"命名通知总是弹/不弹"时使用；不用于普通对话内容处理，也不用于手动改标题。
 ---
 
 # suian-zcode-title
@@ -46,7 +46,7 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 
 - **滚动更新**：每轮 Stop 触发，但会话内容指纹没变就不调模型（`unchanged`）；内容变了模型对照现有标题输出 keep 或 rename，标题跟随主线缓慢演进，不逐轮翻新。
 - **既有手动保护**：无公共策略时，已有命名基线且标题相对基线变化、来源非 generated，才判为手动改名并锁定；仅 custom 来源不足以证明被跳过。旧锁定可通过删除 `.local/<session_id>.json` 解除。
-- **MCP 独立锁定**：MCP 的 lock_title 默认 false，提供初始名称不推断锁定。公共 `title-policy.mjs` 管理当前用户 `~/.zcode/tools/suian-zcode-common/session-titles/<session_id>.json`：locked:true 不调模型；false 允许滚动命名并要求格式合规，不合规 keep 最多纠正一次。先读公共策略再判断旧状态，删旧状态不能解除公共锁。修改策略使用公共 writeTitlePolicy，按用户明确意图设置 locked，两个插件与公共层需同版本升级。
+- **MCP 独立锁定**：MCP 的 lock_title 默认 false，提供初始名称不推断锁定。公共 `title-policy.mjs` 管理当前用户 `~/.zcode/tools/suian-zcode-common/session-titles/<session_id>.json`：locked:true 不调模型；false 允许滚动命名并要求格式合规，不合规 keep 最多纠正一次。先读公共策略再判断旧状态，删旧状态不能解除公共锁。Agent 修改策略走本插件 CLI（lock/unlock，内部即公共 writeTitlePolicy），按用户明确意图设置 locked；两个插件与公共层需同版本升级。
 
 ### "检查 / 修复命名插件"
 
@@ -72,6 +72,17 @@ description: 管理 ZCode 会话自动命名插件（suian-zcode-title）：初�
 ### "暂停 / 恢复自动命名"
 
 `node cli.mjs disable --config config.local.json`（写前复核 enabled，输出 `disabled_writing`）；恢复用 `enable`。执行后向用户复述配置文件中 `enabled` 的新值。
+
+### "固定 / 解除固定会话标题"
+
+`node cli.mjs lock --config config.local.json`（stdin 传目标会话 `session_id`）固定该会话：命名插件此后不再自动改其标题；`unlock` 解除固定、恢复滚动命名；`policy` 只读查询当前策略（`null` = 从未设置）。输出 `previous`/`policy` 透传公共策略对象（含 `version`），重复执行幂等成功。
+
+- 目标不限于当前会话：其他会话的 `session_id` 经 `suian-zcode-app-mcp` 的 `list_sessions` 获取。
+- 三个命令先做存在性校验（CLI 会话库与任务索引任一命中），目标不存在即报错退出码 1，不静默写策略。
+- 固定对飞行中的命名轮不追溯，自下一次 Stop 生效；固定不改标题本身。
+- 命名轮进行中（后台进程持有共享锁）调用会返回 busy，稍后重试即可；三命令本身不连网关。
+- 固定后不要再对该会话调 `rename_session`：官方改名会把标题来源永久置为 custom（官方侧自动命名短路且无解除接口），与插件的固定是两套独立机制。
+- `policy` 只反映公共标题策略；旧"手动保护"锁不在查询范围，其表现为 run 返回 `manual_title`（判别见"标题策略速览"）。
 
 ### "通知总是弹 / 不弹 / 点了没反应"
 

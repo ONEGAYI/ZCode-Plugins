@@ -1,0 +1,37 @@
+{
+  "topic": "suian-zcode-title 会话标题固定/解除固定 CLI（lock/unlock/policy）",
+  "date": "2026-10-08T22:30:00+08:00",
+  "baselineBefore": {
+    "tests": 42,
+    "result": "pass",
+    "log": "worktree 全新检出于 zcode/title-lock-cli（基 ce1352c），公共层 npm ci 后全量通过（临时目录 baseline.log）"
+  },
+  "after": {
+    "tests": 44,
+    "result": "pass"
+  },
+  "redGreenLog": [
+    {
+      "feature": "lock/unlock/policy 命令（cli.mjs 分发 + backend.sessionExists 存在性校验）",
+      "red": "三组断言失败：--help 无新命令名；lock 返回「未知命令」退出码 1；对不存在会话的报错未含「不存在」",
+      "green": "白名单与分发分支新增三命令；sessionExists 双库任一命中、查询异常上抛不吞；输出 previous/policy 透传公共策略对象（含 version），重复执行幂等；写后读回复核。契约测试 2 项新增 + --help 断言扩展，全量 44 项通过",
+      "tests": [
+        "tests/cli.test.mjs"
+      ]
+    }
+  ],
+  "machineVerified": [
+    "真实环境只读烟测（默认配置、真实双库）：policy 查询任务索引最近会话返回 {version:1,locked:false}，退出码 0；不存在会话返回 failed「目标会话在索引与会话库中均不存在」，退出码 1",
+    "集成测试以 config.titlePolicyDirectory 隔离策略目录，断言落盘 {version:1,locked} 原子格式与 unlock 后 locked:false（不删文件）",
+    "不存在会话的三命令均 failed 且策略目录无残留文件（不静默写策略）"
+  ],
+  "traps": [
+    "输出契约初版期望剥离 version，与公共 readTitlePolicy 透传结构（backend.read 同款）不一致导致首轮绿失败；对齐为透传后通过",
+    "sessionExists 不能复用 resolveWorkspace 的容错链（catch 吞错 + 事件兜底）：存在性校验必须区分「查不到行」与「查询失败」，后者上抛显式报错"
+  ],
+  "pendingUserAcceptance": [
+    "用户选定一个真实会话执行 lock，下一轮 Stop 确认标题不再变化，再 unlock 恢复（集成测试用隔离目录验证了写入路径，真实策略目录的 lock 写入未在用户会话上执行）"
+  ],
+  "followUpValidation": [],
+  "secrets": "无凭据；烟测 session_id 为本机真实任务标识，证据中不保留原文"
+}

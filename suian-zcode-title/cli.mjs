@@ -13,17 +13,18 @@ import {notifyOnce} from "../suian-zcode-common/notifications.mjs";
 import {ensureToastAppId,PROTOCOL} from "./install.mjs";
 import {shouldNotify} from "../suian-zcode-common/cooldown.mjs";
 import {saveAuthorization as storeAuthorization,clearAuthorization} from "../suian-zcode-common/auth-store.mjs";
+import {readTitlePolicy,writeTitlePolicy} from "../suian-zcode-common/title-policy.mjs";
 import {runDoctor} from "./doctor.mjs";
 
 const args=process.argv.slice(2);
 if(args.includes("--help")||!args.length) {
-   console.log("用法：node cli.mjs run [--apply] [--config 文件]\n      node cli.mjs doctor|models|probe|status|enable|disable|auth|unauth [--config 文件]\nstdin JSON：session_id、workspace_path（或 cwd）、可选 user_message_id。\n原 Host 调用统一走公共网关；请先按公共 skill 安装或重载。auth / unauth 保留为旧凭据管理入口，不参与网关调用。\n网关类失败弹原生 Toast（2 小时冷却），设 OIL_ZCODE_TITLE_DISABLE_TOAST=1 静音。");
+   console.log("用法：node cli.mjs run [--apply] [--config 文件]\n      node cli.mjs doctor|models|probe|status|enable|disable|auth|unauth [--config 文件]\n      node cli.mjs lock|unlock|policy [--config 文件]（固定/解除固定/查询会话标题策略；先校验目标会话存在）\nstdin JSON：session_id、workspace_path（或 cwd）、可选 user_message_id。\n原 Host 调用统一走公共网关；请先按公共 skill 安装或重载。auth / unauth 保留为旧凭据管理入口，不参与网关调用。\n网关类失败弹原生 Toast（2 小时冷却），设 OIL_ZCODE_TITLE_DISABLE_TOAST=1 静音。");
 } else {
   let backend,lease,leasePath,dataDir,command,event;
   const startedAt=Date.now();
   try {
     command=args[0];
-    if(!["run","doctor","models","probe","status","enable","disable","auth","unauth"].includes(command))throw new Error("未知命令");
+    if(!["run","doctor","models","probe","status","enable","disable","auth","unauth","lock","unlock","policy"].includes(command))throw new Error("未知命令");
     let configPath,apply=false;
     for(let i=1;i<args.length;i++) {
       if(args[i]==="--apply"&&command==="run")apply=true;
@@ -103,6 +104,19 @@ if(args.includes("--help")||!args.length) {
         result={status:probed.ok?"probe_ok":"probe_failed",...probed};
       } else if(command==="doctor") {
         result=await runDoctor({backend,event,config});
+      } else if(command==="lock"||command==="unlock"||command==="policy") {
+        if(!await backend.sessionExists())throw new Error("目标会话在索引与会话库中均不存在");
+        const policyDirectory=config.titlePolicyDirectory||undefined;
+        if(command==="policy") {
+          result={status:"policy",sessionId:event.session_id,policy:await readTitlePolicy({sessionId:event.session_id,directory:policyDirectory})};
+        } else {
+          const locked=command==="lock";
+          const previous=await readTitlePolicy({sessionId:event.session_id,directory:policyDirectory});
+          await writeTitlePolicy({sessionId:event.session_id,locked,directory:policyDirectory});
+          const policy=await readTitlePolicy({sessionId:event.session_id,directory:policyDirectory});
+          if(policy?.locked!==locked)throw new Error("标题策略写后复核不一致");
+          result={status:locked?"locked":"unlocked",sessionId:event.session_id,previous,policy};
+        }
       } else {
         let state={};
         try {state=JSON.parse(await readFile(statePath,"utf8"));}

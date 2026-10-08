@@ -17,6 +17,7 @@
 ZCode-Plugins/
 ├── AGENTS.md               # 本文件：仓库导航与约定（单一事实源）
 ├── CLAUDE.md               # 通过 @AGENTS.md 导入主文件，仅附加 Claude 专属补充
+├── CONTEXT.md              # 开发术语表（词汇与边界定义；Agent 操作入口见各 SKILL.md）
 ├── README.md               # 面向开源读者的仓库简介
 ├── LICENSE                 # MIT（自有代码）；vendor 第三方代码保留原许可
 ├── .gitignore              # 仓库级通用忽略规则

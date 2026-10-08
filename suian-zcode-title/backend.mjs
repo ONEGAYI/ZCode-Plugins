@@ -59,6 +59,12 @@ export function createBackend({event,config,saveState,prompt,connect=connectHost
       }
       return{...recentSnapshot(history,ws),titleSource:history.session.titleSource??null,titlePolicy:await readTitlePolicy({sessionId}),archived:!!row?.archived,deleted:!!row?.deleted,running:row?.task_status==="running"};
     },
+    // 存在性校验与 resolveWorkspace 的容错链不同：查询异常不吞、不兜底，避免把"查不了"静默当"不存在"
+    async sessionExists() {
+      const inSessionDb=(await queryJson(config.sessionDb,`SELECT id FROM session WHERE id='${sessionId}' LIMIT 1;`)).length>0;
+      if(inSessionDb)return true;
+      return (await queryJson(config.indexDb,`SELECT task_id FROM tasks WHERE task_id='${sessionId}' LIMIT 1;`)).length>0;
+    },
     async models() {return(await attach()).call("model-selection","getView",[]);},
     async generate(context,selection) {
       const connection=await attach();
