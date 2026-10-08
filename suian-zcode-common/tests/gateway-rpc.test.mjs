@@ -30,12 +30,15 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   const faults = [];
   const gateway = await startGateway({ upstreamUrl: `ws://127.0.0.1:${relay.address().port}/ws`, controlToken: 'fixture-rpc-token', onError: error => faults.push(error.code ?? error.name), ...options.gateway });
   t.after(() => gateway.close());
-  const accepted = once(relay, 'connection');
+  const accepted = options.gateway?.mode === 'local-only' ? undefined : once(relay, 'connection');
   const desktop = new WebSocket(gateway.url);
   t.after(() => desktop.terminate());
   await once(desktop, 'open');
-  const [phone] = await accepted;
-  const ack = once(desktop, 'message'); phone.send(JSON.stringify({ type: 'auth_ack', pair_status: pairStatus })); await ack;
+  let phone;
+  const ack = once(desktop, 'message');
+  if (accepted) { [phone] = await accepted; phone.send(JSON.stringify({ type: 'auth_ack', pair_status: pairStatus })); }
+  else desktop.send(JSON.stringify({ type: 'auth_init', role: 'device', device_sid: 'd_fixture-existing' }));
+  await ack;
   const requests = [], bridgeOpens = [];
   let identity, assembler, physical = 1, message = 1;
   const respond = (header, body) => {
@@ -109,6 +112,28 @@ test('手机和两个本地客户端的相同 RPC 编号被隔离，复用一个
   assert.deepEqual(phoneReplies.find(([h]) => h[0] === 201), [[201, 0], { recipient: 'phone' }]);
   assert.equal(f.bridgeOpens.length, 1);
   assert.equal(f.relay.clients.size, 1);
+});
+
+test('本地模式以原有设备会话启动，客户端无官方上游仍可附着、调用与探活', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../remote.mjs');
+  const f = await fixture(t, 'matched', { gateway: { mode: 'local-only' } });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-local-rpc-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  const pending = host.call('fixture', 'echo', ['local-only']);
+  await until(() => f.requests.length === 1);
+  f.respond([201, f.requests[0][0][1]], { echoed: 'local-only' });
+  assert.deepEqual(await pending, { echoed: 'local-only' });
+  const status = await host.probe();
+  assert.equal(status.ok, true);
+  assert.equal(status.mode, 'local-only');
+  assert.equal(status.upstreamPaired, false);
+  assert.equal(f.relay.clients.size, 0);
+  assert.equal(f.bridgeOpens.length, 1);
+  assert.deepEqual(f.faults, []);
 });
 
 test('官方鉴权失败后关闭本地客户端，不用缓存的 matched 恢复配对', { timeout: 3000 }, async t => {

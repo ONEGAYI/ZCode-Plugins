@@ -14,7 +14,7 @@ const nativeExec = promisify(execFile);
 
 // 只替换 Windows 系统边界，真实执行 setup.ps1 与临时目录内的文件读写。
 const systemFixture = String.raw`
-param([string]$Script, [string]$Action, [string]$DataDir, [string]$SkillsDir, [string]$StateFile, [int]$HealthTimeoutSec, [int]$Port)
+param([string]$Script, [string]$Action, [string]$DataDir, [string]$SkillsDir, [string]$StateFile, [int]$HealthTimeoutSec, [int]$Port, [string]$Mode)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $global:fixture = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
@@ -52,11 +52,15 @@ function Invoke-RestMethod {
     }
     Save-Fixture
     $id = if ($global:fixture.health -eq 'foreign') { 'foreign-instance' } else { $config.instance_id }
-    return [pscustomobject]@{ service='suian-zcode-gateway'; version=1; instance_id=$id; upstream_url=$config.upstream_url; desktop_connected=$global:fixture.desktop; upstream_connected=$false; paired=$false; rpc_protocol_version=1; upstream_paired=$false; local_clients=0 }
+    $mode = if ($config.PSObject.Properties['mode']) { $config.mode } else { 'relay' }
+    $reply = [pscustomobject]@{ service='suian-zcode-gateway'; version=1; instance_id=$id; upstream_url=$config.upstream_url; mode=$mode; desktop_connected=$global:fixture.desktop; desktop_ready=$global:fixture.desktop; upstream_connected=$false; paired=$false; rpc_protocol_version=1; upstream_paired=$false; local_clients=0 }
+    if ($global:fixture.legacy_health) { $reply.PSObject.Properties.Remove('mode'); $reply.PSObject.Properties.Remove('desktop_ready') }
+    return $reply
 }
 $params = @{ Action=$Action; DataDir=$DataDir; SkillsDir=$SkillsDir }
 if ($PSBoundParameters.ContainsKey('HealthTimeoutSec')) { $params.HealthTimeoutSec=$HealthTimeoutSec }
 if ($PSBoundParameters.ContainsKey('Port')) { $params.Port=$Port }
+if ($PSBoundParameters.ContainsKey('Mode')) { $params.Mode=$Mode }
 & $Script @params
 `;
 
@@ -67,11 +71,11 @@ async function fixture(t, overrides = {}) {
   const script = join(root, 'Windows 边界 fixture.ps1');
   const dataDir = join(root, '公共 data');
   const skillsDir = join(root, 'skills');
-  const initial = { relay: 'wss://previous.example/ws', task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', desktop: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, http_attempts: 0, health_available: false, draining: false, shutdown_health_reads: 0, ...overrides };
+  const initial = { relay: 'wss://previous.example/ws', task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', desktop: false, legacy_health: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, http_attempts: 0, health_available: false, draining: false, shutdown_health_reads: 0, ...overrides };
   await writeFile(stateFile, JSON.stringify(initial));
   await writeFile(script, '\uFEFF' + systemFixture);
-  const run = async (action, { healthTimeoutSec, port } = {}) => {
-    const { stdout } = await nativeExec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Script', setup, '-Action', action, '-DataDir', dataDir, '-SkillsDir', skillsDir, '-StateFile', stateFile, ...(healthTimeoutSec === undefined ? [] : ['-HealthTimeoutSec', String(healthTimeoutSec)]), ...(port === undefined ? [] : ['-Port', String(port)])], { windowsHide: true });
+  const run = async (action, { healthTimeoutSec, port, mode } = {}) => {
+    const { stdout } = await nativeExec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Script', setup, '-Action', action, '-DataDir', dataDir, '-SkillsDir', skillsDir, '-StateFile', stateFile, ...(healthTimeoutSec === undefined ? [] : ['-HealthTimeoutSec', String(healthTimeoutSec)]), ...(port === undefined ? [] : ['-Port', String(port)]), ...(mode === undefined ? [] : ['-Mode', mode])], { windowsHide: true });
     return JSON.parse(stdout.trim());
   };
   const state = async () => JSON.parse(await readFile(stateFile, 'utf8'));
@@ -106,6 +110,45 @@ test('公共安装部署唯一用户启动任务和 skill，网关就绪后才�
   const skill = await readFile(join(f.skillsDir, 'suian-zcode-common', 'SKILL.md'), 'utf8');
   assert.ok(skill.includes(gatewayRoot));
   assert.ok(!skill.includes('<!-- suian-zcode-common:root -->'));
+});
+
+test('本地模式可首次安装，重载保留模式，切换模式先暂停远控并保留原环境备份', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  const installed = await f.run('Install', { mode: 'local-only' });
+  assert.equal(installed.mode, 'local-only');
+  assert.equal(installed.gateway_running, true);
+  const before = JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8'));
+  assert.equal(before.mode, 'local-only');
+  let state = await f.state(); state.desktop = true;
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const ready = await f.run('Status');
+  assert.equal(ready.mode, 'local-only');
+  assert.equal(ready.desktop_ready, true);
+  assert.equal(ready.upstream_connected, false);
+  await assert.rejects(f.run('Install', { mode: 'relay' }), /use Restart/);
+  await assert.rejects(f.run('Restart', { mode: 'relay' }), /Stop mobile remote control/);
+  assert.deepEqual(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')), before);
+  state = await f.state(); state.desktop = false;
+  await writeFile(f.stateFile, JSON.stringify(state));
+  assert.equal((await f.run('Restart')).mode, 'local-only');
+  assert.equal((await f.run('Restart', { mode: 'relay' })).mode, 'relay');
+  const after = JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8'));
+  assert.equal(after.mode, 'relay');
+  for (const field of ['port', 'upstream_url', 'previous_user_relay', 'control_token']) assert.equal(after[field], before[field]);
+});
+
+test('旧配置和旧健康端点缺少模式时按 relay 兼容，不改变原环境备份', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t, { legacy_health: true });
+  await f.run('Install');
+  const configFile = join(f.dataDir, 'config.json');
+  const config = JSON.parse(await readFile(configFile, 'utf8')); delete config.mode;
+  await writeFile(configFile, JSON.stringify(config));
+  const status = await f.run('Status');
+  assert.equal(status.mode, 'relay');
+  assert.equal(status.desktop_ready, null);
+  assert.equal((await f.run('Install')).mode, 'relay');
+  assert.equal((await f.state()).starts, 1);
+  assert.equal(JSON.parse(await readFile(configFile, 'utf8')).previous_user_relay, config.previous_user_relay);
 });
 
 test('重复初始化复用唯一实例与原环境备份；状态区分未配置和 Desktop 已连接', { skip: process.platform !== 'win32' }, async (t) => {

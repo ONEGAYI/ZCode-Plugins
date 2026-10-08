@@ -19,6 +19,19 @@ description: 管理 ZCode 插件共用的基础能力。当用户初始化或升
 
 **共存范围**：命名与 MCP 的原 Host 调用统一走网关本地 RPC，不再新建官方 terminal。本地工作区共享窗口 Host 的一个物理桥，隔离请求、回复与订阅；隔离契约已验证，真实手机验收以当前证据为准。手机独用远端工作区仍走原通道；此时本地 RPC 返回 remote_workspace_busy，不切走手机。两个 SQLite 读取工具继续独立运行。
 
+## 选择连接模式
+
+已有安装保留配置中的 mode；旧配置缺少该字段时按 relay 兼容。首次安装默认 relay，用户明确需要内网本机控制、无法访问官方 relay 时可选 local-only。需求不明且会影响手机远控时，先询问是否需要官方手机连接；不要因临时网络错误自动切换模式。
+
+| 模式 | Desktop 启动与验证 |
+| --- | --- |
+| relay | 连接官方上游鉴权，支持手机共存；原 Host 调用需要上游连接 |
+| local-only | 网关本地处理注册、就绪和心跳，无官方上游连接；检查 mode、desktop_connected 和 desktop_ready，不要求 upstream_connected:true |
+
+local-only 只保留本机插件控制，官方手机页面不能连接，ZCode 显示的二维码不能作为手机可用的证据。设备入口信任本机进程，回环监听和 Origin 拒绝保持启用；本地 RPC 仍有令牌鉴权。本地注册标识不是官方注册，切回 relay 后 Desktop 可能重新注册，需要用户重新取得手机链接。已有设备标识不会因本地握手被清除，网关不读取或保存 pass_hash。
+
+模型生成、登录及套餐额度仍依赖相应服务的网络可达性，本地模式只解决远控 relay 依赖。已检查本机 3.14.4 传输代码；3.14.0 是待用户验证的目标版本，不能提前宣称兼容已验收。
+
 ## 首次安装
 
 1. 确认 Windows、Node.js 24+ 和公共根，在公共根运行 `npm ci --ignore-scripts --no-audit --no-fund`。不初始化或安装 `sources/` 的依赖。
@@ -30,6 +43,8 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{commo
 ```
 
 Install 注册当前用户登录任务，由 `wscript.exe` 执行公共数据目录的 VBS 桥，以无窗口方式启动并监督 PowerShell → Node，健康检查通过后写用户级 `ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL`，并部署公共 skill。失败就读错误或 `gateway.error.log`，不把未启动的地址写到 MCP 的 env。
+
+首次选择本地模式时用 `-Action Install -Mode local-only`，仍先完成两个插件的本机配置，最后才安排 Desktop 读取新环境。需要的是**启用 ZCode 的移动端远控服务来连接本机网关**，不需要手机连接或二维码可访问公网。
 
 网关数据保留 `~/.zcode/tools/suian-zcode-gateway`，默认端口 `17329`。只有用户需要别的端口才指定 `-Port {{port}}`；上游默认 `wss://zcode.z.ai/ws`，实际使用另一 endpoint 时才指定 `-UpstreamUrl "wss://zcode.chatglm.site/ws"`。已有端口、上游和原环境备份保留，不放到插件各自的 `.local`。
 
@@ -55,6 +70,8 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{commo
 4. 首次接入、修改 Desktop 启动地址或当前主进程仍持旧变量时，先交付全部配置结果与待验证事项，最后才提示用户择时重开。不要在重启前阻塞本机配置步骤。
 
 无 Desktop 连接时直接重载网关。修改端口用 Restart 的 `-Port {{port}}`；脚本先检查并停止旧端口的实例，再启动新端口，保留控制令牌与原环境备份。只更新 README、skill 或业务配置且不涉及常驻网关代码时，无需 Restart 网关。
+
+切换连接模式同样先暂停移动端远控，再用 `-Action Restart -Mode local-only` 或 `-Mode relay`。不指定 Mode 时保留已安装模式。模式切换不改变本机 relay 地址，已接入正确网关的 Desktop 重新开启远控即可；首次接入仍在所有配置完成后择时重开。保留上游地址，方便恢复 relay，不另建后台任务。
 
 Restart 等网关与旧启动器正常退出，再更新同一任务并启动新根的代码。成功输出 `action:"restarted"`、`vbs_launcher:true`；启动失败照实报错。旧任务健康且有活跃 Desktop 时，Install 只复用，不强行改为 VBS；`launcher_update_required:true` 表示需要按上述步骤重载。旧公共网关 skill 只有归属与旧配置匹配才移除。
 
@@ -82,7 +99,8 @@ Start-Process -FilePath "{{zcode_exe}}" -WindowStyle Hidden
 - `task_running`：计划任务是否正在监督启动链。Ready 不代表网关进程已停止。
 - `vbs_launcher` / `launcher_update_required`：任务是否配置为 VBS、入口或监督链是否需要恢复。
 - `desktop_connected`：是否有 Desktop 连入网关；这才是生效证据。
-- `upstream_connected`：官方上游是否连接；`rpc_available`：运行中的网关是否提供 RPC。
+- `mode` / `desktop_ready`：运行模式与设备握手是否就绪；旧网关未返回 desktop_ready 时为 null。本地模式须确认 desktop_ready:true，TCP 连入不等于可调用。
+- `upstream_connected`：官方上游是否连接；local-only 时为 false 属正常。`rpc_available`：运行中的网关是否提供 RPC。
 - `upstream_paired`：官方链路是否配对，不标识具体客户端身份；`local_clients`：本地 RPC 客户端数。旧网关缺少后两字段时为 null。
 - `paired`：Desktop 的有效配对状态，包含本地调用期间的虚拟配对，不能据此宣称手机仍在线。共存验收需用户实际确认手机还能操作。
 - `restart_required`：配置或连接仍待就绪的汇总标志，不等于必须退出应用；远控暂停时也会为 true。按上述流程判断是重新开启远控、重载网关，还是配置完成后重开应用。

@@ -23,7 +23,9 @@ export async function connectHost({ workspacePath, sessionId, gatewayConfigPath 
   try { health = await (await fetch(healthUrl, { signal: AbortSignal.timeout(handshakeTimeoutMs) })).json(); }
   catch (error) { throw failure('gateway_unreachable', '公共网关健康检查失败：' + error.name); }
   if (health.service !== 'suian-zcode-gateway' || health.rpc_protocol_version !== 1) throw failure('gateway_upgrade_required', '运行中的网关未提供 RPC，请按公共 skill 暂停移动端远控并重载网关，保留 ZCode 完成升级');
-  if (!health.desktop_connected || !health.upstream_connected) throw failure('gateway_desktop_offline', 'Desktop 尚未连接公共网关，或官方上游尚未连接');
+  const mode = health.mode === undefined ? 'relay' : health.mode;
+  if (!['relay', 'local-only'].includes(mode)) throw failure('gateway_rpc_protocol_error', '公共网关返回未知运行模式');
+  if (!health.desktop_connected || (mode === 'local-only' ? !health.desktop_ready : !health.upstream_connected)) throw failure('gateway_desktop_offline', 'Desktop 尚未就绪，或 relay 模式的官方上游尚未连接');
   const ready = Promise.withResolvers(), fault = Promise.withResolvers(), emitter = new Emitter();
   const socket = new WebSocket(`ws://127.0.0.1:${config.port}/rpc`, { headers: { Authorization: `Bearer ${config.control_token}` }, handshakeTimeout: handshakeTimeoutMs });
   const client = new ChannelClient({ onMessage: emitter.event, send: bytes => socket.send(bytes.buffer), drain: () => Promise.resolve() });
@@ -52,7 +54,7 @@ export async function connectHost({ workspacePath, sessionId, gatewayConfigPath 
       call: (channel, method, args = []) => Promise.race([client.getChannel(channel).call(method, args), fault.promise]),
       probe: async () => {
         const current = await (await fetch(healthUrl, { signal: AbortSignal.timeout(handshakeTimeoutMs) })).json();
-        return { ok: current.desktop_connected && current.upstream_connected, stage: 'gateway', paired: current.paired, upstreamPaired: current.upstream_paired, localClients: current.local_clients };
+        return { ok: current.desktop_connected && (mode === 'local-only' ? current.desktop_ready : current.upstream_connected), stage: 'gateway', mode, paired: current.paired, upstreamPaired: current.upstream_paired, localClients: current.local_clients };
       },
       close
     };

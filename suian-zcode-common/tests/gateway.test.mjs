@@ -11,9 +11,9 @@ test('健康入口区分网关、设备连接和配对，拒绝浏览器连接�
   const response = await fetch(healthUrl);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
-    service: 'suian-zcode-gateway', version: 1, instance_id: 'fixture-installation',
+    service: 'suian-zcode-gateway', version: 1, instance_id: 'fixture-installation', mode: 'relay',
     upstream_url: `ws://127.0.0.1:${relay.address().port}/ws`,
-    desktop_connected: true, upstream_connected: true, paired: true,
+    desktop_connected: true, desktop_ready: true, upstream_connected: true, paired: true,
     upstream_paired: true, local_clients: 0, rpc_protocol_version: 1,
   });
   const changed = once(desktop, 'message');

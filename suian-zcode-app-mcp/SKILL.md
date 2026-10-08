@@ -56,7 +56,7 @@ ZCode 原生配置形状如下；`{{node_exe}}` 使用实际 Node 可执行文�
 
 ## 原 Host 工具使用
 
-仅用两个 SQLite 工具时可独立运行。会话写工具先读 docs/write-tools.md，GLM 工具先读 docs/glm-balance-design.md。原 Host 调用要求公共 Status 的 rpc_available:true 和 desktop_connected:true；旧进程不支持时按公共 skill 安全重载。默认读公共目录 config.json，自定义目录用 args 的 --gateway-config {{path}} 指向同一文件；令牌只由客户端读取并放本地请求头，不复制到 args/env/日志。旧授权保存入口保留兼容，不参与默认工具调用。
+仅用两个 SQLite 工具时可独立运行。会话写工具先读 docs/write-tools.md，GLM 工具先读 docs/glm-balance-design.md。原 Host 调用要求公共 Status 的 rpc_available:true 和 desktop_connected:true；local-only 还须 desktop_ready:true，官方上游为 false 属正常。relay 模式需要官方上游连接；旧进程不支持时按公共 skill 安全重载。模式选择与切换只维护在公共 skill，内网首次安装也先完成本机配置，再事后重开生效。默认读公共目录 config.json，自定义目录用 args 的 --gateway-config {{path}} 指向同一文件；令牌只由客户端读取并放本地请求头，不复制到 args/env/日志。旧授权保存入口保留兼容，不参与默认工具调用。
 
 本地工作区调用复用窗口 Host 的一个桥，不另占官方 terminal；已通过隔离测试，真实手机验收需用户确认可持续操作。手机当前使用远端工作区时本地 RPC 明确让位，不切走手机。失败不回退官方直连或另起 CLI app-server；目标必须是网关窗口已打开的本地工作区。业务请求不直接写 SQLite。
 
