@@ -174,3 +174,16 @@ test('按工作区、名字或 ID 搜索，分页稳定且通配符按字面匹�
   assert.equal(reader.listSessions({ query: "' OR 1=1 --" }).total, 0);
   assert.equal(reader.listSessions({ workspace_path: 'D:\\missing' }).total, 0);
 });
+
+test('sessionTitle 轻量读取双库标题，行缺失返回 null', async t => {
+  const f = fixture(t);
+  f.task({ id: 'sess_both', title: '索引标题' }); f.session({ id: 'sess_both', title: 'CLI 标题' });
+  f.task({ id: 'sess_index_only', title: '只有索引' });
+  f.session({ id: 'sess_cli_only', title: '只有会话库' });
+  const { createSessionReader } = await import('../sessions.mjs');
+  const reader = createSessionReader(f);
+  assert.deepEqual(reader.sessionTitle({ session_id: 'sess_both' }), { index_title: '索引标题', session_title: 'CLI 标题' });
+  assert.deepEqual(reader.sessionTitle({ session_id: 'sess_index_only' }), { index_title: '只有索引', session_title: null });
+  assert.deepEqual(reader.sessionTitle({ session_id: 'sess_cli_only' }), { index_title: null, session_title: '只有会话库' });
+  assert.deepEqual(reader.sessionTitle({ session_id: 'sess_none' }), { index_title: null, session_title: null });
+});

@@ -64,15 +64,18 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
   };
   // 官方 renameTask 写任务索引后向宿主发 v4 renameSession 同步 CLI 会话库，失败仅记 warn、RPC 仍返回成功；
   // deferPersistenceUntilFirstPrompt 创建的会话首条 prompt 前 CLI 库无行，同步极易丢失。写后读回复核两库，
-  // 分叉时以 warnings 暴露（对齐命名插件"写后读回核验"的纪律），不阻断 RPC 成功路径。
+  // 分叉时以 warnings 暴露（对齐命名插件"写后读回核验"的纪律），不阻断 RPC 成功路径。探测异常（库缺失/繁忙）
+  // 视为无法核实：不告警、不外溢为工具错误；attempts<=0 时不探测。
   const confirmTitleSync = async (session_id, title, attempts) => {
     for (let attempt = 0; attempt < attempts; attempt++) {
       if (attempt) await delay(300);
-      const { session_title } = reader.sessionTitle?.({ session_id }) ?? {};
+      let session_title;
+      try { ({ session_title } = reader.sessionTitle?.({ session_id }) ?? {}); }
+      catch { return []; }
       if (session_title === undefined || session_title === null) return [];
       if (session_title === title) return [];
       if (attempt === attempts - 1) return [{ code: 'title_store_diverged',
-        detail: `标题已写入任务索引，但 CLI 会话库仍为「${session_title}」；两库不一致期间自动命名会跳过该会话，重新改名或手动改一次标题以对齐` }];
+        message: `标题已写入任务索引，但 CLI 会话库仍为「${session_title}」；两库不一致期间自动命名会跳过该会话，重新改名或手动改一次标题以对齐` }];
     }
     return [];
   };
@@ -118,6 +121,8 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
         if (!meta.taskId) throw new Error('create_not_confirmed: 原 Host 创建响应缺少 taskId');
         const result = { source: 'original_host', session_id: meta.taskId, workspace_path: meta.workspacePath, title: meta.title,
           ...(creator === undefined ? {} : { creator }) };
+        // 来源警告在 try 外构造：部分失败的 partial_result 也要携带（PR #15 契约），复核警告只在成功路径合并
+        const warnings = [...(originWarning ? [originWarning] : [])];
         try {
           if (title !== undefined) {
             const renamed = await remote.call('zcode-task', 'renameTask', [{ taskId: meta.taskId, workspacePath: meta.workspacePath, title }]);
@@ -126,12 +131,11 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
           }
           await setTitlePolicy({ sessionId: meta.taskId, locked: lock_title });
           result.lock_title = lock_title;
-          const warnings = [...(originWarning ? [originWarning] : [])];
           if (title !== undefined) warnings.push(...await confirmTitleSync(meta.taskId, title, 2));
           return { ...result, ...await send(remote, meta.taskId, createdMessage(message, creator, originWarning)),
             ...(warnings.length ? { warnings } : {}) };
         } catch (error) {
-          error.partial_result = { ...result, delivery_status: 'unknown' };
+          error.partial_result = { ...result, ...(warnings.length ? { warnings } : {}), delivery_status: 'unknown' };
           throw error;
         }
       });
