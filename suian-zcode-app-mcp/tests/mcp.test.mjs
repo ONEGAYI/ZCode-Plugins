@@ -162,10 +162,13 @@ test('来源冲突降级为警告并继续创建和发信，候选来源仅作�
   assert.equal(prompts.length, 6);
 });
 
-test('start_session 缺省继承发起者权限，显式指定优先，不可继承时回落 Host 默认并警告', async t => {
+test('start_session 从 CLI 权限继承而非陈旧任务索引，显式指定优先，不可继承时回落并警告', async t => {
   const f = fixture(t), calls = [];
-  f.task({ id: 'sess_parent', mode: 'yolo' });
-  f.task({ id: 'sess_dirty', mode: 'legacy-autoEdit' });
+  f.task({ id: 'sess_parent', mode: 'build' });
+  f.session({ id: 'sess_parent', permission: { mode: 'yolo' } });
+  f.task({ id: 'sess_ghost', mode: 'yolo' });
+  f.task({ id: 'sess_dirty', mode: 'yolo' });
+  f.session({ id: 'sess_dirty', permission: { mode: 'legacy-autoEdit' } });
   const { createMcpServer } = await import('../server.mjs');
   const controller = { startSession: async args => { calls.push(args); return { session_id: 'sess_child' }; } };
   const server = createMcpServer(f, { controller });
@@ -192,7 +195,7 @@ test('start_session 缺省继承发起者权限，显式指定优先，不可继
   assert.equal(calls.length, 4);
 });
 
-test('任务索引探测异常时继承回落为 Host 默认权限，不阻断创建', async t => {
+test('CLI 权限探测异常时继承回落为 Host 默认权限，不阻断创建', async t => {
   const f = fixture(t), calls = [];
   const { createMcpServer } = await import('../server.mjs');
   const controller = { startSession: async args => { calls.push(args); return { session_id: 'sess_child' }; } };
@@ -201,7 +204,7 @@ test('任务索引探测异常时继承回落为 Host 默认权限，不阻断�
   const [ct, st] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await client.close(); await server.close(); });
   await server.connect(st); await client.connect(ct);
-  f.index.exec('DROP TABLE tasks');
+  f.history.exec('DROP TABLE session');
   const response = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'hello' },
     _meta: { session_id: 'sess_parent' } });
   assert.equal(response.isError, undefined);

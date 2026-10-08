@@ -185,8 +185,11 @@ export async function startGateway({ mode = 'relay', upstreamUrl = OFFICIAL_RELA
       if (message?.type === 'error' && !(connection.authenticated && message.code === 'WRONG_PARAM')) {
         connection.authenticated = connection.authenticated && message.code === 'INTERNAL';
         connection.phonePaired = false;
-        connection.paired = false;
+        connection.broker.phoneDisconnected();
+        connection.paired = connection.authenticated && connection.localClients.size > 0;
         if (connection.authenticated) connection.lastPairAck = { ...connection.lastPairAck, pair_status: 'waiting' };
+        // 已鉴权的 INTERNAL 仅影响手机配对；本地 Host 调用可能仍在执行，不截断其 ACK。
+        if (connection.paired) { desktop.send(JSON.stringify({ ...connection.lastPairAck, pair_status: 'matched' })); return; }
         rejectPending(new Error(`relay error: ${message.code}`));
         connection.broker.close(new Error(`relay error: ${message.code}`));
       }

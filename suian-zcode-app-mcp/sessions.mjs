@@ -33,14 +33,13 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
       } finally { db.close(); }
       return { index_title, session_title };
     },
-    // 继承发起者权限用轻量读取：只查任务索引的 mode 列。跨工作区同 task_id 取值分叉时
-    // 无法确定继承谁，mode 返回 null 交由调用方回落；observed 携带原始取值供警告诊断成因。
+    // 权限继承读取 CLI 会话库；任务索引的 mode 可能滞后，不能用于决定新会话权限。
     sessionMode({ session_id }) {
-      const index = openReadOnly(indexDbPath);
+      const db = openReadOnly(sessionDbPath);
       try {
-        const observed = index.prepare('SELECT DISTINCT mode FROM tasks WHERE task_id=? AND deleted=0').all(session_id).map(row => row.mode);
-        return { mode: observed.length === 1 ? observed[0] : null, observed };
-      } finally { index.close(); }
+        const row = db.prepare("SELECT json_extract(permission, '$.mode') AS mode FROM session WHERE id=?").get(session_id);
+        return { mode: row?.mode ?? null, observed: row ? [row.mode] : [] };
+      } finally { db.close(); }
     },
     listSessions({ limit = 20, offset = 0, workspace_path, query, include_archived = false } = {}) {
       const db = openReadOnly(indexDbPath);

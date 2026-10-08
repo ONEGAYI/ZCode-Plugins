@@ -19,7 +19,7 @@ export function fixture(t) {
     PRIMARY KEY (workspace_key, task_id)
   );`);
   history.exec(`CREATE TABLE session (
-    id TEXT PRIMARY KEY, title TEXT, directory TEXT, path TEXT, revert TEXT
+    id TEXT PRIMARY KEY, title TEXT, directory TEXT, path TEXT, revert TEXT, permission TEXT
   );
   CREATE TABLE message (
     id TEXT PRIMARY KEY, session_id TEXT, sequence INTEGER,
@@ -37,9 +37,9 @@ export function fixture(t) {
       index.prepare('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .run(key, workspace, identity, id, title, 'glm', mode, 'completed', 1, updated, pinned, archived, deleted);
     },
-    session({ id, title = id, directory = 'D:\\work\\alpha', revert = null }) {
-      history.prepare('INSERT INTO session VALUES (?,?,?,?,?)')
-        .run(id, title, directory, directory, revert && JSON.stringify(revert));
+    session({ id, title = id, directory = 'D:\\work\\alpha', revert = null, permission = null }) {
+      history.prepare('INSERT INTO session VALUES (?,?,?,?,?,?)')
+        .run(id, title, directory, directory, revert && JSON.stringify(revert), permission && JSON.stringify(permission));
     },
     message({ id, session = 'sess_alpha', role = 'user', parent, sequence, time = 1,
       info = {}, parts = [{ type: 'text', text: id }] }) {

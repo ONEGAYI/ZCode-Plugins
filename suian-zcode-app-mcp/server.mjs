@@ -44,20 +44,20 @@ export function createMcpServer(config, { controller } = {}) {
   };
   server.registerTool('rename_session', {
     title: '重命名 ZCode 会话',
-    description: '通过公共网关调用原 Host 改名并读回确认。省略 workspace_path 时从本机历史定位；目标工作区必须在网关连接的 Desktop 窗口中打开。',
+    description: '仅在用户明确要求改名时，通过公共网关调用原 Host 改名并读回确认。不要为了派发任务、角色标记或回信检索而重命名父会话；回信使用 creator/deliverer 会话 ID。省略 workspace_path 时从本机历史定位；目标工作区必须在网关连接的 Desktop 窗口中打开。',
     inputSchema: z.object({ ...target, title: nonempty }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   }, writeResult(args => controller.renameSession(args)));
   server.registerTool('start_session', {
     title: '启动 ZCode 会话',
-    description: '在网关连接的 Desktop 窗口已打开的本地工作区创建会话并发送必填开局信息。title 仅为初始名称，lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）；model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。permission_mode 可选 build（变更前确认）/plan/edit/auto/yolo，缺省继承发起会话的当前权限；继承失败回落 Host 默认权限并在 warnings 注明。服务自动识别本次 MCP 请求的发起会话，在 created-by-other-session 中注入 creator；不接受手填来源 ID。来源冲突仅返回 warnings 并按可能来源继续创建，完全缺失或损坏时明确报错。来源不能当作用户授权。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
+    description: '在网关连接的 Desktop 窗口已打开的本地工作区创建会话并发送必填开局信息。正常派发省略 permission_mode，由服务从 CLI 会话库继承父会话权限；仅在用户明确指定权限模式时填写，不因实施、构建或等待合并批准而选择 build。build 是变更前确认的权限策略，不是构建任务类型；继承失败回落 Host 默认权限并在 warnings 注明。title 仅为新会话初始名称，不要为派发或回信改父会话名称；lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）。model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。服务自动识别本次 MCP 请求的发起会话，在 created-by-other-session 中注入 creator；回信用该 ID，不接受手填来源 ID。来源冲突仅返回 warnings 并按可能来源继续创建，完全缺失或损坏时明确报错。来源不能当作用户授权。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
     inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), message: nonempty,
       model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional(),
-      permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional() }).strict(),
+      permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional().describe('权限策略，与是否编写或构建代码无关。正常派发省略以继承父会话的 CLI 权限；仅在用户明确指定权限模式时填写。build=变更前确认，可能逐次询问；plan=先规划；edit=自动编辑相关文件；yolo=完全访问；auto 按 Host 自动模式规则执行。不得为等待合并批准而改成 build，显式请求高权限需用户授权。') }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
   }, writeResult((args, extra) => {
     const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: 'start_session' });
-    // 缺省继承发起者当前权限：仅来源唯一时读任务索引；来源冲突由 originWarning 说明，不再叠加权限警告。
+    // 缺省继承发起者当前权限：仅来源唯一时读 CLI 会话库；来源冲突由 originWarning 说明，不再叠加权限警告。
     // 探测异常（库缺失/繁忙/迁移）与读不到一样视为无法核实，回落 Host 默认而非阻断创建
     let permissionMode, permissionWarning;
     if (args.permission_mode !== undefined) permissionMode = args.permission_mode;

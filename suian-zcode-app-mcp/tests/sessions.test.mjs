@@ -23,7 +23,7 @@ test('列表与读取带 permission_mode，sessionMode 供继承发起者权限'
   const f = fixture(t);
   f.task({ id: 'sess_alpha', mode: 'yolo' });
   f.task({ id: 'sess_beta', mode: 'plan' });
-  f.session({ id: 'sess_alpha' });
+  f.session({ id: 'sess_alpha', permission: { mode: 'yolo' } });
   f.message({ id: 'msg_user', session: 'sess_alpha', sequence: 0 });
   const { createSessionReader } = await import('../sessions.mjs');
   const reader = createSessionReader(f);
@@ -38,17 +38,29 @@ test('列表与读取带 permission_mode，sessionMode 供继承发起者权限'
   assert.equal(reader.sessionMode({ session_id: 'sess_deleted' }).mode, null);
 });
 
-test('sessionMode 在同 ID 跨工作区分叉时返回空，取值一致时才可继承', async t => {
+test('sessionMode 只读取 CLI 权限，任务索引分叉或缺失不影响结果', async t => {
   const f = fixture(t);
   f.task({ id: 'sess_dupe', mode: 'build' });
   f.task({ id: 'sess_dupe', workspace: 'D:\\work\\beta', mode: 'yolo' });
+  f.session({ id: 'sess_dupe', permission: { mode: 'edit' } });
+  f.session({ id: 'sess_without_index', permission: { mode: 'plan' } });
   const { createSessionReader } = await import('../sessions.mjs');
-  const diverged = createSessionReader(f).sessionMode({ session_id: 'sess_dupe' });
-  assert.equal(diverged.mode, null);
-  assert.deepEqual([...diverged.observed].sort(), ['build', 'yolo']);
-  f.task({ id: 'sess_same', mode: 'edit' });
-  f.task({ id: 'sess_same', workspace: 'D:\\work\\beta', mode: 'edit' });
-  assert.equal(createSessionReader(f).sessionMode({ session_id: 'sess_same' }).mode, 'edit');
+  const reader = createSessionReader(f);
+  assert.deepEqual(reader.sessionMode({ session_id: 'sess_dupe' }), { mode: 'edit', observed: ['edit'] });
+  assert.deepEqual(reader.sessionMode({ session_id: 'sess_without_index' }), { mode: 'plan', observed: ['plan'] });
+});
+
+test('sessionMode 不用索引补齐缺失的 CLI 权限，损坏 JSON 明确报错', async t => {
+  const f = fixture(t);
+  f.task({ id: 'sess_null', mode: 'yolo' });
+  f.session({ id: 'sess_null' });
+  f.session({ id: 'sess_no_mode', permission: {} });
+  const { createSessionReader } = await import('../sessions.mjs');
+  const reader = createSessionReader(f);
+  for (const id of ['sess_null', 'sess_no_mode'])
+    assert.deepEqual(reader.sessionMode({ session_id: id }), { mode: null, observed: [null] });
+  f.history.prepare('UPDATE session SET permission=? WHERE id=?').run('{broken', 'sess_null');
+  assert.throws(() => reader.sessionMode({ session_id: 'sess_null' }), /malformed JSON/);
 });
 
 test('损坏的消息角色或 text 数据形状明确报错，不能当作空聊天', async t => {

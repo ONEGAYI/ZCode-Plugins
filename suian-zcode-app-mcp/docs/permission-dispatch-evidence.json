@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-08",
+  "scope": "CLI 权限继承、父会话调用约束与 relay 回执隔离",
+  "readonly_observations": {
+    "parent_permission": {
+      "cli_session_mode": "yolo",
+      "task_index_mode": "build",
+      "creation_request_permission_mode": "build",
+      "conclusion": "本次请求显式覆盖继承；任务索引也与 CLI 权限不一致，不能作为缺省继承来源"
+    },
+    "parent_rename": {
+      "method": "rename_session",
+      "target": "发起会话自身",
+      "conclusion": "父会话主动为回信检索改名，派发指令没有要求该操作"
+    },
+    "opening_delivery": {
+      "relay_internal_at": "22:36:16.064 +08:00",
+      "host_ack_at": "22:36:16.168 +08:00",
+      "conclusion": "上游 relay 错误先截断本地 RPC；Host 随后仍确认 sendPrompt ACK"
+    },
+    "later_send_wait": {
+      "model_request_started_at": "22:47:34 +08:00",
+      "model_request_completed_at": "22:59:23 +08:00",
+      "model_request_status": "cancelled",
+      "tool_call_count": 0,
+      "mcp_dispatch_record_present": false,
+      "conclusion": "该等待发生在模型输出阶段，尚未进入 MCP 调度；流式输出未结束的具体原因尚未核实"
+    }
+  },
+  "red_green": [
+    {
+      "contract": "CLI 为 yolo、索引为 build 时，缺省创建继承 yolo",
+      "before": "失败：实际 build，预期 yolo",
+      "after": "通过；显式指定、缺失权限与异常警告契约保持"
+    },
+    {
+      "contract": "已鉴权 relay 返回 INTERNAL 后，本地在途 RPC 仍能收到 Host ACK",
+      "before": "失败：relay error: INTERNAL",
+      "after": "通过；上游配对状态仍如实为 false，后续手机可重新配对"
+    }
+  ],
+  "validation": {
+    "mcp_tests": { "command": "npm test", "passed": 64, "failed": 0, "exit_code": 0 },
+    "common_tests": { "command": "npm test", "passed": 88, "failed": 0, "exit_code": 0 },
+    "rpc_without_ack": "隔离客户端显式设为 1000 ms，按既有 deadline 返回 gateway_timeout",
+    "tool_schema": "真实 MCP SDK initialize/tools/list 公布九个工具；permission_mode 包含就地说明，创建与改名描述包含调用约束",
+    "diff_check": "git diff --check 通过"
+  },
+  "limits": [
+    "本轮不创建真实会话、不发送真实消息、不写用户会话数据库",
+    "修正在独立工作树中验证，未更新运行中网关、MCP 或技能副本",
+    "提示词约束依赖调用方遵循，不作为身份认证或用户授权机制",
+    "不修改只读第三方快照；未宣称已修复模型输出阶段的等待"
+  ]
+}

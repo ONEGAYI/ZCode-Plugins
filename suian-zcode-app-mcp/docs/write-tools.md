@@ -18,7 +18,7 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 ## 输入与输出
 
-`rename_session`：必填 `session_id`、非空 `title`。可选 `workspace_path`、`workspace_key`；路径省略时从本机历史定位，同 ID 存在多个索引工作区时用 key 消歧。
+`rename_session`：必填 `session_id`、非空 `title`。可选 `workspace_path`、`workspace_key`；路径省略时从本机历史定位，同 ID 存在多个索引工作区时用 key 消歧。调用方只在用户明确要求改名时使用；不要为了派发、角色标记或回信检索重命名父会话，回信以 `creator`/`deliverer` 会话 ID 定位。
 
 ```json
 {"name":"rename_session","arguments":{"session_id":"sess_example","title":"新的名称"}}
@@ -26,7 +26,11 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 成功返回 `source:original_host`、`session_id`、`workspace_path`、`title`，名称以原 Host 的 `getTaskMeta` 读回为准。显式命名使用宿主的 custom 标题来源；当前自动命名插件只有已记录命名基线、且非 generated 标题相对基线变化时才判手动改名。首次 custom 标题不保证免于命名模型处理，模型也可选择 keep。
 
-`start_session`：必填 `workspace_path`、非空 `message`。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。`permission_mode` 可选 `build`（变更前确认）/`plan`/`edit`/`auto`/`yolo` 五档：显式指定时透传宿主 `createTask` 并按读回值校验；缺省继承发起会话在任务索引中的当前权限（来源冲突时不继承，由来源警告说明）；发起会话不可读（含索引库缺失或繁忙的探测异常）、取值分叉或非规范值时回落为不传 `mode`，新会话使用 Host 默认权限，回执附 `permission_not_inherited` 警告及 `observed_modes` 原始取值（探测异常时无该字段）。显式请求 `yolo` 等高权限档位属高影响操作，调用方应先取得用户明确许可。
+`start_session`：必填 `workspace_path`、非空 `message`。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为新会话初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
+
+`permission_mode` 可选 `build`（变更前确认，可能逐次询问）/`plan`/`edit`/`auto`/`yolo` 五档，是权限策略而非开发任务类型。正常派发省略该参数；仅在用户明确指定权限模式时填写，不能因“实施代码”“构建”或“等待首肯合并”选择 `build`。合并授权边界写入开局正文，不用权限模式代替。显式请求 `yolo` 等高权限档位需用户授权，已有明确授权不重复询问。
+
+显式模式透传宿主 `createTask` 并按读回值校验；缺省仅从发起会话 CLI 库的 `session.permission.mode` 继承，不使用可能陈旧的任务索引 `mode`。来源冲突时不继承，由来源警告说明。CLI 会话不存在、权限缺失或非规范值、库缺失或繁忙等探测异常时不传 `mode`，新会话使用 Host 默认权限；回执附 `permission_not_inherited` 警告及 `observed_modes` 原始取值（探测异常时无该字段）。
 
 ```json
 {"name":"start_session","arguments":{"workspace_path":"D:/work/example","message":"这是链路测试，只回复 TEST_OK","model":{"provider_id":"account:bigmodel-individual-coding-plan","model_id":"GLM-5.3-Flash","reasoning_level":"low"}}}
