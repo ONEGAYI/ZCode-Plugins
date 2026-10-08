@@ -60,6 +60,28 @@ test('创建和发信自动读取每次 MCP 请求的来源会话，接口不接
   assert.equal(calls.length, 2);
 });
 
+test('send_message 投递策略可省略或显式 guide/queue，不允许强制抢占模式', async t => {
+  const f = fixture(t), calls = [];
+  const { createMcpServer } = await import('../server.mjs');
+  const server = createMcpServer(f, { controller: { sendMessage: async args => { calls.push(args); return args; } } });
+  const client = new Client({ name: 'delivery-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  for (const delivery_mode of [undefined, 'guide', 'queue']) {
+    const args = { session_id: 'sess_target', message: 'hello', ...(delivery_mode === undefined ? {} : { delivery_mode }) };
+    const result = await client.callTool({ name: 'send_message', arguments: args, _meta: { session_id: 'sess_sender' } });
+    assert.equal(result.isError, undefined);
+    assert.equal(calls.at(-1).delivery_mode, delivery_mode);
+    assert.equal(calls.at(-1).deliverer, 'sess_sender');
+  }
+  const rejected = await client.callTool({ name: 'send_message', arguments: {
+    session_id: 'sess_target', message: 'hello', delivery_mode: 'startNow'
+  }, _meta: { session_id: 'sess_sender' } });
+  assert.equal(rejected.isError, true);
+  assert.equal(calls.length, 3);
+});
+
 test('请求缺少会话 ID 时按 trace_id 和工具名从本地调用记录精确定位来源', async t => {
   const f = fixture(t), calls = [];
   f.history.exec(`CREATE TABLE tool_usage (session_id TEXT, trace_id TEXT, tool_name TEXT);
@@ -135,6 +157,12 @@ test('来源冲突降级为警告并继续创建和发信，候选来源仅作�
     connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
       if (method === 'createTask' || method === 'getTaskMeta') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
       if (method === 'sendPrompt') prompts.push(params[0]);
+      if (method === 'sendConversationCommandV4') {
+        const { envelope } = params[0];
+        prompts.push({ taskId: envelope.sessionId, content: envelope.payload.text });
+        return { commandId: envelope.commandId, status: 'accepted', revisionAtDecision: 1,
+          result: { type: 'inputAccepted', inputId: envelope.commandId, delivery: 'queue' } };
+      }
     } }) });
   const server = createMcpServer(f, { controller });
   const client = new Client({ name: 'conflicting-origin-contract', version: '1.0.0' });
@@ -162,10 +190,13 @@ test('来源冲突降级为警告并继续创建和发信，候选来源仅作�
   assert.equal(prompts.length, 6);
 });
 
-test('start_session 缺省继承发起者权限，显式指定优先，不可继承时回落 Host 默认并警告', async t => {
+test('start_session 从 CLI 权限继承而非陈旧任务索引，显式指定优先，不可继承时回落并警告', async t => {
   const f = fixture(t), calls = [];
-  f.task({ id: 'sess_parent', mode: 'yolo' });
-  f.task({ id: 'sess_dirty', mode: 'legacy-autoEdit' });
+  f.task({ id: 'sess_parent', mode: 'build' });
+  f.session({ id: 'sess_parent', permission: { mode: 'yolo' } });
+  f.task({ id: 'sess_ghost', mode: 'yolo' });
+  f.task({ id: 'sess_dirty', mode: 'yolo' });
+  f.session({ id: 'sess_dirty', permission: { mode: 'legacy-autoEdit' } });
   const { createMcpServer } = await import('../server.mjs');
   const controller = { startSession: async args => { calls.push(args); return { session_id: 'sess_child' }; } };
   const server = createMcpServer(f, { controller });
@@ -192,7 +223,7 @@ test('start_session 缺省继承发起者权限，显式指定优先，不可继
   assert.equal(calls.length, 4);
 });
 
-test('任务索引探测异常时继承回落为 Host 默认权限，不阻断创建', async t => {
+test('CLI 权限探测异常时继承回落为 Host 默认权限，不阻断创建', async t => {
   const f = fixture(t), calls = [];
   const { createMcpServer } = await import('../server.mjs');
   const controller = { startSession: async args => { calls.push(args); return { session_id: 'sess_child' }; } };
@@ -201,7 +232,7 @@ test('任务索引探测异常时继承回落为 Host 默认权限，不阻断�
   const [ct, st] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await client.close(); await server.close(); });
   await server.connect(st); await client.connect(ct);
-  f.index.exec('DROP TABLE tasks');
+  f.history.exec('DROP TABLE session');
   const response = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'hello' },
     _meta: { session_id: 'sess_parent' } });
   assert.equal(response.isError, undefined);
@@ -270,6 +301,12 @@ test('自动定位的 ID 进入开局和后续消息 XML 及回执，不混入�
     connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
       if (method === 'createTask' || method === 'getTaskMeta') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
       if (method === 'sendPrompt') prompts.push(params[0]);
+      if (method === 'sendConversationCommandV4') {
+        const { envelope } = params[0];
+        prompts.push({ taskId: envelope.sessionId, content: envelope.payload.text });
+        return { commandId: envelope.commandId, status: 'accepted', revisionAtDecision: 1,
+          result: { type: 'inputAccepted', inputId: envelope.commandId, delivery: 'queue' } };
+      }
     } }) });
   const server = createMcpServer(f, { controller });
   const client = new Client({ name: 'origin-message-contract', version: '1.0.0' });

@@ -44,7 +44,7 @@
 
 返回 `source: local_cli_sqlite`、`branch`、会话元数据、`messages`、当前分支可见消息 `total` 和 `next_before_message_id`。`branch` 为 `persisted` 或 `persisted_revert`。
 
-会话元数据中的 `permission_mode` 来自任务索引的 `mode` 列，通常为 `build`（变更前确认，索引层默认值）、`plan`、`edit`、`auto`、`yolo` 五档之一，异常存量值如实透传、不做枚举校验；读取的是持久化值，宿主刚切换权限尚未同步索引的瞬间可能滞后。
+会话元数据中的 `permission_mode` 来自任务索引的 `mode` 列，通常为 `build`（变更前确认，索引层默认值）、`plan`、`edit`、`auto`、`yolo` 五档之一，异常存量值如实透传、不做枚举校验。索引可能滞后，不能据此决定新会话权限；`start_session` 的缺省继承另读 CLI 库的 `session.permission.mode`。
 
 消息包含 ID、角色、父消息 ID、创建时间、完整 `text` 与附件文件名/类型。保留全部正文，不做单条文本截断。默认不返回工具执行内容、模型思考、隐藏通知、压缩摘要、附件二进制或 URL。超长聊天应使用较小 `limit` 翻页。
 

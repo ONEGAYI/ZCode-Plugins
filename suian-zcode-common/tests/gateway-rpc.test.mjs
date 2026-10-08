@@ -136,6 +136,36 @@ test('本地模式以原有设备会话启动，客户端无官方上游仍可�
   assert.deepEqual(f.faults, []);
 });
 
+test('已鉴权 relay 的 INTERNAL 不截断正在执行的本地 RPC，手机仍可重新配对', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../remote.mjs');
+  const f = await fixture(t, 'waiting');
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-relay-rpc-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath, timeoutMs: 1000 });
+  t.after(() => host.close());
+  const pending = host.call('fixture', 'sendPrompt', ['opening']).then(value => ({ value }), error => ({ error: error.message }));
+  await until(() => f.requests.length === 1);
+  const relayHandled = once(f.desktop, 'message');
+  f.phone.send('{"type":"error","code":"INTERNAL"}');
+  await relayHandled;
+  f.respond([201, f.requests[0][0][1]], { accepted: true });
+  assert.deepEqual(await pending, { value: { accepted: true } });
+  const healthUrl = f.gateway.url.replace('ws:', 'http:').replace('/ws', '/health');
+  const health = await (await fetch(healthUrl)).json();
+  assert.equal(health.paired, true);
+  assert.equal(health.upstream_paired, false);
+  assert.equal(health.local_clients, 1);
+  assert.equal(f.bridgeOpens.length, 1);
+  const paired = once(f.desktop, 'message');
+  f.phone.send('{"type":"pair_status_ack","pair_status":"matched"}');
+  await paired;
+  assert.equal((await (await fetch(healthUrl)).json()).upstream_paired, true);
+  await assert.rejects(host.call('fixture', 'noAck'), error => error.reasonCode === 'gateway_timeout');
+  assert.deepEqual(f.faults, []);
+});
+
 test('官方鉴权失败后关闭本地客户端，不用缓存的 matched 恢复配对', { timeout: 3000 }, async t => {
   const f = await fixture(t), messages = [];
   const peer = new WebSocket(f.gateway.url.replace('/ws', '/rpc'), { headers: { Authorization: 'Bearer fixture-rpc-token' } });

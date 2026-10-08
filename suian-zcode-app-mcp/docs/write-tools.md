@@ -1,6 +1,6 @@
 # 会话写工具
 
-五个写工具通过公共远控客户端附着原 ZCode Desktop Host，调用 `zcode-task` 服务；不启动独立 CLI app-server、不直接写会话数据库。读取与分页仍按 [读取契约](./readonly-tools.md)。
+五个写工具通过公共远控客户端附着原 ZCode Desktop Host。任务操作调用 `zcode-task`，`send_message` 通过 `zcode-agent` 的 v4 `sendText` 提交消息并取得投递回执；不启动独立 CLI app-server、不直接写会话数据库。读取与分页仍按 [读取契约](./readonly-tools.md)。
 
 ## 连接与授权
 
@@ -18,7 +18,7 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 ## 输入与输出
 
-`rename_session`：必填 `session_id`、非空 `title`。可选 `workspace_path`、`workspace_key`；路径省略时从本机历史定位，同 ID 存在多个索引工作区时用 key 消歧。
+`rename_session`：必填 `session_id`、非空 `title`。可选 `workspace_path`、`workspace_key`；路径省略时从本机历史定位，同 ID 存在多个索引工作区时用 key 消歧。调用方只在用户明确要求改名时使用；不要为了派发、角色标记或回信检索重命名父会话，回信以 `creator`/`deliverer` 会话 ID 定位。
 
 ```json
 {"name":"rename_session","arguments":{"session_id":"sess_example","title":"新的名称"}}
@@ -26,7 +26,11 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 成功返回 `source:original_host`、`session_id`、`workspace_path`、`title`，名称以原 Host 的 `getTaskMeta` 读回为准。显式命名使用宿主的 custom 标题来源；当前自动命名插件只有已记录命名基线、且非 generated 标题相对基线变化时才判手动改名。首次 custom 标题不保证免于命名模型处理，模型也可选择 keep。
 
-`start_session`：必填 `workspace_path`、非空 `message`。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。`permission_mode` 可选 `build`（变更前确认）/`plan`/`edit`/`auto`/`yolo` 五档：显式指定时透传宿主 `createTask` 并按读回值校验；缺省继承发起会话在任务索引中的当前权限（来源冲突时不继承，由来源警告说明）；发起会话不可读（含索引库缺失或繁忙的探测异常）、取值分叉或非规范值时回落为不传 `mode`，新会话使用 Host 默认权限，回执附 `permission_not_inherited` 警告及 `observed_modes` 原始取值（探测异常时无该字段）。显式请求 `yolo` 等高权限档位属高影响操作，调用方应先取得用户明确许可。
+`start_session`：必填 `workspace_path`、非空 `message`。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为新会话初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
+
+`permission_mode` 可选 `build`（变更前确认，可能逐次询问）/`plan`/`edit`/`auto`/`yolo` 五档，是权限策略而非开发任务类型。正常派发省略该参数；仅在用户明确指定权限模式时填写，不能因“实施代码”“构建”或“等待首肯合并”选择 `build`。合并授权边界写入开局正文，不用权限模式代替。显式请求 `yolo` 等高权限档位需用户授权，已有明确授权不重复询问。
+
+显式模式透传宿主 `createTask` 并按读回值校验；缺省仅从发起会话 CLI 库的 `session.permission.mode` 继承，不使用可能陈旧的任务索引 `mode`。来源冲突时不继承，由来源警告说明。CLI 会话不存在、权限缺失或非规范值、库缺失或繁忙等探测异常时不传 `mode`，新会话使用 Host 默认权限；回执附 `permission_not_inherited` 警告及 `observed_modes` 原始取值（探测异常时无该字段）。
 
 ```json
 {"name":"start_session","arguments":{"workspace_path":"D:/work/example","message":"这是链路测试，只回复 TEST_OK","model":{"provider_id":"account:bigmodel-individual-coding-plan","model_id":"GLM-5.3-Flash","reasoning_level":"low"}}}
@@ -34,13 +38,28 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`permission_mode`（宿主创建响应读回的生效权限；旧版 Host 响应缺该字段时缺席并附 `permission_unverified`）、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。显式或继承的权限读回值不一致时报 `permission_not_confirmed`，携带已创建会话的 partial_result，不发送开局；响应缺失权限字段属无法核实而非不一致，放行并附 `permission_unverified` 警告，不阻断开局。
 
-`send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。可直接使用创建工具返回的 ID：
+`send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。`delivery_mode` 可省略，建议通常省略以跟随宿主当前输入策略；显式覆盖只影响本次消息，不改变会话设置：
+
+| `delivery_mode` | 处理方式 |
+| --- | --- |
+| 省略 | 不传 v4 `requestedDelivery`，由宿主当前输入策略决定 |
+| `guide` | 工作中在可消费输入的边界引导当前轮；不能立即消费时暂存 |
+| `queue` | 工作中排队后续处理 |
+
+空闲时两种显式策略都可启动新一轮。接口不开放强制抢占的 `startNow` 输入。保留既有的 `keepQueueAndSend`：暂停队列需要发送裁决时保留旧队列，不清空它。可直接使用创建工具返回的 ID，通常不必填写投递策略：
 
 ```json
 {"name":"send_message","arguments":{"session_id":"sess_example","message":"继续测试，只回复 SECOND_OK"}}
 ```
 
-成功返回 `session_id`、`workspace_path`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `deliverer`，有冲突时附 `warnings`。不会在发送时切换用户指定会话的模型，也不改变目标会话的权限模式：恢复链路不携带 `mode`，权限保持会话现状。
+成功返回 `session_id`、`workspace_path`、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `deliverer`，有冲突时附 `warnings`。投递回执另带两个字段：
+
+- `requested_delivery_mode`：调用方请求的 `guide` / `queue`；省略时为 `host_default`。
+- `admitted_delivery`：Host `inputAccepted` 回执的 `startNow` / `queue` / `guide` 原值。公开上游实现也会把尚待消费的 guide 返回为 queue；这只说明输入已接收，不证明已注入当前轮或已处理完。
+
+工具等待 Host 接受提交的 ACK 后即返回并释放连接，不等待接收方工作结束或回复；不能把“不等待处理”理解为无需等待网络和 Host 确认。Host 明确拒绝时返回 `send_not_accepted`、`delivery_status:rejected`；提交异常、缺少有效回执或输入标识不一致时返回 `delivery_status:unknown`，保留本次 `input_id` 供核对，不自动重发。Host 缺少 v4 命令接口时明确报错，不回退到无法表达策略和回执的旧发送接口。
+
+发信不改变目标会话的权限模式：恢复链路不携带 `mode`，权限保持会话现状；消息也不携带模型选择覆盖。
 
 所有工具拒绝未知参数和空白标题/信息。MCP 注解中两个读取工具保持 `readOnlyHint:true`；五个写工具为 false，创建和发信不是幂等操作。
 
