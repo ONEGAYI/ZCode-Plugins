@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-08",
+  "scope": "start_session 和 send_message 自动识别本次 MCP 调用的发起会话，移除公开来源 ID 输入；冲突以警告继续执行",
+  "implementation": {
+    "priority": ["MCP _meta.session_id / com.zcode/request-context.session_id", "trace_id 与工具名只读匹配本地 tool_usage"],
+    "confirmed": "注入 creator / deliverer，并在回执返回",
+    "conflicting": "不注入确定来源属性；notice 标注可能来源，回执 warnings；创建和发信继续执行",
+    "missing_or_malformed": "caller_unknown / caller_context_invalid，在写入前明确报错",
+    "authority": "来源元数据与候选 ID 均不构成人类用户授权"
+  },
+  "sources": {
+    "public_snapshot": "29628c9acdb81b703bbd4080c207a0e7ce5e276e",
+    "core": "apps/zcode-cli/packages/core/src/mcp/index.ts:215-237",
+    "adapter": "apps/zcode-cli/packages/adapters/src/mcp/index.ts:692-701,1748-1774",
+    "sdk": "锁定 MCP SDK 的 RequestHandlerExtra._meta 将请求元数据交给工具处理函数",
+    "local_artifact_product_version": "3.14.5.7961",
+    "local_cli_bundle_sha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "artifact_contains_request_context": true,
+    "artifact_contains_session_trace_mapping": true
+  },
+  "native_readonly_probe": {
+    "captured_at": "2026-10-08T11:19:47.332Z",
+    "existing_create_call_trace_resolves_to_recorded_caller": true,
+    "flat_and_nested_context_resolve_to_recorded_caller": true,
+    "lookup_duration_ms": 208,
+    "host_write_calls": 0,
+    "disclosure": "只保留核对布尔结果，不保存会话 ID、trace ID、聊天正文或凭据"
+  },
+  "verification": {
+    "baseline": { "tests": 43, "passed": 43 },
+    "red": [
+      "旧接口仍公布 creator / deliverer，自动注入契约失败",
+      "缺少 session_id 时未按 trace_id 回查，回查契约失败",
+      "冲突仍阻断请求，警告降级契约失败",
+      "本地调用记录的 NULL / 空白来源 ID 未在写入前阻止，损坏记录契约失败"
+    ],
+    "final": { "tests": 49, "passed": 49, "failed": 0, "skipped": 0 },
+    "covered": [
+      "flat / nested 请求元数据",
+      "每次请求独立定位来源，接收方与来源不混用",
+      "精确 trace 与工具名回查，重复记录仍可唯一定位",
+      "拒绝旧来源输入参数",
+      "缺失、空白、非字符串与损坏上下文；本地 NULL / 空白来源在写入前阻止",
+      "会话 ID 冲突、追踪 ID 冲突及多会话历史匹配均以警告继续",
+      "自动 ID 进入实际消息包装和回执，notice 后无多余空行",
+      "独立 stdio 请求读取元数据，隔离数据库字节不变"
+    ]
+  },
+  "review": {
+    "snapshot": "670315e8e0729101d16cbcd9723616671583d00c",
+    "standards": "PASS：本地损坏来源的写入前校验已通过独立复核",
+    "spec": "PASS：自动来源与冲突警告降级符合本次要求"
+  },
+  "limits": [
+    "本轮未捕获运行中 ZCode 的新 MCP 原始请求；发行包源码核对与 SDK 线协议测试分别作为证据",
+    "本轮未在真实 Host 创建会话或发信；未验证用户截图中那个会话的后续自动来源消息",
+    "只读回查依赖本地 tool_usage 已持久化；未命中时不猜最近或选中会话",
+    "元数据来自调用客户端，不宣称身份认证"
+  ]
+}

@@ -17,7 +17,7 @@
 
 - 两个读取工具只查本机持久化数据，不连接远控。五个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在网关连接的 Desktop 窗口打开。
 - 两个 GLM 工具也连接原 Host。重置每次必须真实用户明确许可和客户端 form elicitation，不接受 Agent 自填 confirmed；不自动重试消耗。只读查询不发卡、不消耗、不标记历史已读。
-- 创建开局由服务包装 created-by-other-session 与可选 creator，后续发信包装 delivered-by-other-session 与可选 deliverer。来源 ID 是调用方声明，不认证发起方身份。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
+- 创建和发信不接受来源 ID 参数；服务读取本次 MCP 请求的 session_id，缺失时按 trace_id 与工具名从本地 tool_usage 唯一定位，在 created-by-other-session 注入 creator、在 delivered-by-other-session 注入 deliverer。冲突或歧义降级为 warnings，notice 标注可能来源并继续执行；完全未知或损坏时在写入前报错。不猜界面选中项或最近会话。客户端元数据不等于身份认证或用户授权。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
 - 原 Host 调用统一走公共网关；缺少 RPC 时明确要求升级，不回退官方直连。隔离测试与真实手机验收分别记录，paired 不代表手机身份；手机使用远端工作区时本地调用让位。
 - 不将 `getTaskSnapshot` 当作无副作用读接口；公开源码中它会恢复会话并同步索引。
 - 不扩展为 SQL 执行工具。数据库缺失、schema 不兼容、历史不存在等错误明确返回，不创建空库或静默回退。
@@ -31,6 +31,7 @@
 | --- | --- |
 | cli.mjs | stdio 入口、数据库/公共网关配置路径；旧 stdin DPAPI 保存入口兼容 |
 | server.mjs | MCP 工具注册、参数校验与结构化响应 |
+| caller.mjs | 每次请求的发起会话定位：MCP 元数据优先，trace_id 与工具名只读匹配本地调用记录 |
 | control.mjs | 原 Host 改名读回、指定模型创建、消息包装、归档保护与复原；按调用释放连接 |
 | glm.mjs | GLM 个人套餐额度/卡片投影、确认后重置与同次尝试回执；共用 controller 远控互斥 |
 | sessions.mjs | 只读索引查询、会话定位、历史投影与分页 |

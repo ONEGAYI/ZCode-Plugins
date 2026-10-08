@@ -29,6 +29,197 @@ test('MCP 握手公布九个工具，三个查询工具保持只读', async t =>
   assert.equal(chat.structuredContent.messages[0].text, '实现只读工具');
 });
 
+test('创建和发信自动读取每次 MCP 请求的来源会话，接口不接受手填来源 ID', async t => {
+  const f = fixture(t), calls = [];
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = Object.fromEntries(['startSession', 'sendMessage'].map(method => [method, async args => {
+    calls.push({ method, args });
+    return { session_id: 'sess_child', ...args };
+  }]));
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'origin-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const listed = await client.listTools();
+  assert.equal(Object.hasOwn(listed.tools.find(tool => tool.name === 'start_session').inputSchema.properties, 'creator'), false);
+  assert.equal(Object.hasOwn(listed.tools.find(tool => tool.name === 'send_message').inputSchema.properties, 'deliverer'), false);
+  const created = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'hello' },
+    _meta: { 'com.zcode/request-context': { session_id: 'sess_parent' } } });
+  assert.equal(created.isError, undefined);
+  assert.equal(calls[0].args.creator, 'sess_parent');
+  const sent = await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_child', message: 'next' },
+    _meta: { session_id: 'sess_subagent_sender' } });
+  assert.equal(sent.isError, undefined);
+  assert.equal(calls[1].args.deliverer, 'sess_subagent_sender');
+  assert.equal(calls[1].args.session_id, 'sess_child');
+  for (const [name, args] of [
+    ['start_session', { workspace_path: 'D:/fixture', message: 'hello', creator: 'sess_forged' }],
+    ['send_message', { session_id: 'sess_child', message: 'next', deliverer: 'sess_forged' }]
+  ]) assert.equal((await client.callTool({ name, arguments: args, _meta: { session_id: 'sess_parent' } })).isError, true);
+  assert.equal(calls.length, 2);
+});
+
+test('请求缺少会话 ID 时按 trace_id 和工具名从本地调用记录精确定位来源', async t => {
+  const f = fixture(t), calls = [];
+  f.history.exec(`CREATE TABLE tool_usage (session_id TEXT, trace_id TEXT, tool_name TEXT);
+    INSERT INTO tool_usage VALUES ('sess_parent', 'trace_create', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES ('sess_parent', 'trace_create', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES ('sess_wrong', 'trace_create', 'mcp__fixture__read_session');
+    INSERT INTO tool_usage VALUES ('sess_sender', 'trace_send', 'mcp__fixture__send_message');`);
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = Object.fromEntries(['startSession', 'sendMessage'].map(method => [method, async args => {
+    calls.push({ method, args }); return args;
+  }]));
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'trace-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const created = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'hello' },
+    _meta: { trace_id: 'trace_create' } });
+  assert.equal(created.isError, undefined);
+  assert.equal(calls[0].args.creator, 'sess_parent');
+  const sent = await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_child', message: 'next' },
+    _meta: { 'com.zcode/request-context': { trace_id: 'trace_send' } } });
+  assert.equal(sent.isError, undefined);
+  assert.equal(calls[1].args.deliverer, 'sess_sender');
+  assert.equal(f.history.prepare('SELECT COUNT(*) n FROM tool_usage').get().n, 4);
+});
+
+test('来源缺失或元数据损坏时在创建和发信前报错', async t => {
+  const f = fixture(t), calls = [];
+  f.history.exec(`CREATE TABLE tool_usage (session_id TEXT, trace_id TEXT, tool_name TEXT);
+    INSERT INTO tool_usage VALUES ('sess_a', 'trace_shared', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES ('sess_b', 'trace_shared', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES ('sess_a', 'trace_shared', 'mcp__fixture__send_message');
+    INSERT INTO tool_usage VALUES ('sess_b', 'trace_shared', 'mcp__fixture__send_message');`);
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = Object.fromEntries(['startSession', 'sendMessage'].map(method => [method, async args => {
+    calls.push({ method, args }); return args;
+  }]));
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'unknown-origin-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  for (const [meta, error] of [
+    [undefined, 'caller_unknown'],
+    [{ session_id: ' ' }, 'caller_context_invalid'],
+    [{ session_id: 42 }, 'caller_context_invalid'],
+    [{ 'com.zcode/request-context': null }, 'caller_context_invalid'],
+    [{ trace_id: 'trace_not_recorded' }, 'caller_unknown'],
+  ]) for (const [name, args] of [
+    ['start_session', { workspace_path: 'D:/fixture', message: 'hello' }],
+    ['send_message', { session_id: 'sess_child', message: 'next' }]
+  ]) {
+    const response = await client.callTool({ name, arguments: args, ...(meta === undefined ? {} : { _meta: meta }) });
+    assert.equal(response.isError, true);
+    assert.ok(response.structuredContent.error.startsWith(error + ':'), response.structuredContent.error);
+    assert.equal(response.structuredContent.session_id, undefined);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('来源冲突降级为警告并继续创建和发信，候选来源仅作为未确认信息写入 notice', async t => {
+  const f = fixture(t), prompts = [];
+  f.history.exec(`CREATE TABLE tool_usage (session_id TEXT, trace_id TEXT, tool_name TEXT);
+    INSERT INTO tool_usage VALUES ('sess_a', 'trace_shared', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES ('sess_b', 'trace_shared', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES ('sess_a', 'trace_shared', 'mcp__fixture__send_message');
+    INSERT INTO tool_usage VALUES ('sess_b', 'trace_shared', 'mcp__fixture__send_message');`);
+  const { createSessionController } = await import('../control.mjs');
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = createSessionController({ reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }) },
+    setTitlePolicy: async () => {},
+    connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
+      if (method === 'createTask' || method === 'getTaskMeta') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
+      if (method === 'sendPrompt') prompts.push(params[0]);
+    } }) });
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'conflicting-origin-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  for (const [meta, code, candidates] of [
+    [{ session_id: 'sess_a', 'com.zcode/request-context': { session_id: 'sess_b' } }, 'caller_context_conflict', ['sess_a', 'sess_b']],
+    [{ trace_id: 'trace_shared' }, 'caller_ambiguous', ['sess_a', 'sess_b']],
+    [{ trace_id: 'trace_a', 'com.zcode/request-context': { trace_id: 'trace_b' } }, 'caller_context_conflict', []]
+  ]) for (const [name, args, role] of [
+    ['start_session', { workspace_path: 'D:/fixture', message: 'hello' }, 'creator'],
+    ['send_message', { session_id: 'sess_child', message: 'next' }, 'deliverer']
+  ]) {
+    const response = await client.callTool({ name, arguments: args, _meta: meta });
+    assert.equal(response.isError, undefined);
+    assert.equal(response.structuredContent.delivery_status, 'accepted');
+    assert.equal(response.structuredContent[role], undefined);
+    assert.equal(response.structuredContent.warnings[0].code, code);
+    assert.deepEqual(response.structuredContent.warnings[0].possible_session_ids, candidates);
+    assert.ok(!prompts.at(-1).content.includes(` ${role}="`));
+    assert.ok(prompts.at(-1).content.includes('session could not be confirmed'));
+    if (candidates.length) assert.ok(prompts.at(-1).content.includes(`Possible ${role} session IDs (unverified): ["sess_a","sess_b"]`));
+  }
+  assert.equal(prompts.length, 6);
+});
+
+test('本地调用记录中的 NULL 或空白来源 ID 在进入写流程前报告损坏', async t => {
+  const f = fixture(t), calls = [];
+  f.history.exec(`CREATE TABLE tool_usage (session_id TEXT, trace_id TEXT, tool_name TEXT);
+    INSERT INTO tool_usage VALUES (NULL, 'trace_null', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES (' ', 'trace_blank', 'mcp__fixture__start_session');
+    INSERT INTO tool_usage VALUES (NULL, 'trace_null', 'mcp__fixture__send_message');
+    INSERT INTO tool_usage VALUES ('', 'trace_empty', 'mcp__fixture__send_message');`);
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = Object.fromEntries(['startSession', 'sendMessage'].map(method => [method, async args => {
+    calls.push({ method, args }); return args;
+  }]));
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'corrupt-history-origin-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  for (const [name, args, trace] of [
+    ['start_session', { workspace_path: 'D:/fixture', message: 'hello' }, 'trace_null'],
+    ['start_session', { workspace_path: 'D:/fixture', message: 'hello' }, 'trace_blank'],
+    ['send_message', { session_id: 'sess_child', message: 'next' }, 'trace_null'],
+    ['send_message', { session_id: 'sess_child', message: 'next' }, 'trace_empty']
+  ]) {
+    const response = await client.callTool({ name, arguments: args, _meta: { trace_id: trace } });
+    assert.equal(response.isError, true);
+    assert.match(response.structuredContent.error, /^caller_context_invalid:/);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('自动定位的 ID 进入开局和后续消息 XML 及回执，不混入接收方 ID', async t => {
+  const f = fixture(t), prompts = [];
+  const { createSessionController } = await import('../control.mjs');
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = createSessionController({ reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }) },
+    setTitlePolicy: async () => {},
+    connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
+      if (method === 'createTask' || method === 'getTaskMeta') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
+      if (method === 'sendPrompt') prompts.push(params[0]);
+    } }) });
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'origin-message-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const created = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: '开局正文' },
+    _meta: { session_id: 'sess_parent', 'com.zcode/request-context': { session_id: 'sess_parent' } } });
+  assert.equal(created.structuredContent.creator, 'sess_parent');
+  assert.equal(created.structuredContent.session_id, 'sess_child');
+  assert.equal(prompts[0].taskId, 'sess_child');
+  assert.equal(prompts[0].content, '<created-by-other-session creator="sess_parent">\n<notice>\nYou are a new zcode session created by another zcode session or the system, instead of directly by the user.\n</notice>\n开局正文\n</created-by-other-session>');
+  const sent = await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_child', message: '后续正文' },
+    _meta: { session_id: 'sess_sender' } });
+  assert.equal(sent.structuredContent.deliverer, 'sess_sender');
+  assert.equal(sent.structuredContent.session_id, 'sess_child');
+  assert.equal(prompts[1].taskId, 'sess_child');
+  assert.equal(prompts[1].content, '<delivered-by-other-session deliverer="sess_sender">\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n后续正文\n</delivered-by-other-session>');
+});
+
 test('MCP 额度查询路由与重置表单确认；不支持确认或自行填 confirmed 字段时拒绝', async t => {
   const f = fixture(t), prompts = [], resetCalls = [];
   const { createMcpServer } = await import('../server.mjs');
@@ -78,10 +269,10 @@ test('三个写工具转交已验证参数，拒绝空开局和未知字段，�
   t.after(async () => { await client.close(); await server.close(); });
   await server.connect(st); await client.connect(ct);
   for (const [name, args] of [
-    ['start_session', { workspace_path: 'D:/fixture', creator: 'sess_parent', message: 'hello', model: { provider_id: 'fixture', model_id: 'flash', reasoning_level: 'low' } }],
-    ['send_message', { session_id: 'sess_created', deliverer: 'sess_sender', message: 'next' }],
+    ['start_session', { workspace_path: 'D:/fixture', message: 'hello', model: { provider_id: 'fixture', model_id: 'flash', reasoning_level: 'low' } }],
+    ['send_message', { session_id: 'sess_created', message: 'next' }],
     ['rename_session', { session_id: 'sess_created', title: '测试' }]
-  ]) assert.equal((await client.callTool({ name, arguments: args })).structuredContent.session_id, 'sess_created');
+  ]) assert.equal((await client.callTool({ name, arguments: args, _meta: { session_id: name === 'send_message' ? 'sess_sender' : 'sess_parent' } })).structuredContent.session_id, 'sess_created');
   assert.equal(calls.length, 3);
   assert.equal(calls[0].args.creator, 'sess_parent');
   assert.equal(calls[1].args.deliverer, 'sess_sender');
@@ -92,7 +283,7 @@ test('三个写工具转交已验证参数，拒绝空开局和未知字段，�
   assert.equal((await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: ' ' } })).isError, true);
   assert.equal((await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_created', message: 'hello', sql: 'write' } })).isError, true);
   assert.equal(calls.length, 3);
-  const failed = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'fail' } });
+  const failed = await client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: 'fail' }, _meta: { session_id: 'sess_parent' } });
   assert.equal(failed.isError, true);
   assert.equal(failed.structuredContent.session_id, 'sess_created');
 });
