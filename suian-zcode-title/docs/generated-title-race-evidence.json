@@ -1,0 +1,26 @@
+{
+  "verifiedOn": "2026-10-09",
+  "scope": "宿主自动命名竞争的隔离契约与命名插件回归；未对真实会话执行改名",
+  "contract": {
+    "allow": "候选为 rename，写前只发生 generated 来源的标题变化，内容指纹未变，会话未运行、归档、删除或锁定时，本轮继续写入",
+    "comparison": "以写前最新标题比较候选；已等于候选时不重复写入，候选等于原标题时仍可覆盖宿主新标题",
+    "preserve": ["keep", "custom 标题变化", "来源未知", "first_input 标题变化", "新输入", "运行", "锁定", "归档", "删除"],
+    "deduplication": "成功后保存实际标题与内容指纹，重复 Stop 不再次生成"
+  },
+  "validation": {
+    "red": { "tests": 11, "passed": 10, "failed": 1, "exitCode": 1, "observed": "stale_result，预期 renamed" },
+    "green": { "tests": 11, "passed": 11, "failed": 0, "exitCode": 0 },
+    "comparisonRed": { "tests": 12, "passed": 11, "failed": 1, "exitCode": 1, "observed": "kept，预期 renamed" },
+    "comparisonGreen": { "tests": 12, "passed": 12, "failed": 0, "exitCode": 0 },
+    "namingContracts": { "tests": 23, "passed": 23, "failed": 0, "skipped": 0, "exitCode": 0 },
+    "titleSuite": { "tests": 59, "passed": 59, "failed": 0, "skipped": 0, "exitCode": 0 }
+  },
+  "localLogs": {
+    "directory": ".local/validation/title-generated-drift/（本机证据，不入库）",
+    "files": ["red.log", "green.log", "compare-red.log", "compare-green.log", "naming-green.log", "title-suite.log"]
+  },
+  "limits": [
+    "契约使用模拟后端重现时序，真实新会话的 Stop Hook 流程待用户验收",
+    "保留现有写前读回与官方 renameTask 链路，未增加服务端原子条件写入"
+  ]
+}
