@@ -52,11 +52,11 @@ Install 注册当前用户登录任务，由 `wscript.exe` 执行公共数据目
 
 ## 升级与旧目录迁移
 
-**更新文件和加载新代码是两件事**。网关模块在进程中缓存，更新 Git 文件不会自动重载。Windows 隔离实验已验证运行中可替换 JS 与重命名源码目录，但不能据此保证其他进程、文件权限或原生扩展不会占用文件。更新前等待相关命名 worker 与 MCP 调用收尾，避免文件与调用混用版本；当前执行安装或升级的 Agent 留在原会话继续工作，不要求其先结束。
+**更新文件和加载新代码是两件事**。网关模块与会话 MCP 子进程都在进程内缓存代码，更新 Git 文件不会自动重载。Windows 隔离实验已验证运行中可替换 JS 与重命名源码目录，但不能据此保证其他进程、文件权限或原生扩展不会占用文件。更新前等待相关命名 worker 与 MCP 调用收尾，避免文件与调用混用版本；当前执行安装或升级的 Agent 留在原会话继续工作，不要求其先结束。
 
 更新源码后，在公共根安装锁定依赖并执行 Status。旧任务和数据目录仍沿用网关身份；不要新建 `suian-zcode-common` 的第二个任务或清空配置。需要加载更新后的代码、迁移旧根路径或将旧 PowerShell 任务切换为 VBS 时执行 Restart，保留端口、上游、停止令牌和原环境备份。
 
-RPC 升级还要检查 `rpc_available:true`。文件已更新但该字段为 false，说明旧进程尚未提供 RPC；按下述流程重载，不能让插件退回官方直连。两个插件与公共层一起更新，随后刷新 MCP 服务与 skill。默认使用公共数据目录的 config.json；自定义目录时把同一文件路径配置为命名插件的 gatewayConfigPath 和 MCP args 的 --gateway-config，不传令牌到 args/env。
+RPC 升级还要检查 `rpc_available:true`。文件已更新但该字段为 false，说明旧进程尚未提供 RPC；按下述流程重载，不能让插件退回官方直连。两个插件与公共层一起更新，随后部署新版 skill；会话 MCP 的新代码只对新会话生效，完成后按「升级生效边界」分开报告。默认使用公共数据目录的 config.json；自定义目录时把同一文件路径配置为命名插件的 gatewayConfigPath 和 MCP args 的 --gateway-config，不传令牌到 args/env。
 
 ```powershell
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{common_root}}/setup.ps1" -Action Restart
@@ -66,8 +66,10 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{commo
 
 1. 等相关插件的远控调用完成，再请用户在 ZCode 内暂停「移动端远程控制」。只关闭手机网页不够；不要求结束普通 Agent 任务或退出应用。
 2. 用本机 Shell 执行 Status，确认 `desktop_connected:false`；然后执行 Restart。暂停期间原 Host RPC 不可用，不能依赖会话 MCP 来执行升级。
-3. 完成剩余插件配置、skill 部署及本机检查。地址未变且升级前已连接正确网关时，请用户重新开启远控，检查 `desktop_connected:true` 与插件连接，无需重启应用。
+3. 完成剩余插件配置、skill 部署及本机检查。地址未变且升级前已连接正确网关时，请用户重新开启远控，检查 `desktop_connected:true` 与插件连接，无需重启应用；此处「无需重启」仅指 Desktop 重连网关，不代表既有会话的 MCP 已换新，见「升级生效边界」。
 4. 首次接入、修改 Desktop 启动地址或当前主进程仍持旧变量时，先交付全部配置结果与待验证事项，最后才提示用户择时重开。不要在重启前阻塞本机配置步骤。
+
+**升级生效边界**：Restart 后网关新代码立即生效；skill 文件下次按需读取即生效；会话 MCP（`suian-zcode-app`）的新代码只对新会话生效。既有会话（含当前执行升级的会话）持有旧版 MCP 子进程与旧工具定义，直到会话结束——官方连接池按会话隔离 stdio 连接，配置不变时持续复用首次连接的子进程，不重连、不探测，没有因文件更新而重载的机制。会话内换新的唯一途径是 `/mcp disconnect suian-zcode-app` 后等待空闲宽限（约 30 秒）再 `/mcp connect suian-zcode-app`：宽限内重连仍命中旧进程，断开期间该会话的原 Host 工具不可用。升级报告分开陈述已生效部分（网关、skill、新会话的 MCP）与未生效部分（既有会话的 MCP 行为），不把前者说成全部生效。
 
 无 Desktop 连接时直接重载网关。修改端口用 Restart 的 `-Port {{port}}`；脚本先检查并停止旧端口的实例，再启动新端口，保留控制令牌与原环境备份。只更新 README、skill 或业务配置且不涉及常驻网关代码时，无需 Restart 网关。
 
