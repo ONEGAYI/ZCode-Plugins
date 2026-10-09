@@ -24,7 +24,7 @@
 | 路径 | 职责 |
 | --- | --- |
 | gateway.mjs | 唯一 relay 网关、同进程 bootstrap 分流及健康状态 |
-| rpc-broker.mjs | 单一 Host 桥、RPC 编号映射、手机虚拟桥与本地客户端分流 |
+| rpc-broker.mjs | 单一 Host 桥、RPC 编号与 v4 握手身份映射、手机虚拟桥与本地客户端分流 |
 | gateway-client.mjs | 插件默认 connectHost/probeHost，本地配置与鉴权、RPC 附着和明确失败 |
 | setup.ps1 / run.ps1 / run.vbs | 用户任务、变量、公共 skill；无窗口监督启动、安全重载与恢复 |
 | remote.mjs | 官方 relay 鉴权、workspace bridge、Channel RPC 与分层探活 |

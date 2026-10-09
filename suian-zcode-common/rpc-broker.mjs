@@ -23,14 +23,60 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
     physical.seq += frames.length;
     for (const frame of frames) sendDesktop(frame);
   };
+  const forwardRequest = id => {
+    const route = routes.get(id), { peer, localId, header } = route;
+    let tail = route.tail;
+    if (header[0] === 100 && header[2] === 'zcode-agent') {
+        const method = header[3];
+        if (method === 'helloConversationV4') route.onSuccess = () => { peer.helloIssued = true; };
+        if (method === 'initializeConversationV4' || method === 'sendConversationCommandV4') {
+          const args = route.initializeArgs ?? deserialize(new BufferReader(VSBuffer.wrap(tail))), params = args[0];
+          let reason;
+          if (method === 'initializeConversationV4') {
+            if (!peer.helloIssued) reason = 'fault.connection.helloRequired';
+            else if (peer.clientHello && peer.clientHello.clientId !== params.clientId) reason = 'fault.connection.clientChanged';
+            // Host 只绑定一个身份；手机是 v4 增量订阅的消费者，本地写调用不能覆盖其能力声明。
+            args[0] = { ...params, clientId: physical.clientId,
+              capabilities: peer !== phone && phone?.clientHello ? { ...params.capabilities, ...phone.clientHello.capabilities } : params.capabilities };
+            route.onSuccess = () => { peer.clientHello = params; };
+          } else {
+            if (!peer.clientHello) reason = 'fault.connection.handshakeRequired';
+            else if (params.envelope.clientId !== peer.clientHello.clientId) reason = 'fault.command.clientMismatch';
+            args[0] = { ...params, envelope: { ...params.envelope, clientId: physical.clientId } };
+          }
+          const writer = new BufferWriter();
+          if (reason) {
+            serialize(writer, [202, localId]); serialize(writer, { name: 'Error', message: reason });
+            peer.send(writer.buffer.buffer);
+            routes.delete(id); peer.ids.delete(localId);
+            if (physical.initializing === id) physical.initializing = undefined;
+            return;
+          }
+          serialize(writer, args); tail = writer.buffer.buffer;
+        }
+    }
+    route.sent = true;
+    hostSend(packet([header[0], id, ...header.slice(2)], tail));
+  };
+  // 逐个等待初始化 ACK，之后才读取各端已绑定身份和手机能力，避免并发换绑或覆盖声明。
+  const drainInitializations = () => {
+    while (physical && !physical.initializing && physical.initializations.length) {
+      const id = physical.initializations.shift();
+      if (!routes.has(id)) continue; // 排队期间断开或取消的调用已经移除。
+      physical.initializing = id;
+      forwardRequest(id);
+    }
+  };
   const cancelPeer = peer => {
     for (const [localId, id] of peer.ids) {
       const route = routes.get(id);
-      if (physical?.initialized) hostSend(packet([route.event ? 103 : 101, id]));
+      if (physical?.initialized && route.sent) hostSend(packet([route.event ? 103 : 101, id]));
       routes.delete(id);
       peer.ids.delete(localId);
+      if (physical?.initializing === id) physical.initializing = undefined;
     }
     peers.delete(peer);
+    drainInitializations();
   };
   const request = (peer, bytes) => {
     const { header, tail } = headerOf(bytes);
@@ -38,21 +84,31 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
     const [type, localId] = header;
     if (type === 100 || type === 102) {
       if (peer.ids.has(localId)) throw new Error('Duplicate RPC request ID');
+      const initialize = type === 100 && header[2] === 'zcode-agent' && header[3] === 'initializeConversationV4';
+      let initializeArgs;
+      if (initialize) {
+        initializeArgs = deserialize(new BufferReader(VSBuffer.wrap(tail)));
+        if (!Array.isArray(initializeArgs) || typeof initializeArgs[0]?.clientId !== 'string') throw new Error('Invalid v4 clientId');
+      }
       const id = nextId++;
-      routes.set(id, { peer, localId, event: type === 102 }); peer.ids.set(localId, id);
-      hostSend(packet([type, id, ...header.slice(2)], tail));
+      routes.set(id, { peer, localId, header, tail, initializeArgs, event: type === 102, sent: false }); peer.ids.set(localId, id);
+      if (initialize) {
+        physical.initializations.push(id); drainInitializations();
+      } else forwardRequest(id);
     } else {
       const id = peer.ids.get(localId);
       if (id === undefined) return;
-      hostSend(packet([type, id], tail));
+      if (routes.get(id).sent) hostSend(packet([type, id], tail));
       routes.delete(id); peer.ids.delete(localId);
+      if (physical.initializing === id) physical.initializing = undefined;
+      drainInitializations();
     }
   };
   const ensureHost = async workspacePath => {
     if (!physical) {
       const identity = { bridgeSessionId: randomUUID(), bridgeGeneration: 1 };
       const ready = Promise.withResolvers(), initialize = Promise.withResolvers();
-      physical = { identity, requestId: randomUUID(), assembler: new Assembler({ identity }), seq: 1, message: 1, ready, initialize, initialized: false };
+      physical = { identity, clientId: randomUUID(), initializations: [], requestId: randomUUID(), assembler: new Assembler({ identity }), seq: 1, message: 1, ready, initialize, initialized: false };
       physical.timer = setTimeout(() => resetPhysical(Object.assign(new Error('原 Host 桥初始化超时'), { code: 'gateway_bridge_timeout' })), bridgeTimeoutMs);
       bridgeRequests.add(physical.requestId);
       sendDesktop({ zcode_type: 'workspace-bridge-open', requestId: physical.requestId, ...identity, workspaceKey: workspacePath });
@@ -143,8 +199,13 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
         else {
           const route = routes.get(header[1]);
           if (route) {
+            if (header[0] === 201) route.onSuccess?.();
             route.peer.send(packet([header[0], route.localId, ...header.slice(2)], tail));
-            if (!route.event) { routes.delete(header[1]); route.peer.ids.delete(route.localId); }
+            if (!route.event) {
+              routes.delete(header[1]); route.peer.ids.delete(route.localId);
+              if (physical.initializing === header[1]) physical.initializing = undefined;
+              drainInitializations();
+            }
           }
         }
       }

@@ -16,8 +16,26 @@ async function fixture(overrides = {}) {
     delay: async () => {},
     connect: async args => {
       const connection = { args, closed: false }; connections.push(connection);
+      let helloIssued = false, boundClientId;
       return { workspacePath: workspace, close: () => { connection.closed = true; }, call: async (channel, method, params) => {
         calls.push({ channel, method, params });
+        if (method === 'helloConversationV4') {
+          helloIssued = true;
+          return overrides[method] ? overrides[method](params) : { kind: 'hello', protocolVersion: 3, clientMode: 'web-remote-replayable' };
+        }
+        if (method === 'initializeConversationV4') {
+          if (!helloIssued) throw new Error('fault.connection.helloRequired');
+          if (boundClientId !== undefined && boundClientId !== params[0].clientId) throw new Error('fault.connection.clientChanged');
+          assert.equal(params[0].kind, 'clientHello');
+          assert.equal(params[0].protocolVersion, 3);
+          if (overrides[method]) return overrides[method](params);
+          boundClientId = params[0].clientId;
+          return;
+        }
+        if (method === 'sendConversationCommandV4') {
+          if (boundClientId === undefined) throw new Error('fault.connection.handshakeRequired');
+          if (params[0].envelope.clientId !== boundClientId) throw new Error('fault.command.clientMismatch');
+        }
         if (method === 'createTask') persistedMode = params[0].mode ?? 'build';
         if (overrides[method]) return overrides[method](params);
         if (method === 'getView') return { providers: [{ providerId: 'fixture', models: [{ modelId: 'flash', config: { optionSpecs: { reasoningLevel: { values: ['low'] } } } }] }] };
@@ -54,6 +72,18 @@ test('创建使用指定模型，先命名后发送带来源标识的开局信�
   assert.equal(renamed.title, '新标题');
   assert.deepEqual(f.calls.slice(-2).map(c => c.method), ['renameTask', 'getTaskMeta']);
   assert.ok(f.connections.every(c => c.closed));
+});
+
+test('v4 握手失败或协议不支持时释放连接，不恢复会话或提交消息', async () => {
+  for (const overrides of [
+    { helloConversationV4: () => ({ protocolVersion: 99 }) },
+    { initializeConversationV4: () => { throw new Error('fixture handshake failed'); } }
+  ]) {
+    const f = await fixture(overrides);
+    await assert.rejects(f.controller.sendMessage({ session_id: 'sess_new', message: '短指令' }), /conversation_protocol_unsupported|fixture handshake failed/);
+    assert.equal(f.calls.filter(c => ['resumeTask', 'sendConversationCommandV4'].includes(c.method)).length, 0);
+    assert.equal(f.connections[0].closed, true);
+  }
 });
 
 test('发信策略可缺省跟随宿主或显式 guide/queue，回执报告 Host 实际接收方式', async () => {
@@ -100,7 +130,7 @@ test('发信等待 Host ACK 后即回执，不等待工作中接收方结束或�
   const receipt = await sending;
   assert.equal(receipt.delivery_status, 'accepted');
   assert.equal(receipt.admitted_delivery, 'queue');
-  assert.deepEqual(f.calls.map(c => c.method), ['getTaskMeta', 'resumeTask', 'sendConversationCommandV4']);
+  assert.deepEqual(f.calls.map(c => c.method), ['helloConversationV4', 'initializeConversationV4', 'getTaskMeta', 'resumeTask', 'sendConversationCommandV4']);
   assert.equal(f.connections[0].closed, true);
 });
 

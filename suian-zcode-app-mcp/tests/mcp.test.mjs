@@ -4,6 +4,62 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { fixture } from './fixtures.mjs';
+import { writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+
+test('创建和发信公布正文与 Markdown 路径二选一，文件正文按 UTF-8 原样交给控制器', async t => {
+  const f = fixture(t), calls = [];
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = Object.fromEntries(['startSession', 'sendMessage'].map(method => [method, async args => {
+    calls.push({ method, args }); return { session_id: 'sess_child', delivery_status: 'accepted' };
+  }]));
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'markdown-input-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const document = join(dirname(f.sessionDbPath), '中文汇报.MD');
+  const body = '\n# 汇报\r\n\r\n' + '中文、代码 `x` 与 <tag> & 字符。\n'.repeat(200) + '\n';
+  await writeFile(document, body, 'utf8');
+  const listed = await client.listTools();
+  for (const name of ['start_session', 'send_message']) {
+    const tool = listed.tools.find(tool => tool.name === name);
+    assert.equal(tool.inputSchema.properties.message_file.type, 'string');
+    assert.deepEqual(tool.inputSchema.oneOf, [{ required: ['message'] }, { required: ['message_file'] }]);
+    const target = name === 'start_session' ? { workspace_path: 'D:/fixture' } : { session_id: 'sess_child' };
+    const response = await client.callTool({ name, arguments: { ...target, message_file: document }, _meta: { session_id: 'sess_parent' } });
+    assert.equal(response.isError, undefined);
+    assert.equal(calls.at(-1).args.message, body);
+    assert.equal(calls.at(-1).args.message_file, undefined);
+    assert.equal(calls.at(-1).args[name === 'start_session' ? 'creator' : 'deliverer'], 'sess_parent');
+  }
+  assert.equal(calls.length, 2);
+});
+
+test('正文输入冲突、缺失及无效文档在创建和发信之前拒绝', async t => {
+  const f = fixture(t), calls = [];
+  const { createMcpServer } = await import('../server.mjs');
+  const controller = Object.fromEntries(['startSession', 'sendMessage'].map(method => [method, async args => { calls.push(args); return args; }]));
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'invalid-markdown-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const root = dirname(f.sessionDbPath), empty = join(root, 'empty.md'), plain = join(root, 'report.txt'), directory = join(root, 'directory.md');
+  await writeFile(empty, ' \r\n\t', 'utf8');
+  await writeFile(plain, '正文', 'utf8');
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(directory);
+  for (const name of ['start_session', 'send_message']) {
+    const target = name === 'start_session' ? { workspace_path: 'D:/fixture' } : { session_id: 'sess_child' };
+    for (const input of [{}, { message: '短指令', message_file: empty }, { message_file: 'relative.md' },
+      { message_file: plain }, { message_file: join(root, 'missing.md') }, { message_file: empty }, { message_file: directory }]) {
+      const response = await client.callTool({ name, arguments: { ...target, ...input }, _meta: { session_id: 'sess_parent' } });
+      assert.equal(response.isError, true, JSON.stringify(input));
+    }
+  }
+  assert.equal(calls.length, 0);
+});
 
 test('MCP 握手公布九个工具，三个查询工具保持只读', async t => {
   const f = fixture(t);
@@ -156,6 +212,7 @@ test('来源冲突降级为警告并继续创建和发信，候选来源仅作�
     sessionMode: () => ({ mode: 'build', observed: ['build'] }) },
     setTitlePolicy: async () => {},
     connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
+      if (method === 'helloConversationV4') return { kind: 'hello', protocolVersion: 3, clientMode: 'web-remote-replayable' };
       if (method === 'createTask' || method === 'getTaskMeta') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
       if (method === 'sendPrompt') prompts.push(params[0]);
       if (method === 'sendConversationCommandV4') {
@@ -340,6 +397,7 @@ test('自动定位的 ID 进入开局和后续消息 XML 及回执，不混入�
     sessionMode: () => ({ mode: 'build', observed: ['build'] }) },
     setTitlePolicy: async () => {},
     connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
+      if (method === 'helloConversationV4') return { kind: 'hello', protocolVersion: 3, clientMode: 'web-remote-replayable' };
       if (method === 'createTask' || method === 'getTaskMeta') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
       if (method === 'sendPrompt') prompts.push(params[0]);
       if (method === 'sendConversationCommandV4') {

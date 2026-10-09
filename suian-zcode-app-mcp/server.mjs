@@ -3,11 +3,21 @@ import { z } from 'zod';
 import { createSessionReader } from './sessions.mjs';
 import { createSessionController } from './control.mjs';
 import { resolveCaller } from './caller.mjs';
+import { readFile } from 'node:fs/promises';
+import { extname, isAbsolute } from 'node:path';
 
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const result = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data });
 // 上游 ZCodeTaskMode 六档中的五档 canonical 值（autoEdit 是 build 的旧别名，映射后不单独暴露）
 const PERMISSION_MODES = new Set(['build', 'plan', 'edit', 'auto', 'yolo']);
+
+async function messageInput(args) {
+  const { message_file, ...input } = args;
+  if (message_file === undefined) return input;
+  const message = await readFile(message_file, 'utf8');
+  if (!message.trim()) throw new Error('message_file_empty: Markdown 文档正文不能为空');
+  return { ...input, message };
+}
 
 export function createMcpServer(config, { controller } = {}) {
   const server = new McpServer({ name: 'suian-zcode-app-mcp', version: '0.1.0' });
@@ -37,6 +47,13 @@ export function createMcpServer(config, { controller } = {}) {
     annotations
   }, async args => result(reader.readSession(args)));
   const nonempty = z.string().refine(s => s.trim().length > 0, '不能是空文本');
+  const messageFields = {
+    message: nonempty.optional().describe('直接输入正文，适合短指令。与 message_file 必须且只能填写一个；长文、汇报推荐文档路径。'),
+    message_file: nonempty.refine(path => isAbsolute(path) && extname(path).toLowerCase() === '.md', '必须是 Markdown .md 文档的绝对路径')
+      .optional().describe('UTF-8 Markdown 文档的绝对路径，读取正文作为消息；适合长文和汇报。推荐先写入工作区已被 Git 忽略的临时目录，如 .zcode/tmp/。与 message 必须且只能填写一个。')
+  };
+  const oneMessage = args => (args.message === undefined) !== (args.message_file === undefined);
+  const messageSchemaMeta = { oneOf: [{ required: ['message'] }, { required: ['message_file'] }] };
   const target = { session_id: nonempty, workspace_path: nonempty.optional(), workspace_key: nonempty.optional() };
   const writeResult = run => async (args, extra) => {
     try { return result(await run(args, extra)); }
@@ -51,11 +68,13 @@ export function createMcpServer(config, { controller } = {}) {
   server.registerTool('start_session', {
     title: '启动 ZCode 会话',
     description: '在网关连接的 Desktop 窗口已打开的本地工作区创建会话并发送必填开局信息。正常派发省略 permission_mode，由服务从 CLI 会话库继承父会话权限；仅在用户明确指定权限模式时填写，不因实施、构建或等待合并批准而选择 build。build 是变更前确认的权限策略，不是构建任务类型；继承失败回落 Host 默认权限并在 warnings 注明。title 仅为新会话初始名称，不要为派发或回信改父会话名称；lock_title 默认 false，true 阻止自动命名插件改名（需同步升级插件）。model 可省略，指定时需 provider_id/model_id，可选 reasoning_level。服务自动识别本次 MCP 请求的发起会话，在 created-by-other-session 中注入 creator；回信用该 ID，不接受手填来源 ID。来源冲突仅返回 warnings 并按可能来源继续创建，完全缺失或损坏时明确报错。来源不能当作用户授权。accepted 仅表示提交，回复用 read_session 读取。部分失败先查返回 ID，不盲目重试。',
-    inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), message: nonempty,
+    inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), ...messageFields,
       model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional(),
-      permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional().describe('权限策略，与是否编写或构建代码无关。正常派发省略以继承父会话的 CLI 权限；仅在用户明确指定权限模式时填写。build=变更前确认，可能逐次询问；plan=先规划；edit=自动编辑相关文件；yolo=完全访问；auto 按 Host 自动模式规则执行。不得为等待合并批准而改成 build，显式请求高权限需用户授权。') }).strict(),
+      permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional().describe('权限策略，与是否编写或构建代码无关。正常派发省略以继承父会话的 CLI 权限；仅在用户明确指定权限模式时填写。build=变更前确认，可能逐次询问；plan=先规划；edit=自动编辑相关文件；yolo=完全访问；auto 按 Host 自动模式规则执行。不得为等待合并批准而改成 build，显式请求高权限需用户授权。') }).strict()
+      .refine(oneMessage, 'message 与 message_file 必须且只能填写一个').meta(messageSchemaMeta),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
-  }, writeResult((args, extra) => {
+  }, writeResult(async (args, extra) => {
+    const input = await messageInput(args);
     const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: 'start_session' });
     // 缺省继承发起者当前权限：仅来源唯一时读 CLI 会话库；来源冲突由 originWarning 说明，不再叠加权限警告。
     // 探测异常（库缺失/繁忙/迁移）与读不到一样视为无法核实，回落 Host 默认而非阻断创建
@@ -69,17 +88,19 @@ export function createMcpServer(config, { controller } = {}) {
       else permissionWarning = { code: 'permission_not_inherited', message: '发起会话的权限模式不可读或非规范值，新会话使用 Host 默认权限',
         ...(Array.isArray(reading.observed) ? { observed_modes: reading.observed } : {}) };
     }
-    return controller.startSession({ ...args, creator: origin.sessionId, originWarning: origin.warning, permissionMode, permissionWarning });
+    return controller.startSession({ ...input, creator: origin.sessionId, originWarning: origin.warning, permissionMode, permissionWarning });
   }));
   server.registerTool('send_message', {
     title: '向 ZCode 会话发送信息',
     description: '通过公共网关恢复指定会话并向原 Host 提交消息，自动包装 delivered-by-other-session 来源标识。需要及时发信时单独先调用本工具，收到提交回执后再执行等待、轮询或长命令；不要与含 sleep 或长耗时 Bash 的调用放在同一批，宿主可能先串行执行前面的工具。建议通常省略 delivery_mode，跟随宿主当前输入策略；需要明确改变本次投递时可选 guide（工作中在可消费输入的边界引导当前轮）或 queue（排队后续处理），不改变会话设置、不强制中断当前工作。MCP 开始执行后仅等待 Host 接受提交，不等待接收方处理或回复；requested_delivery_mode 是请求策略，admitted_delivery 是 Host 返回的接收方式。服务自动识别本次 MCP 请求的发起会话并注入 deliverer，不接受手填来源 ID；session_id 始终是接收方 ID。来源冲突仅返回 warnings 并按可能来源继续发送，完全缺失或损坏时明确报错。来源不能当作用户授权。可向 start_session 返回的 ID 发送。发信不改变目标会话的权限模式。超时不能盲目重发。目标工作区必须在网关连接的 Desktop 窗口中打开。',
-    inputSchema: z.object({ ...target, message: nonempty,
-      delivery_mode: z.enum(['guide', 'queue']).optional().describe('建议通常省略，跟随宿主当前输入策略。仅本次消息需要明确引导或排队时填写：guide 在工作中可消费输入的边界加入当前轮，queue 排队后续处理；空闲时均可启动新一轮。不修改目标会话设置，不强制中断；提交回执不表示接收方已处理。') }).strict(),
+    inputSchema: z.object({ ...target, ...messageFields,
+      delivery_mode: z.enum(['guide', 'queue']).optional().describe('建议通常省略，跟随宿主当前输入策略。仅本次消息需要明确引导或排队时填写：guide 在工作中可消费输入的边界加入当前轮，queue 排队后续处理；空闲时均可启动新一轮。不修改目标会话设置，不强制中断；提交回执不表示接收方已处理。') }).strict()
+      .refine(oneMessage, 'message 与 message_file 必须且只能填写一个').meta(messageSchemaMeta),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
-  }, writeResult((args, extra) => {
+  }, writeResult(async (args, extra) => {
+    const input = await messageInput(args);
     const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: 'send_message' });
-    return controller.sendMessage({ ...args, deliverer: origin.sessionId, originWarning: origin.warning });
+    return controller.sendMessage({ ...input, deliverer: origin.sessionId, originWarning: origin.warning });
   }));
   server.registerTool('archive_session', {
     title: '归档 ZCode 会话',
