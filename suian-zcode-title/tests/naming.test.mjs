@@ -82,6 +82,76 @@ test("宿主自动改名（generated）不锁定并重新命名；unchanged 需�
   assert.equal(drift.status,"renamed","指纹未变但标题被宿主改动，也应重新命名而非 unchanged");
 });
 
+test("生成期间宿主自动命名且内容未变，本轮直接写入候选并建立去重基线",async()=>{
+  const box=fixture();box.snapshot.turnCount=1;box.snapshot.titleSource="first_input";
+  const generate=box.backend.generate;
+  box.backend.generate=async()=>{
+    const result=await generate();
+    box.snapshot.title="宿主首轮自动标题";box.snapshot.titleSource="generated";
+    return result;
+  };
+  const result=await runNaming({backend:box.backend,selection,state:{},apply:true});
+  assert.equal(result.status,"renamed");assert.equal(box.snapshot.title,candidate.title);
+  assert.equal(box.generations,1);assert.equal(box.renames,1);
+  assert.equal(box.state.lastTitle,candidate.title);assert.equal(box.state.lastFingerprint,"content-v1");
+  assert.equal((await runNaming({backend:box.backend,selection,state:box.state,apply:true})).status,"unchanged");
+  assert.equal(box.generations,1);assert.equal(box.renames,1);
+});
+
+test("候选沿用原标题时，仍能覆盖生成期间宿主写入的自动标题",async()=>{
+  const box=fixture();box.snapshot.title=candidate.title;box.snapshot.context.current_title=candidate.title;
+  const generate=box.backend.generate;
+  box.backend.generate=async()=>{
+    const result=await generate();
+    box.snapshot.title="宿主自动标题";box.snapshot.titleSource="generated";
+    return result;
+  };
+  const result=await runNaming({backend:box.backend,selection,state:{},apply:true});
+  assert.equal(result.status,"renamed");assert.equal(box.snapshot.title,candidate.title);
+  assert.equal(box.generations,1);assert.equal(box.renames,1);
+  assert.equal(box.state.lastTitle,box.snapshot.title);
+});
+
+test("宿主生成标题已等于候选时不重复写入，保存实际标题作为基线",async()=>{
+  const box=fixture(),generate=box.backend.generate;
+  box.backend.generate=async()=>{
+    const result=await generate();
+    box.snapshot.title=candidate.title;box.snapshot.titleSource="generated";
+    return result;
+  };
+  const result=await runNaming({backend:box.backend,selection,state:{},apply:true});
+  assert.equal(result.status,"kept");assert.equal(result.title,candidate.title);
+  assert.equal(box.generations,1);assert.equal(box.renames,0);
+  assert.equal(box.state.lastTitle,box.snapshot.title);
+  assert.equal(box.state.lastFingerprint,"content-v1");
+});
+
+test("自动命名竞争仍保留 keep、手动标题、新输入和会话状态保护",async t=>{
+  const cases=[
+    {name:"keep 不沿用原标题的判断",output:{action:"keep",title:"原名",reason:"原标题合适"},status:"stale_result",staleReason:"title"},
+    {name:"custom 标题变化",change:{titleSource:"custom"},status:"stale_result",staleReason:"title"},
+    {name:"来源未知的标题变化",change:{titleSource:null},status:"stale_result",staleReason:"title"},
+    {name:"first_input 标题变化",change:{titleSource:"first_input"},status:"stale_result",staleReason:"title"},
+    {name:"新输入",change:{fingerprint:"content-v2",latestUserId:"u4"},status:"stale_result",staleReason:"fingerprint"},
+    {name:"会话继续运行",change:{running:true},status:"stale_result",staleReason:"running"},
+    {name:"生成期间固定标题",change:{titlePolicy:{version:1,locked:true}},status:"locked"},
+    {name:"生成期间归档",change:{archived:true},status:"archived"},
+    {name:"生成期间删除",change:{deleted:true},status:"archived"}
+  ];
+  for(const item of cases)await t.test(item.name,async()=>{
+    const box=fixture();
+    box.backend.generate=async()=>{
+      box.generations++;
+      Object.assign(box.snapshot,{title:"生成期间的新标题",titleSource:"generated"},item.change);
+      return{text:JSON.stringify(item.output??candidate),finishReason:"stop"};
+    };
+    const result=await runNaming({backend:box.backend,selection,state:{},apply:true});
+    assert.equal(result.status,item.status);assert.equal(result.staleReason,item.staleReason);
+    assert.equal(result.title,"生成期间的新标题");assert.equal(box.generations,1);
+    assert.equal(box.renames,0);assert.deepEqual(box.state,{});
+  });
+});
+
 test('MCP 显式不锁名称时非规范 keep 要纠正一次，并记录模型理由', async () => {
   const box = fixture();
   box.snapshot.titlePolicy = { version: 1, locked: false };

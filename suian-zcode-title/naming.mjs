@@ -58,9 +58,11 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
   const fresh=await backend.read();
   if(fresh.titlePolicy?.locked)return{status:"locked",title:fresh.title,usage:generated.usage};
   if(fresh.archived||fresh.deleted)return{status:"archived",title:fresh.title,usage:generated.usage};
-  const staleReason=fresh.running?"running":fresh.fingerprint!==before.fingerprint?"fingerprint":fresh.title!==before.title?"title":null;
+  // 宿主自动命名只改变标题时可继续 rename；keep 仍基于原标题，不能沿用。
+  const canReplaceGeneratedTitle=fresh.titleSource==="generated"&&candidate.action==="rename";
+  const staleReason=fresh.running?"running":fresh.fingerprint!==before.fingerprint?"fingerprint":fresh.title!==before.title&&!canReplaceGeneratedTitle?"title":null;
   if(staleReason)return{status:"stale_result",staleReason,title:fresh.title,usage:generated.usage};
-  if(candidate.action==="rename"&&candidate.title!==before.title) {
+  if(candidate.action==="rename"&&candidate.title!==fresh.title) {
     await backend.saveState({...state,pendingTitle:candidate.title,pendingFingerprint:before.fingerprint});
     await backend.rename(candidate.title);
     const verified=await backend.read();
