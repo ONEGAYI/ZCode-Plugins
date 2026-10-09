@@ -74,6 +74,79 @@ test('创建使用指定模型，先命名后发送带来源标识的开局信�
   assert.ok(f.connections.every(c => c.closed));
 });
 
+test('compact 提交指定会话的 V4 维护命令，接受没有 delivery 的 ACK 后返回并释放连接', async () => {
+  const f = await fixture({ sendConversationCommandV4: ([{ workspacePath, envelope }]) => {
+    assert.equal(workspacePath, workspace);
+    assert.equal(envelope.type, 'compact');
+    assert.equal(envelope.sessionId, 'sess_working');
+    assert.deepEqual(envelope.payload, {});
+    assert.equal(Object.hasOwn(envelope, 'baseRevision'), false);
+    return { commandId: envelope.commandId, status: 'accepted', revisionAtDecision: 7 };
+  } });
+  const result = await f.controller.compactSession({ session_id: 'sess_working', workspace_path: 'D:/FIXTURE' });
+  assert.deepEqual(result, { source: 'original_host', session_id: 'sess_working', workspace_path: workspace,
+    command_id: f.calls.at(-1).params[0].envelope.commandId, command_status: 'accepted' });
+  assert.ok(result.command_id);
+  assert.deepEqual(f.calls.map(c => c.method), ['helloConversationV4', 'initializeConversationV4', 'getTaskMeta', 'resumeTask', 'sendConversationCommandV4']);
+  assert.equal(f.connections[0].closed, true);
+});
+
+test('compact 拒绝或回执未知时保留命令 ID，不重发并释放互斥', async () => {
+  for (const [makeAck, pattern, status] of [
+    [() => undefined, /compact_not_confirmed/, 'unknown'],
+    [() => ({ commandId: 'wrong-command', status: 'accepted' }), /compact_not_confirmed/, 'unknown'],
+    [envelope => ({ commandId: envelope.commandId, status: 'unexpected' }), /compact_not_confirmed/, 'unknown'],
+    ...['rejected', 'stale', 'noop', 'failed'].map(status => [envelope => ({ commandId: envelope.commandId, status,
+      reasonCode: 'compactOperationLock', message: 'Compact is already running or queued' }), /compact_not_accepted: compactOperationLock/, status])
+  ]) {
+    const f = await fixture({ sendConversationCommandV4: ([{ envelope }]) => makeAck(envelope) });
+    await assert.rejects(f.controller.compactSession({ session_id: 'sess_working' }), error => {
+      assert.match(error.message, pattern);
+      assert.equal(error.partial_result.command_id, f.calls.at(-1).params[0].envelope.commandId);
+      assert.equal(error.partial_result.session_id, 'sess_working');
+      assert.equal(error.partial_result.command_status, status);
+      if (status !== 'unknown') assert.equal(error.partial_result.reason_code, 'compactOperationLock');
+      return true;
+    });
+    assert.equal(f.calls.filter(c => c.method === 'sendConversationCommandV4').length, 1);
+    assert.equal(f.connections[0].closed, true);
+    await f.controller.renameSession({ session_id: 'sess_new', title: '新标题' });
+  }
+  const f = await fixture({ sendConversationCommandV4: () => { throw new Error('fixture RPC timeout'); } });
+  await assert.rejects(f.controller.compactSession({ session_id: 'sess_working' }), error => {
+    assert.match(error.message, /fixture RPC timeout/);
+    assert.equal(error.partial_result.command_status, 'unknown');
+    assert.equal(error.partial_result.command_id, f.calls.at(-1).params[0].envelope.commandId);
+    return true;
+  });
+  assert.equal(f.calls.filter(c => c.method === 'sendConversationCommandV4').length, 1);
+  assert.equal(f.connections[0].closed, true);
+  await f.controller.renameSession({ session_id: 'sess_new', title: '新标题' });
+});
+
+test('compact 仅等待 ACK，duplicate 不代表完成；回执后可继续发信', { timeout: 2000 }, async () => {
+  const submitted = Promise.withResolvers(), ackGate = Promise.withResolvers();
+  const f = await fixture({ sendConversationCommandV4: async ([{ envelope }]) => {
+    if (envelope.type === 'compact') {
+      submitted.resolve(); await ackGate.promise;
+      return { commandId: envelope.commandId, status: 'duplicate', revisionAtDecision: 9 };
+    }
+    return { commandId: envelope.commandId, status: 'accepted',
+      result: { type: 'inputAccepted', inputId: envelope.commandId, delivery: 'queue' } };
+  } });
+  let received = false;
+  const compacting = f.controller.compactSession({ session_id: 'sess_working' }).then(result => { received = true; return result; });
+  await submitted.promise;
+  assert.equal(received, false);
+  await assert.rejects(f.controller.sendMessage({ session_id: 'sess_working', message: '更新' }), /remote_busy/);
+  assert.equal(f.connections.length, 1);
+  ackGate.resolve();
+  const result = await compacting;
+  assert.equal(result.command_status, 'duplicate');
+  assert.equal(f.connections[0].closed, true);
+  assert.equal((await f.controller.sendMessage({ session_id: 'sess_working', message: '更新' })).delivery_status, 'accepted');
+});
+
 test('v4 握手失败或协议不支持时释放连接，不恢复会话或提交消息', async () => {
   for (const overrides of [
     { helloConversationV4: () => ({ protocolVersion: 99 }) },

@@ -1,11 +1,11 @@
 ---
 name: suian-zcode-app-mcp
-description: 当用户要求初始化、升级或排查 ZCode 会话 MCP，查询会话与历史、改名、指定模型创建、发信、归档或复原会话，以及查询 GLM 套餐额度、重置卡或经用户许可重置额度时使用。不用于文章或文件改名。
+description: 当用户要求初始化、升级或排查 ZCode 会话 MCP，查询会话与历史、改名、指定模型创建、发信、压缩上下文、归档或复原会话，以及查询 GLM 套餐额度、重置卡或经用户许可重置额度时使用。不用于文章或文件改名。
 ---
 
 # ZCode 会话 MCP
 
-九个工具：list_sessions、read_session 读取本机 SQLite；其余工具经公共网关 RPC 调用原 Host，无需手机远控链接。GLM 查询只读，但需要网关连接当前 Desktop。
+十个工具：list_sessions、read_session 读取本机 SQLite；其余工具经公共网关 RPC 调用原 Host，无需手机远控链接。GLM 查询只读，但需要网关连接当前 Desktop。
 
 ## 找到插件根
 
@@ -44,7 +44,7 @@ ZCode 原生配置形状如下；`{{node_exe}}` 使用实际 Node 可执行文�
 
 ## 验证与使用
 
-通过 MCP 客户端完成 `initialize` 与 `tools/list`，确认九个工具与读写注解。先调用 `list_sessions`，`limit:1`；需要验证正文时选择用户指定或列表返回的一条本机会话，调用 `read_session`，`limit:1`。CLI 持续等待 stdin 是 stdio 的正常行为，不能以“进程没报错”代替握手成功。
+通过 MCP 客户端完成 `initialize` 与 `tools/list`，确认十个工具与读写注解。先调用 `list_sessions`，`limit:1`；需要验证正文时选择用户指定或列表返回的一条本机会话，调用 `read_session`，`limit:1`。CLI 持续等待 stdin 是 stdio 的正常行为，不能以“进程没报错”代替握手成功。
 
 - 最近会话：`list_sessions({"limit":10})`。
 - 工作区过滤：`list_sessions({"workspace_path":"D:/work/example","limit":20})`。
@@ -73,6 +73,8 @@ ZCode 原生配置形状如下；`{{node_exe}}` 使用实际 Node 可执行文�
 **发信顺序**：需要及时发信时，单独先调用 `send_message`，收到提交回执后再执行等待、轮询或长命令。不要与含 `sleep` 或长耗时 Bash 的调用放在同一批；宿主可能先串行执行前面的工具，发信工具卡已显示也不代表 MCP 已开始执行。长命令支持后台参数时使用后台模式，不向不支持的工具添加后台参数。
 
 **发信策略与回执**：建议通常省略 `send_message.delivery_mode`，跟随宿主当前输入策略。确需覆盖本次消息时选择 `guide`（在工作中可消费输入的边界引导当前轮）或 `queue`（排队后续处理），不修改接收会话设置、不强制中断工作。MCP 开始执行后，提交经 Host 接受即回执，不等待接收方处理完或回复；网络与 Host ACK 仍需等待。`requested_delivery_mode` 是请求策略，`admitted_delivery` 是 Host 确认的接收方式；引导消息暂存时也可能返回 queue，不能据此宣称已经注入当前轮。
+
+**上下文压缩**：用户要求压缩指定会话时调用 `compact_session`，目标参数同改名。`command_status:accepted/duplicate` 只表示受理裁决，不能宣称已开始或完成。收到回执即结束调用，压缩自己时也不等待终态；回执未知不盲目重试。运行中请求排队，guide 与压缩的先后顺序由宿主管理，完整时序及 goal、暂停队列、失败边界见 `docs/write-tools.md`。这版没有压缩状态查询，`read_session` 也不能确认终态。
 
 改名与带名称创建在 RPC 读回确认后还会复核双库标题（官方 renameTask 对 CLI 会话库的同步是尽力而为，刚创建未持久化的会话尤其易丢）。CLI 会话库未同步时回执附 `warnings`（code `title_store_diverged`）：标题已生效于任务索引，但两库不一致期间自动命名会跳过该会话。警告不构成新的改名授权；先核对目标并报告分叉，只有已有用户改名授权覆盖相同 ID 和期望标题时才重写该标题。不用任意值试探，也不重试已提交的创建或消息。
 

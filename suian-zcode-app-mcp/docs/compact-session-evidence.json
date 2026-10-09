@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-10",
+  "scope": "新增 compact_session：经公共网关向指定会话的原 Host 提交 V4 compact，仅返回命令受理裁决",
+  "implementation": {
+    "input": "session_id 必填；workspace_path、workspace_key 可选；拒绝正文、instructions、delivery_mode 和调用方 command_id",
+    "route": "V4 hello/clientHello → getTaskMeta → resumeTask → sendConversationCommandV4(type:compact,payload:{})",
+    "receipt": "command_id 与 command_status；accepted/duplicate 不表示已开始或完成，不要求 inputAccepted 或 delivery",
+    "failure": "Host 拒绝保留原 ACK status 与 reason_code；提交异常或 ACK 无效为 unknown；不自动重发，调用结束释放连接互斥",
+    "runtime_policy": "使用宿主的 busy/held 队列、guide 和压缩后队列规则；不新增抢占或自动打开队列的逻辑"
+  },
+  "source": {
+    "public_snapshot": "29628c9acdb81b703bbd4080c207a0e7ce5e276e",
+    "command_contract": "packages/shared/src/zcode-protocol-v4/command.ts:148-150",
+    "handler": "apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts:48-228",
+    "auto_drain": "apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/queue-auto-drain.ts:7-19"
+  },
+  "verification": {
+    "baseline": { "tests": 75, "passed": 75 },
+    "red": [
+      "控制器没有 compactSession，指定会话提交契约失败",
+      "缺失 ACK 时未返回 unknown 与命令 ID，回执契约失败",
+      "MCP 未公布 compact_session，工具与十项工具列表契约失败"
+    ],
+    "final": { "tests": 79, "passed": 79, "failed": 0, "skipped": 0 },
+    "covered": [
+      "指定目标、Host 实际工作区路径、V4 握手及空 compact payload",
+      "accepted/duplicate ACK 无 result 时正常返回，不报告压缩终态",
+      "rejected/stale/noop/failed 的原状态和原因保留",
+      "ACK 缺失、串号、无效状态与 RPC 超时保留命令 ID、unknown 且不重发",
+      "ACK 前保持 MCP 互斥，返回或异常后释放连接并允许下一次写调用",
+      "MCP 严格参数校验、读写注解、错误结构化回执和十项工具枚举",
+      "独立 stdio 回归与只读 fixture 数据库字节不变"
+    ],
+    "logs": "首次基线、红灯、绿灯与完整回归输出及退出码保存在忽略的 .scratch/；未运行真实会话探针"
+  },
+  "review": {
+    "base": "c34d71dde41f88123e02e83ea4cf9c057c7ce9ec",
+    "standards": "PASS：独立只读审查未发现可行动的规范问题",
+    "spec": "PASS：独立只读审查确认受理契约、目标控制链与文档时序符合本版范围"
+  },
+  "limits": [
+    "隔离测试模拟 Host 边界，没有通过真实 Host 触发 compact，也未验收 busy/guide/held/goal 的发行版运行时序",
+    "本版仅受理命令，没有压缩进度或终态查询；read_session 不能替代压缩状态查询",
+    "未部署 skill、修改用户 MCP 配置或重启宿主；已有 MCP 进程仍使用旧版工具",
+    "没有推送、创建 PR 或合并主工作树"
+  ]
+}

@@ -61,7 +61,46 @@ test('正文输入冲突、缺失及无效文档在创建和发信之前拒绝',
   assert.equal(calls.length, 0);
 });
 
-test('MCP 握手公布九个工具，三个查询工具保持只读', async t => {
+test('compact_session 公布指定目标与受理语义，严格校验参数并保留 Host 错误回执', async t => {
+  const f = fixture(t), calls = [];
+  const { createMcpServer } = await import('../server.mjs');
+  const receipt = { source: 'original_host', session_id: 'sess_target', workspace_path: 'D:/fixture',
+    command_id: 'cmd_fixture', command_status: 'accepted' };
+  const server = createMcpServer(f, { controller: { compactSession: async args => {
+    calls.push(args);
+    if (args.session_id === 'sess_rejected') throw Object.assign(new Error('compact_not_accepted: compactOperationLock'), {
+      partial_result: { ...receipt, session_id: args.session_id, command_status: 'failed', reason_code: 'compactOperationLock' }
+    });
+    return receipt;
+  } } });
+  const client = new Client({ name: 'compact-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const tool = (await client.listTools()).tools.find(tool => tool.name === 'compact_session');
+  assert.ok(tool);
+  assert.deepEqual(Object.keys(tool.inputSchema.properties), ['session_id', 'workspace_path', 'workspace_key']);
+  assert.equal(tool.annotations.readOnlyHint, false);
+  assert.equal(tool.annotations.idempotentHint, false);
+  assert.match(tool.description, /受理.*不.*完成/);
+  const args = { session_id: 'sess_target', workspace_path: 'D:/fixture', workspace_key: 'fixture-key' };
+  const accepted = await client.callTool({ name: 'compact_session', arguments: args });
+  assert.equal(accepted.isError, undefined);
+  assert.deepEqual(accepted.structuredContent, receipt);
+  assert.deepEqual(calls, [args]);
+  for (const invalid of [{}, { session_id: ' ' }, { session_id: 'sess_target', instructions: 'summary' },
+    { session_id: 'sess_target', delivery_mode: 'guide' }, { session_id: 'sess_target', command_id: 'retry' }]) {
+    assert.equal((await client.callTool({ name: 'compact_session', arguments: invalid })).isError, true);
+  }
+  assert.equal(calls.length, 1);
+  const rejected = await client.callTool({ name: 'compact_session', arguments: { session_id: 'sess_rejected' } });
+  assert.equal(rejected.isError, true);
+  assert.equal(rejected.structuredContent.command_id, 'cmd_fixture');
+  assert.equal(rejected.structuredContent.command_status, 'failed');
+  assert.equal(rejected.structuredContent.reason_code, 'compactOperationLock');
+});
+
+test('MCP 握手公布十个工具，三个查询工具保持只读', async t => {
   const f = fixture(t);
   f.task({ id: 'sess_alpha', title: 'MCP 工具' });
   f.session({ id: 'sess_alpha', title: 'MCP 工具' });
@@ -74,7 +113,7 @@ test('MCP 握手公布九个工具，三个查询工具保持只读', async t =>
   await server.connect(serverTransport);
   await client.connect(clientTransport);
   const listed = await client.listTools();
-  assert.deepEqual(listed.tools.map(tool => tool.name), ['list_sessions', 'read_session', 'rename_session', 'start_session', 'send_message', 'archive_session', 'restore_session', 'get_glm_balance', 'reset_glm_quota']);
+  assert.deepEqual(listed.tools.map(tool => tool.name), ['list_sessions', 'read_session', 'rename_session', 'start_session', 'send_message', 'compact_session', 'archive_session', 'restore_session', 'get_glm_balance', 'reset_glm_quota']);
   for (const tool of listed.tools) assert.equal(tool.annotations.readOnlyHint, ['list_sessions', 'read_session', 'get_glm_balance'].includes(tool.name));
   assert.equal(listed.tools.at(-1).annotations.destructiveHint, true);
   assert.equal(listed.tools.at(-1).annotations.idempotentHint, false);

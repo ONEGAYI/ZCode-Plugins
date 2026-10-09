@@ -194,6 +194,35 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
         return { ...result, delivery_status: 'accepted', admitted_delivery: ack.result.delivery };
       });
     },
+    async compactSession(args) {
+      return attached(targetOf(args), async remote => {
+        const hello = await remote.call('zcode-agent', 'helloConversationV4');
+        if (hello.protocolVersion !== 3) throw new Error('conversation_protocol_unsupported: Host 的会话协议版本不受支持');
+        await remote.call('zcode-agent', 'initializeConversationV4', [{ kind: 'clientHello', protocolVersion: 3,
+          clientId: deliveryClientId, clientKind: hello.clientMode === 'desktop-continuous' ? 'desktop' : 'web', appVersion: '0.1.0' }]);
+        const params = { taskId: args.session_id, workspacePath: remote.workspacePath };
+        const meta = await remote.call('zcode-task', 'getTaskMeta', [params]);
+        if (!meta || meta.taskId !== args.session_id) throw new Error('session_not_found: 原 Host 未确认目标会话');
+        await remote.call('zcode-task', 'resumeTask', [params]);
+        const command_id = randomUUID();
+        const result = { source: 'original_host', session_id: args.session_id, workspace_path: remote.workspacePath, command_id };
+        let ack;
+        try {
+          ack = await remote.call('zcode-agent', 'sendConversationCommandV4', [{ workspacePath: remote.workspacePath,
+            envelope: { commandId: command_id, clientId: deliveryClientId, sessionId: args.session_id, type: 'compact', issuedAt: now(), payload: {} } }]);
+        } catch (error) {
+          error.partial_result = { ...result, command_status: 'unknown' };
+          throw error;
+        }
+        if (ack?.commandId !== command_id || !['accepted', 'duplicate', 'rejected', 'stale', 'noop', 'failed'].includes(ack.status))
+          throw Object.assign(new Error('compact_not_confirmed: 原 Host 未返回本次命令的有效受理回执'),
+            { partial_result: { ...result, command_status: 'unknown' } });
+        if (!['accepted', 'duplicate'].includes(ack.status))
+          throw Object.assign(new Error(`compact_not_accepted: ${ack.reasonCode ?? ack.status}${ack.message ? ': ' + ack.message : ''}`),
+            { partial_result: { ...result, command_status: ack.status, ...(ack.reasonCode ? { reason_code: ack.reasonCode } : {}) } });
+        return { ...result, command_status: ack.status };
+      });
+    },
     async archiveSession(args) {
       return attached(targetOf(args), async remote => {
         const params = { taskId: args.session_id, workspacePath: remote.workspacePath };

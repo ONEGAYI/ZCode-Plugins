@@ -1,6 +1,6 @@
 # 会话写工具
 
-五个写工具通过公共远控客户端附着原 ZCode Desktop Host。任务操作调用 `zcode-task`，`send_message` 通过 `zcode-agent` 的 v4 `sendText` 提交消息并取得投递回执；不启动独立 CLI app-server、不直接写会话数据库。读取与分页仍按 [读取契约](./readonly-tools.md)。
+六个写工具通过公共远控客户端附着原 ZCode Desktop Host。任务操作调用 `zcode-task`，`send_message` 与 `compact_session` 通过 `zcode-agent` 的 v4 命令分别提交消息和上下文压缩请求；不启动独立 CLI app-server、不直接写会话数据库。读取与分页仍按 [读取契约](./readonly-tools.md)。
 
 ## 连接与授权
 
@@ -88,7 +88,35 @@ MCP 开始执行后，工具等待 Host 接受提交的 ACK 即返回并释放�
 
 发信不改变目标会话的权限模式：恢复链路不携带 `mode`，权限保持会话现状；消息也不携带模型选择覆盖。
 
-所有工具拒绝未知参数和空白标题/信息。MCP 注解中两个读取工具保持 `readOnlyHint:true`；五个写工具为 false，创建和发信不是幂等操作。
+所有工具拒绝未知参数和空白标题/信息。MCP 注解中两个读取工具保持 `readOnlyHint:true`；六个写工具为 false，创建、发信和压缩请求不是幂等操作。
+
+## 上下文压缩
+
+`compact_session` 必填 `session_id`，可选 `workspace_path`、`workspace_key`，目标定位规则同改名。不接受正文、自定义压缩指令、投递策略或调用方指定的命令 ID。
+
+```json
+{"name":"compact_session","arguments":{"session_id":"sess_example"}}
+```
+
+服务先完成 V4 握手、确认并恢复目标会话，再提交 `type:compact`、`payload:{}` 的维护命令。使用 V4 入口，不调用运行中会拒绝普通 prompt 的旧 `compactSession`。缺少 V4 接口时明确报错，应升级宿主，不回退旧协议或另起 CLI。
+
+**回执只表示受理裁决**。成功返回 `source:original_host`、`session_id`、Host 实际 `workspace_path`、`command_id` 和 `command_status:accepted` 或 `duplicate`。没有 `delivery_status`、`admitted_delivery` 或压缩完成标志；V4 compact 的 ACK 不提供开始或排队状态。
+
+Host 的 `rejected`、`stale`、`noop`、`failed` ACK 返回 `isError:true` 和 `compact_not_accepted`。结构化结果保留原 `command_status`，有原因时附 `reason_code`；这里的 `failed` 是命令受理失败，不代表压缩执行已经失败。
+
+提交异常、回执缺失、串号或状态无效时返回 `command_status:unknown`，保留本次 `command_id`，不自动重发。`compact_not_confirmed` 表示无法确认有效 ACK，不能据此认定命令未送达。
+
+**执行时序由 Host 管理**：空闲时启动后台压缩；运行中或队列暂停时进入队尾。提交本命令不会中断当前轮或打开暂停队列，已有 compact 排队或执行时由 Host 拒绝重复压缩。
+
+正常自动执行顺序为当前轮、先前排队消息、compact、后续排队消息；还需队列允许自动执行、会话空闲及 goal 不存在或已完成。手工队列调整和原生立即发送不属于该顺序保证。
+
+compact 尚在排队时，guide 仍可能先被当前轮消费；未消费而改投普通 queue 时保留原队列位置。压缩真正开始后，新消息等待后续处理，不引导当前压缩。
+
+压缩成功或无需压缩时按宿主条件继续推进队列；失败或被停止时，有后续输入的队列暂停自动执行并保留输入。
+
+本工具收到 ACK 即释放连接，不等待压缩终态；若目标就是调用工具的会话，同步等待终态会与当前轮结束形成等待环。`read_session` 只返回聊天正文，不能确认压缩完成。这版没有压缩状态查询工具；终态需要在原 Host 的会话时间线中核对，不能用没有新回复推断成功。
+
+固定源码依据为 [V4 compact 契约](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/shared/src/zcode-protocol-v4/command.ts#L148-L150)、[命令处理与失败后暂停](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/goal-compact.ts#L48-L228) 和 [自动推进条件](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/queue-auto-drain.ts#L7-L19)。本版隔离验证与真实 Host 验收边界见 [验证记录](./compact-session-evidence.json)。
 
 ## 名称锁定
 

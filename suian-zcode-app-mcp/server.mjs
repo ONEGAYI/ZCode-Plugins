@@ -102,6 +102,12 @@ export function createMcpServer(config, { controller } = {}) {
     const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: 'send_message' });
     return controller.sendMessage({ ...input, deliverer: origin.sessionId, originWarning: origin.warning });
   }));
+  server.registerTool('compact_session', {
+    title: '压缩 ZCode 会话上下文',
+    description: '通过公共网关向指定会话的原 Host 提交 V4 compact 维护命令。空闲时启动压缩；运行中进入未来队列，不中断当前轮，暂停的队列不会因本命令自动恢复；已有 compact 排队或运行时由 Host 拒绝。只等待受理 ACK，不等待压缩完成；command_id 用于核对本次命令，command_status 的 accepted/duplicate 仅表示受理裁决，不表示已开始或已完成。本工具不返回压缩进度，read_session 也不能确认压缩终态。compact 尚在排队时 guide 仍可能先影响当前轮，压缩开始后新消息等待后续处理。压缩自己时也应收到回执就结束调用，不等待终态。超时或回执未知不能盲目重试；目标工作区必须在网关连接的 Desktop 窗口中打开。',
+    inputSchema: z.object(target).strict(),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+  }, writeResult(args => controller.compactSession(args)));
   server.registerTool('archive_session', {
     title: '归档 ZCode 会话',
     description: '从原 Host 快照检查主代理、挂载后台/子代理、未完成计划与目标、待处理输入及交互。活跃时默认返回 confirmation_required 和原因，不归档；Agent 必须向用户说明并取得明确授权后才可 force:true 再调用，不能自行推断授权。状态不可核实则报错。归档只隐藏会话，不停止后台工作；复原用 restore_session。',
