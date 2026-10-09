@@ -18,6 +18,29 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 ## 输入与输出
 
+### 正文输入
+
+`start_session` 与 `send_message` 都必须且只能提供一个正文来源：
+
+| 字段 | 用途 |
+| --- | --- |
+| `message` | 非空正文，推荐短指令直接填写 |
+| `message_file` | 本机 UTF-8 `.md` 文档的绝对路径，推荐长文、评估与汇报使用 |
+
+文档全文作为消息正文，保留换行与空白并沿用原有来源包装；不会把路径作为正文发送。文件不存在、不可读、是目录或全文为空白时，在创建、恢复及提交之前明确报错。文档只在本次调用开始时读取一次，插件不创建或删除文件。
+
+临时正文推荐生成在工作区的 `.zcode/tmp/` 等已被 Git 忽略的目录。生成前先确认目标项目已有忽略规则；本仓库已忽略 `.zcode/tmp/`。短指令仍可使用现有 `message` 输入。
+
+```json
+{"name":"start_session","arguments":{"workspace_path":"D:/work/example","message_file":"D:/work/example/.zcode/tmp/task.md"}}
+```
+
+```json
+{"name":"send_message","arguments":{"session_id":"sess_example","message_file":"D:/work/example/.zcode/tmp/report.md"}}
+```
+
+### 各工具字段
+
 `rename_session`：必填 `session_id`、非空 `title`。可选 `workspace_path`、`workspace_key`；路径省略时从本机历史定位，同 ID 存在多个索引工作区时用 key 消歧。调用方只在用户明确要求改名时使用；不要为了派发、角色标记或回信检索重命名父会话，回信以 `creator`/`deliverer` 会话 ID 定位。
 
 ```json
@@ -26,7 +49,7 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 成功返回 `source:original_host`、`session_id`、`workspace_path`、`title`，名称以原 Host 的 `getTaskMeta` 读回为准。显式命名使用宿主的 custom 标题来源；当前自动命名插件只有已记录命名基线、且非 generated 标题相对基线变化时才判手动改名。首次 custom 标题不保证免于命名模型处理，模型也可选择 keep。
 
-`start_session`：必填 `workspace_path`、非空 `message`。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为新会话初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
+`start_session`：必填 `workspace_path` 和上述二选一正文输入。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为新会话初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
 
 `permission_mode` 可选 `build`（变更前确认，可能逐次询问）/`plan`/`edit`/`auto`/`yolo` 五档，是权限策略而非开发任务类型。正常派发省略该参数；仅在用户明确指定权限模式时填写，不能因“实施代码”“构建”或“等待首肯合并”选择 `build`。合并授权边界写入开局正文，不用权限模式代替。显式请求 `yolo` 等高权限档位需用户授权，已有明确授权不重复询问。
 
@@ -40,7 +63,7 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 新会话在首发前尚未落入 CLI 库，因此权限确认在开局提交后进行。最多读取三次，缺少权限时每隔 300 毫秒重读；始终读不到时省略 `permission_mode` 并附 `permission_unverified`，不借用其他信源补齐。CLI 权限与显式或继承的请求值确实不一致时报 `permission_not_confirmed`；读取异常也明确报错。两种错误都携带已提交的 `input_id` 和 `delivery_status:accepted`，不能据此重复派发。重读只查询数据库，不重发消息。
 
-`send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。`delivery_mode` 可省略，建议通常省略以跟随宿主当前输入策略；显式覆盖只影响本次消息，不改变会话设置：
+`send_message`：必填 `session_id` 和上述二选一正文输入；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会先完成当前 RPC 连接的 v4 hello/clientHello 握手，再通过 Host 恢复目标会话并提交信息。握手与命令使用同一客户端 ID。`delivery_mode` 可省略，建议通常省略以跟随宿主当前输入策略；显式覆盖只影响本次消息，不改变会话设置：
 
 | `delivery_mode` | 处理方式 |
 | --- | --- |
@@ -131,6 +154,8 @@ You are a new zcode session created by another zcode session or the system, inst
 ## 证据与源码
 
 本机 ZCode 3.14.4 已通过真实 stdio MCP 完成：指定 GLM-5.3-Flash / low 创建测试会话、读取固定标记回复、向同一会话再次发送并读取回复、改名读回。模型选择、可选名称、消息格式、失败释放连接、参数校验和权限模式（透传、继承、回落与读回校验）另有隔离契约测试。[脱敏验收](./write-tools-evidence.json)
+
+上述真实发信验收覆盖旧 `sendPrompt` 路径，不能证明后续 v4 发信与本次握手修复已经通过真实 Host 写入验收。本次修复及文档输入的隔离验证见 [握手与正文输入记录](./send-handshake-input-evidence.json)。
 
 上述真实记录是来源 ID 字段加入之前的历史验收。自动来源定位已核对公开源码、本机发行包与现有调用记录，另有真实 MCP SDK 请求上下文、SQLite 回查和消息包装的隔离契约验证。本轮没有创建真实会话或向真实会话发送信息；验证范围见 [自动来源记录](./automatic-origin-evidence.json)。
 

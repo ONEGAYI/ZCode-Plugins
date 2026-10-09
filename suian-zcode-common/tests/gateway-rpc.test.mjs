@@ -14,6 +14,8 @@ import { createRpcBroker } from '../rpc-broker.mjs';
 import { spawn } from 'node:child_process';
 import { connect } from 'node:net';
 import { createInterface } from 'node:readline';
+import { ChannelClient } from '../vendor/channelClient.js';
+import { Emitter } from '../vendor/foundation.js';
 
 const workspace = 'D:\\fixture';
 const pack = (header, body) => { const w = new BufferWriter(); serialize(w, header); serialize(w, body); return w.buffer.buffer; };
@@ -40,7 +42,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   else desktop.send(JSON.stringify({ type: 'auth_init', role: 'device', device_sid: 'd_fixture-existing' }));
   await ack;
   const requests = [], bridgeOpens = [];
-  let identity, assembler, physical = 1, message = 1;
+  let identity, assembler, physical = 1, message = 1, helloIssued = false, boundClientId;
   const respond = (header, body) => {
     for (const f of encode(pack(header, body), { ...identity, firstPhysicalSeq: physical, messageSeq: message++ })) {
       physical++; desktop.send(JSON.stringify({ type: 'data', payload: f }));
@@ -57,6 +59,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
       if (options.ignoreBridge) return;
       identity = { bridgeSessionId: p.bridgeSessionId, bridgeGeneration: p.bridgeGeneration };
       assembler = new Assembler({ identity }); physical = 1; message = 1;
+      helloIssued = false; boundClientId = undefined;
       desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-ready', requestId: p.requestId,
         bridge: { ...identity, kind: p.workspaceKey === 'remote:fixture' ? 'remote' : 'local', workspaceKey: p.workspaceKey,
           workspacePath: p.workspaceKey === 'remote:fixture' ? '/remote' : workspace } } }));
@@ -65,12 +68,129 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
       const result = assembler.accept(parse(p));
       if (result.kind === 'complete') {
         desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'rpc-frame-ack', ...identity, ackMessageSeq: result.messageSeq } }));
-        requests.push(unpack(result.bytes));
+        const [header, body] = unpack(result.bytes);
+        requests.push([header, body]);
+        if (options.v4Host && header[0] === 100 && header[2] === 'zcode-agent') {
+          try {
+            let reply;
+            if (header[3] === 'helloConversationV4') {
+              helloIssued = true;
+              reply = { kind: 'hello', protocolVersion: 3, clientMode: 'web-remote-replayable' };
+            } else if (header[3] === 'initializeConversationV4') {
+              if (!helloIssued) throw new Error('fault.connection.helloRequired');
+              if (boundClientId !== undefined && boundClientId !== body[0].clientId) throw new Error('fault.connection.clientChanged');
+              boundClientId = body[0].clientId;
+            } else if (header[3] === 'sendConversationCommandV4') {
+              if (boundClientId === undefined) throw new Error('fault.connection.handshakeRequired');
+              const { envelope } = body[0];
+              if (envelope.clientId !== boundClientId) throw new Error('fault.command.clientMismatch');
+              reply = { commandId: envelope.commandId, status: 'accepted', revisionAtDecision: 1,
+                result: { type: 'inputAccepted', inputId: envelope.commandId, delivery: 'queue' } };
+            }
+            if (header[3] === 'initializeConversationV4' && options.beforeInitializeAck) {
+              options.beforeInitializeAck(body[0]).then(() => respond([201, header[1]], reply));
+            } else respond([201, header[1]], reply);
+          } catch (error) { respond([202, header[1]], { name: error.name, message: error.message }); }
+        }
       }
     }
   });
   return { gateway, desktop, phone, relay, requests, bridgeOpens, respond, faults };
 }
+
+test('v4 手机与多个本地客户端分别握手后共用 Host 桥，后加入者及重连者仍可发信', { timeout: 5000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  for (const phoneFirst of [true, false, 'parallel']) {
+    const gate = Promise.withResolvers(), phoneInitializing = Promise.withResolvers();
+    t.after(() => gate.resolve());
+    const f = await fixture(t, 'matched', { v4Host: true, beforeInitializeAck: async params => {
+      if (phoneFirst === 'parallel' && params.capabilities?.workflowRunDeltas === true) {
+        phoneInitializing.resolve(); await gate.promise;
+      }
+    } });
+    const dir = await mkdtemp(join(tmpdir(), 'zcode-v4-rpc-'));
+    t.after(() => rm(dir, { recursive: true }));
+    const gatewayConfigPath = join(dir, 'config.json');
+    await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+    const emitter = new Emitter(), phoneReady = Promise.withResolvers();
+    const phoneIdentity = { bridgeSessionId: 'phone-v4', bridgeGeneration: 1 };
+    let phoneAssembler, seq = 1, messageSeq = 1;
+    const phone = new ChannelClient({ onMessage: emitter.event, send: bytes => {
+      const frames = encode(bytes.buffer, { ...phoneIdentity, firstPhysicalSeq: seq, messageSeq: messageSeq++ });
+      seq += frames.length;
+      for (const frame of frames) f.phone.send(JSON.stringify({ type: 'data', payload: frame }));
+    } });
+    t.after(() => { phone.dispose(); emitter.dispose(); });
+    f.phone.on('message', data => {
+      const payload = JSON.parse(data).payload;
+      if (payload?.zcode_type === 'workspace-bridge-ready') { phoneAssembler = new Assembler({ identity: phoneIdentity }); phoneReady.resolve(); }
+      else if (payload?.zcode_type === 'rpc-frame') {
+        const result = phoneAssembler.accept(parse(payload));
+        if (result.kind === 'complete') emitter.fire(VSBuffer.wrap(result.bytes));
+      }
+    });
+    const phoneApi = { call: (channel, method, args = []) => phone.getChannel(channel).call(method, args) };
+    const handshake = async (api, clientId, capabilities) => {
+      const hello = await api.call('zcode-agent', 'helloConversationV4');
+      assert.equal(hello.protocolVersion, 3);
+      await api.call('zcode-agent', 'initializeConversationV4', [{ kind: 'clientHello', protocolVersion: 3, clientId,
+        clientKind: 'web', appVersion: 'fixture', ...(capabilities ? { capabilities } : {}) }]);
+    };
+    const send = (api, clientId, commandId) => api.call('zcode-agent', 'sendConversationCommandV4', [{ workspacePath: workspace,
+      envelope: { clientId, commandId, sessionId: 'sess_fixture', type: 'sendText', issuedAt: 1, payload: { text: '原样正文', requestedDelivery: 'queue' } } }]);
+    const startPhone = async () => {
+      f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'phone-open', ...phoneIdentity, workspaceKey: workspace } }));
+      await phoneReady.promise;
+      await handshake(phoneApi, 'phone-client', { workflowRunDeltas: true });
+    };
+    if (phoneFirst === true) await startPhone();
+    const first = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+    t.after(() => first.close());
+    if (phoneFirst === 'parallel') {
+      const phoneHandshake = startPhone();
+      await phoneInitializing.promise;
+      await first.call('zcode-agent', 'helloConversationV4');
+      const localHandshake = first.call('zcode-agent', 'initializeConversationV4', [{ kind: 'clientHello', protocolVersion: 3,
+        clientId: 'local-first', clientKind: 'web', appVersion: 'fixture' }]);
+      await first.call('zcode-agent', 'helloConversationV4');
+      const invalid = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+      t.after(() => invalid.close());
+      await invalid.call('zcode-agent', 'helloConversationV4');
+      const invalidResult = invalid.call('zcode-agent', 'initializeConversationV4', [{ clientId: 42 }])
+        .then(() => 'unexpected success', error => error.message);
+      const barrier = await invalid.call('zcode-agent', 'helloConversationV4').then(() => 'ok', error => error.message);
+      assert.ok(barrier === 'ok' || /Invalid v4 clientId/.test(barrier));
+      gate.resolve();
+      await Promise.all([phoneHandshake, localHandshake]);
+      assert.match(await invalidResult, /Invalid v4 clientId/);
+      assert.deepEqual(f.faults, [], '外部客户端的非法输入不能变成 Host 协议故障');
+      assert.equal(f.requests.filter(([header]) => header[3] === 'initializeConversationV4').at(-1)[1][0].capabilities?.workflowRunDeltas, true);
+    } else {
+      await handshake(first, 'local-first');
+      if (!phoneFirst) await startPhone();
+    }
+    const second = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+    t.after(() => second.close());
+    await assert.rejects(send(second, 'local-second', 'cmd-uninitialized'), /fault.connection.handshakeRequired/);
+    await assert.rejects(second.call('zcode-agent', 'initializeConversationV4', [{ clientId: 'local-second' }]), /fault.connection.helloRequired/);
+    await handshake(second, 'local-second');
+    await assert.rejects(second.call('zcode-agent', 'initializeConversationV4', [{ kind: 'clientHello', protocolVersion: 3,
+      clientId: 'local-changed', appVersion: 'fixture' }]), /fault.connection.clientChanged/);
+    await assert.rejects(send(second, 'phone-client', 'cmd-forged'), /fault.command.clientMismatch/);
+    const acks = await Promise.all([send(first, 'local-first', 'cmd-first'), send(second, 'local-second', 'cmd-second'), send(phoneApi, 'phone-client', 'cmd-phone')]);
+    assert.deepEqual(acks.map(ack => [ack.status, ack.result.inputId]), [['accepted', 'cmd-first'], ['accepted', 'cmd-second'], ['accepted', 'cmd-phone']]);
+    first.close();
+    const reconnected = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+    t.after(() => reconnected.close());
+    await handshake(reconnected, 'local-reconnected');
+    assert.equal((await send(reconnected, 'local-reconnected', 'cmd-reconnected')).status, 'accepted');
+    assert.equal((await send(phoneApi, 'phone-client', 'cmd-phone-again')).status, 'accepted');
+    assert.equal(f.bridgeOpens.length, 1);
+    const commands = f.requests.filter(([header]) => header[3] === 'sendConversationCommandV4');
+    assert.ok(commands.every(([, body]) => body[0].envelope.payload.text === '原样正文'));
+    assert.equal(f.requests.filter(([header]) => header[3] === 'initializeConversationV4').at(-1)[1][0].capabilities.workflowRunDeltas, true);
+  }
+});
 
 test('手机和两个本地客户端的相同 RPC 编号被隔离，复用一个本地 Host 桥且不新增上游 terminal', { timeout: 3000 }, async t => {
   const f = await fixture(t);

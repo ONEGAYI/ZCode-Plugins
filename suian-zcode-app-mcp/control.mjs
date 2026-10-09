@@ -158,6 +158,10 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
     async sendMessage(args) {
       const target = targetOf(args);
       return attached(target, async remote => {
+        const hello = await remote.call('zcode-agent', 'helloConversationV4');
+        if (hello.protocolVersion !== 3) throw new Error('conversation_protocol_unsupported: Host 的会话协议版本不受支持');
+        await remote.call('zcode-agent', 'initializeConversationV4', [{ kind: 'clientHello', protocolVersion: 3,
+          clientId: deliveryClientId, clientKind: hello.clientMode === 'desktop-continuous' ? 'desktop' : 'web', appVersion: '0.1.0' }]);
         const params = { taskId: args.session_id, workspacePath: remote.workspacePath };
         const meta = await remote.call('zcode-task', 'getTaskMeta', [params]);
         if (!meta || meta.taskId !== args.session_id) throw new Error('session_not_found: 原 Host 未确认目标会话');

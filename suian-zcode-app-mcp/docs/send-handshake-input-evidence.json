@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-09",
+  "base_commit": "caed9df",
+  "scope": "修复 v4 发信握手及共享桥身份，增加创建和发信的 Markdown 正文输入",
+  "changes": [
+    "send_message 先完成 helloConversationV4 与 initializeConversationV4，握手及命令使用同一客户端 ID",
+    "共享 Host 桥映射上游客户端身份，每端仍独立完成握手并验证身份归属",
+    "初始化逐一等待 ACK，出队时读取最新绑定及手机能力，取消、断开和错误回执继续推进队列",
+    "初始化参数在网络入口解析并校验，非法客户端输入不扩散为共享 Host 故障",
+    "start_session 与 send_message 公布 message/message_file 的 oneOf 输入并执行相同互斥校验",
+    "Markdown 绝对路径读取 UTF-8 全文，失败或空白正文在创建、恢复及提交前报错",
+    "工具说明和 skill 推荐长文、汇报使用文件，短指令直接填写；临时文档优先项目已忽略的 .zcode/tmp/"
+  ],
+  "red_green": [
+    {
+      "contract": "真实 Host 的 v4 握手前置条件",
+      "red": "原 controller 在契约 Host 上报 fault.connection.handshakeRequired",
+      "green": "先握手，再恢复和提交；握手失败不恢复或发送"
+    },
+    {
+      "contract": "手机、多个本地客户端及重连共用一个物理桥",
+      "red": "只给 controller 补握手时，第二个身份报 fault.connection.clientChanged",
+      "green": "原始命令 ID、投递策略及正文保留，各端获得对应 accepted 回执"
+    },
+    {
+      "contract": "扣住手机初始化 ACK 时，本地握手仍保留手机能力",
+      "red": "本地转发的 workflowRunDeltas 为 undefined，预期 true",
+      "green": "串行初始化在手机 ACK 后读取并保留其声明"
+    },
+    {
+      "contract": "排队期间非法 clientId 仅影响提交端",
+      "red": "clientId 为数字导致共享 gateway_rpc_protocol_error",
+      "green": "入口明确拒绝非法端，其余端继续发信"
+    },
+    {
+      "contract": "MCP 公布并接受 Markdown 正文输入",
+      "red": "旧工具 schema 没有 message_file",
+      "green": "两工具接受非空文档、原样传递全文及来源；冲突、缺失、相对路径、非 md、不可读、目录及空文档均在控制器调用前拒绝"
+    }
+  ],
+  "validation": {
+    "common": { "command": "npm test", "passed": 89, "failed": 0, "exit_code": 0 },
+    "mcp": { "command": "npm test", "passed": 75, "failed": 0, "exit_code": 0 },
+    "title": { "command": "npm test", "passed": 59, "failed": 0, "exit_code": 0 },
+    "total_passed": 223,
+    "syntax": "三个变更的运行模块 node --check 通过",
+    "diff_check": "git diff --check 通过",
+    "reviews": "独立 Standards 与 Spec 复核均无剩余实质缺陷",
+    "logs": ".scratch/final-common.log、final-mcp.log、final-title.log 保留首次输出与退出码"
+  },
+  "real_host_readonly": {
+    "method": "helloConversationV4",
+    "protocol_version": 3,
+    "client_mode": "web-remote-replayable",
+    "scope": "只核实发行版握手入口与协议版本，不绑定新身份，不发送真实消息"
+  },
+  "limits": [
+    "隔离契约使用模拟 Desktop 与 relay，真实新版发信和手机共存尚未验收",
+    "未更改运行中网关、用户 MCP 配置或部署 skill；既有会话尚未加载新版",
+    "未创建真实会话、投递真实消息或修改用户会话数据库",
+    "本轮不修复模型工具参数流长时间未结束的问题"
+  ]
+}
