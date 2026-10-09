@@ -152,7 +152,8 @@ test('来源冲突降级为警告并继续创建和发信，候选来源仅作�
     INSERT INTO tool_usage VALUES ('sess_b', 'trace_shared', 'mcp__fixture__send_message');`);
   const { createSessionController } = await import('../control.mjs');
   const { createMcpServer } = await import('../server.mjs');
-  const controller = createSessionController({ reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }) },
+  const controller = createSessionController({ reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }),
+    sessionMode: () => ({ mode: 'build', observed: ['build'] }) },
     setTitlePolicy: async () => {},
     connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
       if (method === 'createTask' || method === 'getTaskMeta') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
@@ -221,6 +222,45 @@ test('start_session 从 CLI 权限继承而非陈旧任务索引，显式指定�
   }
   assert.equal((await call({ workspace_path: 'D:/fixture', message: 'd', permission_mode: 'autoEdit' }, { session_id: 'sess_parent' })).isError, true);
   assert.equal(calls.length, 4);
+});
+
+test('start_session 继承与首发后确认共用 CLI 库，索引分叉不误判，真实差异保留提交回执', async t => {
+  const f = fixture(t), calls = [];
+  f.task({ id: 'sess_parent', mode: 'build' });
+  f.session({ id: 'sess_parent', permission: { mode: 'yolo' } });
+  const { createSessionReader } = await import('../sessions.mjs');
+  const { createSessionController } = await import('../control.mjs');
+  const { createMcpServer } = await import('../server.mjs');
+  let child = 0;
+  const controller = createSessionController({ reader: createSessionReader(f), setTitlePolicy: async () => {},
+    connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
+      calls.push({ method, params });
+      if (method === 'createTask') {
+        child++;
+        f.task({ id: `sess_child_${child}`, workspace: 'D:/fixture', mode: 'build' });
+        return { taskId: `sess_child_${child}`, workspacePath: 'D:/fixture', title: '默认标题', mode: 'build' };
+      }
+      if (method === 'sendPrompt') f.session({ id: params[0].taskId, directory: 'D:/fixture', permission: { mode: child === 1 ? 'yolo' : 'build' } });
+    } }) });
+  const server = createMcpServer(f, { controller });
+  const client = new Client({ name: 'permission-single-source-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const call = () => client.callTool({ name: 'start_session', arguments: { workspace_path: 'D:/fixture', message: '开局正文' }, _meta: { session_id: 'sess_parent' } });
+  const created = await call();
+  assert.equal(created.isError, undefined);
+  assert.equal(created.structuredContent.permission_mode, 'yolo');
+  assert.equal(created.structuredContent.delivery_status, 'accepted');
+  assert.equal(created.structuredContent.warnings, undefined);
+  const mismatch = await call();
+  assert.equal(mismatch.isError, true);
+  assert.match(mismatch.structuredContent.error, /permission_not_confirmed.*请求 yolo，读回 build/);
+  assert.equal(mismatch.structuredContent.permission_mode, 'build');
+  assert.equal(mismatch.structuredContent.delivery_status, 'accepted');
+  assert.ok(mismatch.structuredContent.input_id);
+  assert.deepEqual(calls.filter(c => c.method === 'createTask').map(c => c.params[0].mode), ['yolo', 'yolo']);
+  assert.equal(calls.filter(c => c.method === 'sendPrompt').length, 2);
 });
 
 test('CLI 权限探测异常时继承回落为 Host 默认权限，不阻断创建', async t => {
@@ -296,7 +336,8 @@ test('自动定位的 ID 进入开局和后续消息 XML 及回执，不混入�
   const f = fixture(t), prompts = [];
   const { createSessionController } = await import('../control.mjs');
   const { createMcpServer } = await import('../server.mjs');
-  const controller = createSessionController({ reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }) },
+  const controller = createSessionController({ reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }),
+    sessionMode: () => ({ mode: 'build', observed: ['build'] }) },
     setTitlePolicy: async () => {},
     connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {
       if (method === 'createTask' || method === 'getTaskMeta') return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
@@ -461,6 +502,7 @@ test('startSession 创建后复核：CLI 库有行但标题不符暴露分叉；
   const prompts = [];
   const make = sessionTitle => createSessionController({
     reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }),
+      sessionMode: () => ({ mode: 'build', observed: ['build'] }),
       ...(sessionTitle === 'absent' ? {} : { sessionTitle: () => ({ index_title: '初始标题', session_title: sessionTitle }) }) },
     setTitlePolicy: async () => {},
     connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method, params) => {

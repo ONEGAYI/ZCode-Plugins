@@ -30,13 +30,15 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 `permission_mode` 可选 `build`（变更前确认，可能逐次询问）/`plan`/`edit`/`auto`/`yolo` 五档，是权限策略而非开发任务类型。正常派发省略该参数；仅在用户明确指定权限模式时填写，不能因“实施代码”“构建”或“等待首肯合并”选择 `build`。合并授权边界写入开局正文，不用权限模式代替。显式请求 `yolo` 等高权限档位需用户授权，已有明确授权不重复询问。
 
-显式模式透传宿主 `createTask` 并按读回值校验；缺省仅从发起会话 CLI 库的 `session.permission.mode` 继承，不使用可能陈旧的任务索引 `mode`。来源冲突时不继承，由来源警告说明。CLI 会话不存在、权限缺失或非规范值、库缺失或繁忙等探测异常时不传 `mode`，新会话使用 Host 默认权限；回执附 `permission_not_inherited` 警告及 `observed_modes` 原始取值（探测异常时无该字段）。
+显式模式透传宿主 `createTask`；缺省仅从发起会话 CLI 库的 `session.permission.mode` 继承。确认新会话权限也读取同一个 CLI 字段，不使用任务索引或创建响应的 `mode`。来源冲突时不继承，由来源警告说明。CLI 会话不存在、权限缺失或非规范值、库缺失或繁忙等继承探测异常时不传 `mode`，新会话使用 Host 默认权限；回执附 `permission_not_inherited` 警告及 `observed_modes` 原始取值（探测异常时无该字段）。
 
 ```json
 {"name":"start_session","arguments":{"workspace_path":"D:/work/example","message":"这是链路测试，只回复 TEST_OK","model":{"provider_id":"account:bigmodel-individual-coding-plan","model_id":"GLM-5.3-Flash","reasoning_level":"low"}}}
 ```
 
-返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`permission_mode`（宿主创建响应读回的生效权限；旧版 Host 响应缺该字段时缺席并附 `permission_unverified`）、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。显式或继承的权限读回值不一致时报 `permission_not_confirmed`，携带已创建会话的 partial_result，不发送开局；响应缺失权限字段属无法核实而非不一致，放行并附 `permission_unverified` 警告，不阻断开局。
+返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`permission_mode`（CLI 会话库读回的实际权限）、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。
+
+新会话在首发前尚未落入 CLI 库，因此权限确认在开局提交后进行。最多读取三次，缺少权限时每隔 300 毫秒重读；始终读不到时省略 `permission_mode` 并附 `permission_unverified`，不借用其他信源补齐。CLI 权限与显式或继承的请求值确实不一致时报 `permission_not_confirmed`；读取异常也明确报错。两种错误都携带已提交的 `input_id` 和 `delivery_status:accepted`，不能据此重复派发。重读只查询数据库，不重发消息。
 
 `send_message`：必填 `session_id`、非空 `message`；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会通过 Host 恢复目标会话，再提交信息。`delivery_mode` 可省略，建议通常省略以跟随宿主当前输入策略；显式覆盖只影响本次消息，不改变会话设置：
 
@@ -124,7 +126,7 @@ You are a new zcode session created by another zcode session or the system, inst
 
 `accepted` 是 Host 接收提交的 ACK，不代表模型已完成。用 `read_session` 读取返回的会话 ID，等待新的助手消息；只读取已持久化正文，不伪装成实时流。
 
-首次输入前使用 Host 的 deferred persistence，确保首条 prompt 的账本外键由 Host 正确持久化。创建成功后改名或发信失败会返回 `isError:true`，结构化材料包含已创建的 `session_id`、工作区、名称、`delivery_status:unknown` 与错误。先检查此 ID，不能盲目再创建。发送超时同样不能认定未送达，不自动重发。
+首次输入前使用 Host 的 deferred persistence，确保首条 prompt 的账本外键由 Host 正确持久化。创建成功后改名或发信失败会返回 `isError:true`，结构化材料包含已创建的 `session_id`、工作区、名称、`delivery_status:unknown` 与错误。首发已提交后发生权限确认错误时，保留 `delivery_status:accepted` 和 `input_id`。先检查返回 ID 与提交状态，不能盲目再创建。发送超时同样不能认定未送达，不自动重发。
 
 ## 证据与源码
 
@@ -133,3 +135,5 @@ You are a new zcode session created by another zcode session or the system, inst
 上述真实记录是来源 ID 字段加入之前的历史验收。自动来源定位已核对公开源码、本机发行包与现有调用记录，另有真实 MCP SDK 请求上下文、SQLite 回查和消息包装的隔离契约验证。本轮没有创建真实会话或向真实会话发送信息；验证范围见 [自动来源记录](./automatic-origin-evidence.json)。
 
 固定公开快照的接口依据为 [createTask/sendPrompt 契约](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/session/zcodeTaskService.ts#L215-L267)、[创建模型与持久化](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts#L1775-L1940) 和 [sendText 提交及 ACK](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/services/src/zcode-agent/zcodeTaskServiceAdapter.ts#L375-L471)。权限模式的枚举与默认回落依据 [ZCodeTaskMode 定义](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/packages/shared/src/zcode-task-types-core.ts#L149)（六档，`autoEdit` 为 `build` 旧别名）与 CLI 侧 [`config.mode ?? "build"` 默认值](https://github.com/zai-org/ZCode/blob/29628c9acdb81b703bbd4080c207a0e7ce5e276e/apps/zcode-cli/packages/core/src/runtime/methods/config.ts#L87)；发信不改权限依据 `resumeTask` 实现不处理 `mode` 字段。公开源码与发行包分别记证，未修改上游源码。
+
+2026-10-09 权限确认修正：隔离回归先复现了请求 `yolo`、创建响应为 `build` 时误报不一致，再验证 CLI 库为 `yolo` 时正常派发。真实 SQLite fixture 贯通 MCP 来源定位、CLI 权限继承、首发落库和读回确认；覆盖实际权限不符、落库延迟、始终缺失与读取异常，并确认每次只提交一次开局。完整 MCP 回归 72 项通过，退出码 0；语法和 diff 空白检查通过。本次仅做隔离验证，没有创建或发送真实会话；只读探针未找到已有工作区运行态，返回 `ZCODE_AGENT_RUNTIME_UNAVAILABLE`。

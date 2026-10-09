@@ -6,16 +6,19 @@ const model = { provider_id: 'fixture', model_id: 'flash', reasoning_level: 'low
 const wrapped = text => `<delivered-by-other-session>\n<notice>\nThe message in this block was delivered by other zcode session or the system, instead of the user.\n</notice>\n${text}\n</delivered-by-other-session>`;
 const opening = text => `<created-by-other-session>\n<notice>\nYou are a new zcode session created by another zcode session or the system, instead of directly by the user.\n</notice>\n${text}\n</created-by-other-session>`;
 async function fixture(overrides = {}) {
-  const calls = [], connections = [], policies = []; let archived = false;
+  const calls = [], connections = [], policies = []; let archived = false, persistedMode = 'build';
   const { createSessionController } = await import('../control.mjs');
   const controller = createSessionController({
-    reader: { readSession: () => ({ session: { workspace_path: workspace } }), listSessions: () => ({ sessions: [{ session_id: 'sess_new', archived }] }) },
+    reader: { readSession: () => ({ session: { workspace_path: workspace } }), listSessions: () => ({ sessions: [{ session_id: 'sess_new', archived }] }),
+      sessionMode: args => overrides.sessionMode ? overrides.sessionMode(args) : { mode: persistedMode, observed: [persistedMode] } },
     loadAuthorization: async () => { throw new Error('网关调用不得读取旧远控凭据'); },
     setTitlePolicy: async args => { policies.push(args); },
+    delay: async () => {},
     connect: async args => {
       const connection = { args, closed: false }; connections.push(connection);
       return { workspacePath: workspace, close: () => { connection.closed = true; }, call: async (channel, method, params) => {
         calls.push({ channel, method, params });
+        if (method === 'createTask') persistedMode = params[0].mode ?? 'build';
         if (overrides[method]) return overrides[method](params);
         if (method === 'getView') return { providers: [{ providerId: 'fixture', models: [{ modelId: 'flash', config: { optionSpecs: { reasoningLevel: { values: ['low'] } } } }] }] };
         if (method === 'createTask') return { taskId: 'sess_new', workspacePath: workspace, title: '默认标题', mode: params[0].mode ?? 'build' };
@@ -207,6 +210,23 @@ test('锁名称是独立创建参数，true 在开局前写入公共策略', asy
   assert.deepEqual(f.policies, [{ sessionId: 'sess_new', locked: true }]);
 });
 
+test('创建权限以首发后的 CLI 库为准，忽略创建响应中的陈旧 mode', async () => {
+  let persisted = false;
+  const f = await fixture({
+    createTask: () => ({ taskId: 'sess_new', workspacePath: workspace, title: '默认标题', mode: 'build' }),
+    sendPrompt: () => { persisted = true; },
+    sessionMode: ({ session_id }) => {
+      assert.equal(session_id, 'sess_new');
+      assert.equal(persisted, true, '首次开局持久化后才读取 CLI 权限');
+      return { mode: 'yolo', observed: ['yolo'] };
+    }
+  });
+  const created = await f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' });
+  assert.equal(created.permission_mode, 'yolo');
+  assert.equal(created.delivery_status, 'accepted');
+  assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
+});
+
 test('显式权限模式透传 createTask 并读回确认，继承警告随回执透出', async () => {
   const f = await fixture();
   const created = await f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' });
@@ -227,19 +247,45 @@ test('未决权限不向 createTask 添加 mode 字段，读回值如实返回',
   assert.equal(Object.hasOwn(created, 'warnings'), false);
 });
 
-test('显式权限读回不一致时报 permission_not_confirmed，不发送开局', async () => {
-  const f = await fixture({ createTask: () => ({ taskId: 'sess_new', workspacePath: workspace, title: '默认标题', mode: 'build' }) });
+test('CLI 权限读回不一致时报 permission_not_confirmed，保留已提交回执且不重发', async () => {
+  const f = await fixture({ sessionMode: () => ({ mode: 'build', observed: ['build'] }) });
   await assert.rejects(f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' }),
-    e => /permission_not_confirmed/.test(e.message) && e.partial_result.session_id === 'sess_new');
-  assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 0);
+    e => /permission_not_confirmed/.test(e.message) && e.partial_result.session_id === 'sess_new' &&
+      e.partial_result.permission_mode === 'build' && e.partial_result.delivery_status === 'accepted' && !!e.partial_result.input_id);
+  assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
 });
 
-test('读回缺失权限字段视为无法核实而非不一致，放行并附 permission_unverified', async () => {
+test('创建响应缺少 mode 不影响 CLI 权限确认', async () => {
   const f = await fixture({ createTask: () => ({ taskId: 'sess_new', workspacePath: workspace, title: '默认标题' }) });
   const created = await f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' });
   assert.equal(created.delivery_status, 'accepted');
-  assert.deepEqual(created.warnings.map(w => w.code), ['permission_unverified']);
-  assert.equal(Object.hasOwn(created, 'permission_mode'), false);
+  assert.equal(created.permission_mode, 'yolo');
+  assert.equal(Object.hasOwn(created, 'warnings'), false);
+});
+
+test('CLI 权限尚未落库时只重读不重发，最终缺失附未核实警告且不借用 meta.mode', async () => {
+  for (const persistedAfter of [2, Infinity]) {
+    let reads = 0;
+    const f = await fixture({ sessionMode: () => ++reads >= persistedAfter ? { mode: 'yolo', observed: ['yolo'] } : { mode: null, observed: [] } });
+    const created = await f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' });
+    assert.equal(created.delivery_status, 'accepted');
+    assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
+    assert.equal(reads, persistedAfter === 2 ? 2 : 3);
+    if (persistedAfter === 2) {
+      assert.equal(created.permission_mode, 'yolo');
+      assert.equal(Object.hasOwn(created, 'warnings'), false);
+    } else {
+      assert.deepEqual(created.warnings.map(w => w.code), ['permission_unverified']);
+      assert.equal(Object.hasOwn(created, 'permission_mode'), false);
+    }
+  }
+});
+
+test('CLI 权限读取异常明确外溢，仍保留已提交信息且不重发', async () => {
+  const f = await fixture({ sessionMode: () => { throw new Error('fixture database busy'); } });
+  await assert.rejects(f.controller.startSession({ workspace_path: workspace, message: 'hello', permissionMode: 'yolo' }),
+    e => /fixture database busy/.test(e.message) && e.partial_result.delivery_status === 'accepted' && !!e.partial_result.input_id &&
+      !Object.hasOwn(e.partial_result, 'permission_mode'));
   assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
 });
 

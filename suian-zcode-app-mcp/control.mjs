@@ -121,15 +121,10 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
           ...(modelSelection ? { modelSelection } : {}), ...(permissionMode ? { mode: permissionMode } : {}), deferPersistenceUntilFirstPrompt: true }]);
         if (!meta.taskId) throw new Error('create_not_confirmed: 原 Host 创建响应缺少 taskId');
         const result = { source: 'original_host', session_id: meta.taskId, workspace_path: meta.workspacePath, title: meta.title,
-          ...(creator === undefined ? {} : { creator }), ...(meta.mode === undefined ? {} : { permission_mode: meta.mode }) };
+          ...(creator === undefined ? {} : { creator }) };
         // 来源警告在 try 外构造：部分失败的 partial_result 也要携带（PR #15 契约），复核警告只在成功路径合并
         const warnings = [...(originWarning ? [originWarning] : []), ...(permissionWarning ? [permissionWarning] : [])];
-        // 旧版 Host 响应缺 mode 字段属"无法核实"而非"不一致"：放行并警告，不阻断已建会话的开局
-        if (permissionMode !== undefined && meta.mode === undefined)
-          warnings.push({ code: 'permission_unverified', message: '原 Host 创建响应未返回权限模式，已按请求提交但读回确认不可用' });
         try {
-          // 有期望权限（显式指定或继承）时核读回，防止后续发送方误判会话能力（如以为 yolo 实为 build）
-          if (permissionMode !== undefined && meta.mode !== undefined && meta.mode !== permissionMode) throw new Error('permission_not_confirmed: 原 Host 创建后权限模式读回不一致');
           if (title !== undefined) {
             const renamed = await remote.call('zcode-task', 'renameTask', [{ taskId: meta.taskId, workspacePath: meta.workspacePath, title }]);
             if (renamed.taskId !== meta.taskId || renamed.title !== title) throw new Error('rename_not_confirmed: 原 Host 创建后命名响应不一致');
@@ -138,10 +133,24 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
           await setTitlePolicy({ sessionId: meta.taskId, locked: lock_title });
           result.lock_title = lock_title;
           if (title !== undefined) warnings.push(...await confirmTitleSync(meta.taskId, title, 2));
-          return { ...result, ...await send(remote, meta.taskId, createdMessage(message, creator, originWarning)),
-            ...(warnings.length ? { warnings } : {}) };
+          Object.assign(result, await send(remote, meta.taskId, createdMessage(message, creator, originWarning)));
+          // deferred 会话首发后才落库；继承、确认与回执统一读取 CLI session.permission.mode。
+          // createTask 的 meta.mode 来自状态投影，首发前可能仍是默认 build，不能作为权限信源。
+          let reading;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt) await delay(300);
+            reading = reader.sessionMode({ session_id: meta.taskId });
+            if (reading.mode !== null) break;
+          }
+          if (reading.mode === null) warnings.push({ code: 'permission_unverified', message: '开局已提交，CLI 会话库尚无可读权限，未确认生效模式' });
+          else {
+            result.permission_mode = reading.mode;
+            if (permissionMode !== undefined && reading.mode !== permissionMode)
+              throw new Error(`permission_not_confirmed: CLI 会话库权限与请求不一致（请求 ${permissionMode}，读回 ${reading.mode}），开局已提交，请勿重复派发`);
+          }
+          return { ...result, ...(warnings.length ? { warnings } : {}) };
         } catch (error) {
-          error.partial_result = { ...result, ...(warnings.length ? { warnings } : {}), delivery_status: 'unknown' };
+          error.partial_result = { ...result, ...(warnings.length ? { warnings } : {}), delivery_status: result.delivery_status ?? 'unknown' };
           throw error;
         }
       });
