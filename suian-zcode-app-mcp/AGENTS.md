@@ -25,6 +25,12 @@
 - 新可执行行为先写契约测试，观察红灯后实现；运行测试首次即保存日志和退出码，交付前保留脱敏汇总并清理原探针。
 - 验证在独立 git worktree 进行；没有授权不推送、建 PR 或注册用户 MCP 设置。
 
+## 规格与开票入口
+
+- 本项目沿用根 [CONTEXT.md](../CONTEXT.md) 与本目录 `docs/adr/` 的术语和决策，见 [领域文档入口](docs/agents/domain.md)。
+- 开票使用当前仓库 GitHub Issues。先完成本地规格与票草稿，发布须有用户明确授权；票的依赖须同时表达宿主能力条件，见 [开票约定](docs/agents/issue-tracker.md)。
+- 工件区已开票，当前发行版正式插件能力不足，等待上游支持，工件功能未实施，当前公开工具数量不变；结果见 [宿主核验](docs/artifact-host-capabilities.md)，设计目标见 [设计记录](docs/artifact-zone-design.md)，实际编号与依赖见 [开票索引](docs/artifact-zone-tickets.md)。
+
 ## 文件职责
 
 | 路径 | 职责 |
@@ -40,5 +46,5 @@
 | install.mjs / SKILL.md | skill 幂等部署与 Agent 初始化、原生 MCP 配置合并；公共网关流程委托同级子项目 |
 | vendor/NOTICE.md | 公共消息投影库的来源与许可指针 |
 | tests/ | 真实 SQLite fixture 与 MCP/stdio 契约测试 |
-| docs/ | 早期研究、首版设计与脱敏验收证据 |
+| docs/ | 研究、工具规格、ADR、开票草稿与脱敏验收证据；agents/ 保存开票和领域文档入口 |
 | experiments/relay-gateway/ | 历史网关实验证据与迁移指针；实现统一维护于 `../suian-zcode-common/` |

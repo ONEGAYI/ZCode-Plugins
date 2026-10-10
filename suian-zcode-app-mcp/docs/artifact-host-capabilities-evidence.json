@@ -1,0 +1,397 @@
+{
+  "issue": 27,
+  "date": "2026-10-10",
+  "scope": "Installed original CLI bundle, isolated AgentServer in packaged Electron Node mode; real active Desktop and online model services not tested",
+  "artifacts": {
+    "desktopProductVersion": "3.14.5.7961",
+    "desktopPackageVersion": "3.14.5",
+    "cliVersion": "0.16.9",
+    "cliBytes": 14820968,
+    "cliSha256": "FAD4C35C4C36EC210D8A06D3FA0E77DE23C8545E2EB6FF90AEA1EB38D1E6275F",
+    "asarSha256": "4BEFBE43EB7B4FD83426896991F4A399F1102AF0E0865BA34F2B69FC3A2A9931",
+    "cliAndAsarUnchangedAfterRun": true
+  },
+  "isolation": {
+    "workspace": "{{AZ27_ISOLATED_ROOT}}/workspace",
+    "profile": "{{AZ27_ISOLATED_ROOT}}/profile",
+    "storage": "{{AZ27_ISOLATED_ROOT}}/storage",
+    "sessionDatabase": "{{AZ27_ISOLATED_ROOT}}/sessions.sqlite",
+    "provider": "loopback synthetic OpenAI chat-completions endpoint",
+    "processEnv": "whitelist with isolated HOME/USERPROFILE/APPDATA/LOCALAPPDATA/TEMP/TMP and ZCODE storage/provider paths",
+    "userCredentialsCopied": false,
+    "activeUserSessionsTouched": false,
+    "installedFilesModified": false
+  },
+  "fixture": {
+    "kind": "temporary capability probe, not implementation of get_artifacts/set_artifacts",
+    "hook": "UserPromptSubmit additionalContext",
+    "stateMutations": "two actual MCP calls to the isolated revision fixture, one controlled update during HTTP retry, and one update on the committed fork notification",
+    "providerResponse": "deterministic synthetic SSE; no assertion about real model behavior"
+  },
+  "observations": [
+    {
+      "suite": "basic",
+      "request": 1,
+      "phase": "tools",
+      "stateRevision": 1,
+      "messageCount": 5,
+      "projections": [
+        {
+          "revision": 1,
+          "messageIndex": 3,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "433a8fda5446f1471bb576237c4ec8f75e0a3c400f7d3dcf415cd6a35d9c6245"
+    },
+    {
+      "suite": "basic",
+      "request": 2,
+      "phase": "tools",
+      "stateRevision": 2,
+      "messageCount": 7,
+      "projections": [
+        {
+          "revision": 1,
+          "messageIndex": 3,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "bdd048080385b9279093ce2a5497500ae68b9822722ca0ffbd6b42cea2c394b8"
+    },
+    {
+      "suite": "basic",
+      "request": 3,
+      "phase": "tools",
+      "stateRevision": 3,
+      "messageCount": 9,
+      "projections": [
+        {
+          "revision": 1,
+          "messageIndex": 3,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "2b77e7a750cb5980f5046abccd21713ac32bd1337754c954b61de60fcd142d2d"
+    },
+    {
+      "suite": "basic",
+      "request": 4,
+      "phase": "second-turn",
+      "stateRevision": 3,
+      "messageCount": 12,
+      "projections": [
+        {
+          "revision": 1,
+          "messageIndex": 3,
+          "role": "user",
+          "isLast": false
+        },
+        {
+          "revision": 3,
+          "messageIndex": 10,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "ce80281e5f09883eff3019c59fb16cbb730d9a8a85b1af02ecf50f34a337044f"
+    },
+    {
+      "suite": "advanced",
+      "request": 1,
+      "phase": "retry",
+      "stateRevision": 4,
+      "messageCount": 13,
+      "projections": [
+        {
+          "revision": 4,
+          "messageIndex": 11,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "1df0ecf575d78d153d281825e1bba90516268580ae79b1c779abdb0790913bda"
+    },
+    {
+      "suite": "advanced",
+      "request": 2,
+      "phase": "retry",
+      "stateRevision": 5,
+      "messageCount": 13,
+      "projections": [
+        {
+          "revision": 4,
+          "messageIndex": 11,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "1df0ecf575d78d153d281825e1bba90516268580ae79b1c779abdb0790913bda"
+    },
+    {
+      "suite": "advanced",
+      "request": 3,
+      "phase": "compact",
+      "stateRevision": 5,
+      "messageCount": 15,
+      "projections": [
+        {
+          "revision": 4,
+          "messageIndex": 11,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "6424a5e65591b8eae13b52aa04c6a81232e6316a731c9d00179fd8029b2fadea"
+    },
+    {
+      "suite": "advanced",
+      "request": 4,
+      "phase": "after-compact",
+      "stateRevision": 6,
+      "messageCount": 6,
+      "projections": [
+        {
+          "revision": 6,
+          "messageIndex": 4,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "754d7be3d1c6cb22e58ba24734380e7dee48ba783e1b1a348c942bd4fdd86602"
+    },
+    {
+      "suite": "fork",
+      "request": 1,
+      "phase": "fork-child",
+      "stateRevision": 7,
+      "messageCount": 10,
+      "projections": [
+        {
+          "revision": 7,
+          "messageIndex": 7,
+          "role": "user",
+          "isLast": false
+        }
+      ],
+      "toolSequenceValid": true,
+      "requestBodySha256": "c72f056b529c878524efe83cf912a2cdf2a927e55e69e92a4fd2a906c7e7aa4b"
+    }
+  ],
+  "persistence": {
+    "sqliteTextColumnsScanned": true,
+    "sqliteTables": [
+      "schema_migration",
+      "session",
+      "message",
+      "part",
+      "todo",
+      "session_entry",
+      "permission",
+      "input_history",
+      "local_setting",
+      "session_target",
+      "workflow_definition",
+      "workflow_run",
+      "workflow_activity",
+      "workflow_event",
+      "session_task_link",
+      "model_usage",
+      "turn_usage",
+      "tool_usage",
+      "session_input",
+      "dwf_run",
+      "dwf_actor",
+      "dwf_node",
+      "dwf_event"
+    ],
+    "projectionMarkersInSQLite": 0,
+    "markersInBasicSessionRead": 0,
+    "oldMarkersAbsentAfterProcessRestart": true,
+    "modelIoFiles": [
+      {
+        "session": "parent",
+        "projectionRevisions": [
+          1,
+          1,
+          1,
+          1,
+          3,
+          4,
+          4,
+          6
+        ]
+      },
+      {
+        "session": "child",
+        "projectionRevisions": [
+          7
+        ]
+      }
+    ],
+    "modelIoIsDiagnosticNotChatHistory": true
+  },
+  "sessionHistoryAssembly": {
+    "activeRecordPath": "Reuse cached context.sessions record and its App; copy in-memory messageHistory for each turn, rather than reload the complete model history from SQLite",
+    "missingRecordPath": "Read durable session/messages, create App and rehydrate a new MessageHistoryImpl after process restart or runtime eviction",
+    "installedCjsUtf8ByteStarts": {
+      "activateSessionForResume_wRn": 14483932,
+      "legacySend_GKo": 14492403,
+      "sendInput_uXa": 14499572,
+      "v4HostGetRecord": 14624032,
+      "v4Send_D8": 14141029
+    },
+    "scope": "Only while the same session runtime is reused; session/resume with a cache hit is not a cold restore",
+    "checkedAgainstOriginalInstalledBundle": true
+  },
+  "fork": {
+    "entry": "v4/conversation/rowsRange -> v4/command forkAssistant",
+    "status": "accepted",
+    "parentRevisionAtFork": 6,
+    "parentRevisionAfterNotification": 7,
+    "childSessionStartReadRevision": 7,
+    "childReadOccurredAfterParentUpdate": true,
+    "notificationType": "session.updated",
+    "payloadKeys": [
+      "originalSessionId",
+      "forkedSessionId",
+      "forkPoint",
+      "targetMessageId",
+      "restoredFileCount",
+      "strategy"
+    ],
+    "sessionStartInputKeys": [
+      "cwd",
+      "hookEventName",
+      "mode",
+      "model",
+      "sessionId",
+      "source",
+      "timestamp",
+      "traceId",
+      "hook_event_name",
+      "permission_mode",
+      "session_id",
+      "transcript_path",
+      "transcriptPath"
+    ],
+    "artifactRevisionPresentInForkPayload": false,
+    "artifactCopyImplemented": false,
+    "interpretation": "Reading latest parent state on child startup gives revision 7; it cannot establish the required fork-time revision 6"
+  },
+  "unsupportedHooks": {
+    "manifestValidationOk": true,
+    "loadedHookCount": 0,
+    "diagnostics": [
+      {
+        "code": "plugin_hook_unsupported_event",
+        "message": "Plugin hook event is not supported by this ZCode runtime: BeforeModelRequest",
+        "severity": "warning"
+      },
+      {
+        "code": "plugin_hook_unsupported_event",
+        "message": "Plugin hook event is not supported by this ZCode runtime: SessionFork",
+        "severity": "warning"
+      }
+    ]
+  },
+  "commandLedger": [
+    {
+      "name": "prepare-isolation",
+      "exitCode": 0
+    },
+    {
+      "name": "runtime-probe",
+      "exitCode": 1
+    },
+    {
+      "name": "runtime-probe-2",
+      "exitCode": 1
+    },
+    {
+      "name": "runtime-probe-3",
+      "exitCode": 1
+    },
+    {
+      "name": "runtime-probe-4",
+      "exitCode": 1
+    },
+    {
+      "name": "runtime-probe-5",
+      "exitCode": 0
+    },
+    {
+      "name": "advanced-probe",
+      "exitCode": 0
+    },
+    {
+      "name": "fork-probe",
+      "exitCode": 0
+    },
+    {
+      "name": "fork-probe-2",
+      "exitCode": 0
+    },
+    {
+      "name": "unsupported-hooks",
+      "exitCode": 0
+    },
+    {
+      "name": "summarize-run",
+      "exitCode": 0
+    },
+    {
+      "name": "summarize-final",
+      "exitCode": 0
+    },
+    {
+      "name": "summarize-verified",
+      "exitCode": 0
+    }
+  ],
+  "setupFailuresExcluded": [
+    "runtime-probe: missing client runtime-preferences response",
+    "runtime-probe-2: model reasoning level required",
+    "runtime-probe-3: corrected session/create snapshot shape",
+    "runtime-probe-4: reasoning selection needed on send",
+    "fork-probe: parent materialization incorrectly triggered the planned fixture update; rerun with committed notification boundary"
+  ],
+  "targetMet": {
+    "requestProjection": false,
+    "forkSnapshotContract": false
+  },
+  "notTested": [
+    "real running Desktop UI wiring and clicks",
+    "online Anthropic/OpenAI/Responses provider acceptance",
+    "all concurrent cross-process and multi-window fork schedules",
+    "artifact production state store and Agent lifecycle behavior"
+  ],
+  "downstream": "Issues 28, 29 and 30 remain blocked on upstream capability, not on issue 27 being open",
+  "cleanup": {
+    "ownedAgentServerPidsVerifiedAbsent": 8,
+    "remainingOwnedChildProcesses": 0,
+    "recursiveTargetCheckedWithinTaskScratch": true,
+    "reparsePoints": 0,
+    "rawProbeProfileDatabaseAndLogsRemoved": true
+  },
+  "tracker": {
+    "issue27State": "closed",
+    "reason": "completed research with negative capability findings",
+    "bodyReadbackVerified": true,
+    "openIssuesAtLabeling": [28, 29, 30, 31],
+    "waitingLabel": "wait-for-upstreaming",
+    "originalEnhancementLabelsPreserved": true,
+    "labelReadbackVerified": true
+  }
+}
