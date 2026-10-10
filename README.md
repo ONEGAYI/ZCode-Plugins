@@ -66,7 +66,7 @@ git -C "{{repo_dir}}" sparse-checkout set suian-zcode-title suian-zcode-common
 
 ## suian-zcode-app-mcp — 会话 MCP
 
-通过两个本机只读工具检索会话与聊天历史；五个写工具经公共网关调用原 Host 改名、创建、发信、归档与复原。另提供 GLM 套餐额度和重置卡查询，以及经用户许可消耗一张卡重置额度。stdio 接入，消息包装来源标识；原 Host 调用不另占官方席位，重置仍需要客户端确认表单。接入与边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。
+通过两个本机只读工具检索会话与聊天历史；六个写工具经公共网关调用原 Host 改名、创建、发信、压缩上下文、归档与复原。另提供 GLM 套餐额度和重置卡查询，以及经用户许可消耗一张卡重置额度。stdio 接入，消息包装来源标识；原 Host 调用不另占官方席位，重置仍需要客户端确认表单。接入与边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。
 
 ## suian-zcode-common — 公共基础能力
 

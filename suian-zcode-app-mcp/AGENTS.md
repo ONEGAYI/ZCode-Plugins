@@ -2,7 +2,7 @@
 
 目标：做独立的 MCP 服务，让 ZCode 与外部 Agent 查询会话，并逐步沿官方授权原 Host 链路增加控制能力。公共层提供协议、授权与通知模块；suian-zcode-title（会话自动命名）使用它完成命名业务。
 
-当前状态：公开九个工具。list_sessions 与 read_session 保持本机 SQLite 只读连接；其余工具通过公共网关 connectHost 调用原 Host，不新增官方 terminal。契约见 docs/readonly-tools.md、docs/write-tools.md 与 docs/glm-balance-design.md。
+当前状态：公开十个工具。list_sessions 与 read_session 保持本机 SQLite 只读连接；其余工具通过公共网关 connectHost 调用原 Host，不新增官方 terminal。契约见 docs/readonly-tools.md、docs/write-tools.md 与 docs/glm-balance-design.md。
 
 ## 守则（沿自研究期，开发期继续适用）
 
@@ -15,7 +15,7 @@
 
 ## 边界与维护
 
-- 两个读取工具只查本机持久化数据，不连接远控。五个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在网关连接的 Desktop 窗口打开。
+- 两个读取工具只查本机持久化数据，不连接远控。六个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在网关连接的 Desktop 窗口打开。
 - 两个 GLM 工具也连接原 Host。重置每次必须真实用户明确许可和客户端 form elicitation，不接受 Agent 自填 confirmed；不自动重试消耗。只读查询不发卡、不消耗、不标记历史已读。
 - 创建和发信不接受来源 ID 参数；服务读取本次 MCP 请求的 session_id，缺失时按 trace_id 与工具名从本地 tool_usage 唯一定位，在 created-by-other-session 注入 creator、在 delivered-by-other-session 注入 deliverer。冲突或歧义降级为 warnings，notice 标注可能来源并继续执行；完全未知或损坏时在写入前报错。不猜界面选中项或最近会话。客户端元数据不等于身份认证或用户授权。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
 - 原 Host 调用统一走公共网关；缺少 RPC 时明确要求升级，不回退官方直连。隔离测试与真实手机验收分别记录，paired 不代表手机身份；手机使用远端工作区时本地调用让位。
@@ -32,7 +32,7 @@
 | cli.mjs | stdio 入口、数据库/公共网关配置路径；旧 stdin DPAPI 保存入口兼容 |
 | server.mjs | MCP 工具注册、参数校验与结构化响应 |
 | caller.mjs | 每次请求的发起会话定位：MCP 元数据优先，trace_id 与工具名只读匹配本地调用记录 |
-| control.mjs | 原 Host 改名读回、指定模型与权限模式创建、消息包装、v4 可选投递策略与提交回执、归档保护与复原；改名/创建后双库标题复核，分叉时回执 warnings；按调用释放连接 |
+| control.mjs | 原 Host 改名读回、指定模型与权限模式创建、消息包装、v4 可选投递策略与提交回执、compact 维护命令与受理回执、归档保护与复原；改名/创建后双库标题复核，分叉时回执 warnings；按调用释放连接 |
 | glm.mjs | GLM 个人套餐额度/卡片投影、确认后重置与同次尝试回执；共用 controller 远控互斥 |
 | sessions.mjs | 只读索引查询、会话定位、历史投影与分页；sessionTitle 轻量双库标题读取供复核，sessionMode 读取 CLI 会话库权限供继承与首发后确认（不用索引或创建响应的 mode） |
 | package.json / package-lock.json | 固定依赖版本与测试入口 |
