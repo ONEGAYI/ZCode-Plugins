@@ -42,6 +42,42 @@
   "pendingUserAcceptance": [
     "obsidian-export-desktop 会话等待其下一轮 Stop 自然命名恢复（机制同 QuotaTray 已验证会话）"
   ],
-  "followUpValidation": [],
+  "followUpValidation": [
+    {
+      "date": "2026-10-10",
+      "topic": "start_session 首发落库后改名与双库复核",
+      "baselineCommit": "76abaaa8034a9456f1fa2b16e2cbe2bf58907986",
+      "change": [
+        "保留 deferred persistence 与首发前公共锁定策略，首发只提交一次",
+        "复用三次 CLI 权限读回确认会话行落库，再执行官方 renameTask 与双库复核",
+        "读回始终无会话行时返回 session_not_persisted 部分失败，不改名、不重发；权限为 null 的既有行仍可改名",
+        "首发后改名失败保留 input_id、delivery_status:accepted 与来源警告"
+      ],
+      "tdd": [
+        {
+          "phase": "order",
+          "red": { "exitCode": 1, "tests": 4, "failed": 4 },
+          "observed": "真实 SQLite fixture 复现索引为初始标题、CLI 为首发标记标题；旧顺序与首发提交回执契约失败",
+          "green": { "exitCode": 0, "tests": 80, "passed": 80 }
+        },
+        {
+          "phase": "persistence",
+          "red": { "exitCode": 1, "tests": 1, "failed": 1 },
+          "observed": "会话行始终缺失仍返回改名成功，Missing expected rejection",
+          "green": { "exitCode": 0, "tests": 81, "passed": 81 }
+        }
+      ],
+      "regression": {
+        "mcpBaseline": { "exitCode": 0, "tests": 79, "passed": 79 },
+        "mcp": { "exitCode": 0, "tests": 81, "passed": 81 },
+        "title": { "exitCode": 0, "tests": 59, "passed": 59 },
+        "common": { "exitCode": 0, "tests": 89, "passed": 89 },
+        "syntaxAndWhitespace": "通过"
+      },
+      "tests": ["tests/control.test.mjs", "tests/mcp.test.mjs"],
+      "unchanged": "命名插件双库一致性守卫、存量会话标题与本机配置均未修改",
+      "acceptance": "独立 worktree 内的隔离契约与真实 SQLite fixture 通过；未执行真实 Host 写入验收，未部署运行副本"
+    }
+  ],
   "secrets": "无凭据；会话标识以工作区名指代，证据不保留完整 session_id"
 }

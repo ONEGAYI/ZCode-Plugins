@@ -52,17 +52,17 @@ async function fixture(overrides = {}) {
   return { controller, calls, connections, policies };
 }
 
-test('创建使用指定模型，先命名后发送带来源标识的开局信息；发信与改名可使用返回 ID', async () => {
+test('创建使用指定模型，首发并确认落库后命名；发信与改名可使用返回 ID', async () => {
   const f = await fixture();
   const created = await f.controller.startSession({ workspace_path: workspace, title: '新标题', message: '测试开局', model });
   assert.equal(created.session_id, 'sess_new');
   assert.equal(created.delivery_status, 'accepted');
   assert.equal(created.lock_title, false);
   assert.deepEqual(f.policies, [{ sessionId: 'sess_new', locked: false }]);
-  assert.deepEqual(f.calls.map(c => c.method), ['getView', 'createTask', 'renameTask', 'sendPrompt']);
+  assert.deepEqual(f.calls.map(c => c.method), ['getView', 'createTask', 'sendPrompt', 'renameTask']);
   assert.deepEqual(f.calls[1].params, [{ workspacePath: workspace, modelSelection: { providerId: 'fixture', modelId: 'flash', options: { reasoningLevel: 'low' } }, deferPersistenceUntilFirstPrompt: true }]);
-  assert.equal(f.calls[3].params[0].content, opening('测试开局'));
-  assert.equal(f.calls[3].params[0].traceId, created.input_id);
+  assert.equal(f.calls[2].params[0].content, opening('测试开局'));
+  assert.equal(f.calls[2].params[0].traceId, created.input_id);
   assert.equal(f.connections[0].args.sessionId, undefined);
   const sent = await f.controller.sendMessage({ session_id: created.session_id, message: '第二次测试' });
   assert.notEqual(sent.input_id, created.input_id);
@@ -392,6 +392,35 @@ test('CLI 权限读取异常明确外溢，仍保留已提交信息且不重发'
   assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
 });
 
+test('带名称创建未确认落库时保留提交信息，不改名不重发；权限缺失不等于行不存在', async () => {
+  for (const persisted of [false, true]) {
+    let reads = 0;
+    const f = await fixture({ sessionMode: () => { reads++; return { mode: null, observed: persisted ? [null] : [] }; } });
+    const request = f.controller.startSession({ workspace_path: workspace, message: 'hello', title: '指定名称' });
+    if (!persisted) {
+      await assert.rejects(request, error => {
+        assert.match(error.message, /session_not_persisted/);
+        assert.equal(error.partial_result.session_id, 'sess_new');
+        assert.equal(error.partial_result.title, '默认标题');
+        assert.equal(error.partial_result.delivery_status, 'accepted');
+        assert.ok(error.partial_result.input_id);
+        assert.deepEqual(error.partial_result.warnings.map(w => w.code), ['permission_unverified']);
+        return true;
+      });
+      assert.equal(f.calls.filter(c => c.method === 'renameTask').length, 0);
+    } else {
+      const result = await request;
+      assert.equal(result.title, '指定名称');
+      assert.equal(result.delivery_status, 'accepted');
+      assert.deepEqual(result.warnings.map(w => w.code), ['permission_unverified']);
+      assert.equal(f.calls.filter(c => c.method === 'renameTask').length, 1);
+    }
+    assert.equal(reads, 3);
+    assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
+    assert.ok(f.connections.every(c => c.closed));
+  }
+});
+
 test('省略名称和模型使用 Host 默认，RPC 参数不擅自添加选项', async () => {
   const f = await fixture();
   const result = await f.controller.startSession({ workspace_path: workspace, message: 'hello' });
@@ -423,10 +452,14 @@ test('改名读回不一致与 RPC 失败明确报错，并释放连接', async 
   assert.ok(f.connections.every(c => c.closed));
 });
 
-test('创建时名称未确认则不发送开局，部分结果说明会话已经存在', async () => {
+test('创建后名称未确认保留首发提交回执，不重发并释放连接', async () => {
   const f = await fixture({ renameTask: () => ({ taskId: 'sess_new', title: '错误名称' }) });
-  await assert.rejects(f.controller.startSession({ workspace_path: workspace, message: 'hello', title: '指定名称' }), e => /rename_not_confirmed/.test(e.message) && e.partial_result.session_id === 'sess_new');
-  assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 0);
+  await assert.rejects(f.controller.startSession({ workspace_path: workspace, message: 'hello', title: '指定名称' }),
+    e => /rename_not_confirmed/.test(e.message) && e.partial_result.session_id === 'sess_new' &&
+      e.partial_result.delivery_status === 'accepted' && !!e.partial_result.input_id && e.partial_result.title === '默认标题');
+  assert.equal(f.calls.filter(c => c.method === 'sendPrompt').length, 1);
+  assert.equal(f.calls.filter(c => c.method === 'renameTask').length, 1);
+  assert.ok(f.connections.every(c => c.closed));
 });
 
 test('同一 MCP 的并发写请求明确拒绝，不建立争用席位的第二条连接', async () => {
