@@ -64,7 +64,7 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
     return { input_id, delivery_status: 'accepted' };
   };
   // 官方 renameTask 写任务索引后向宿主发 v4 renameSession 同步 CLI 会话库，失败仅记 warn、RPC 仍返回成功；
-  // deferPersistenceUntilFirstPrompt 创建的会话首条 prompt 前 CLI 库无行，同步极易丢失。写后读回复核两库，
+  // deferred 会话首发前 CLI 库无行，startSession 等首发落库后才改名。写后读回复核两库，
   // 分叉时以 warnings 暴露（对齐命名插件"写后读回核验"的纪律），不阻断 RPC 成功路径。探测异常（库缺失/繁忙）
   // 视为无法核实：不告警、不外溢为工具错误；attempts<=0 时不探测。
   const confirmTitleSync = async (session_id, title, attempts) => {
@@ -125,14 +125,8 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
         // 来源警告在 try 外构造：部分失败的 partial_result 也要携带（PR #15 契约），复核警告只在成功路径合并
         const warnings = [...(originWarning ? [originWarning] : []), ...(permissionWarning ? [permissionWarning] : [])];
         try {
-          if (title !== undefined) {
-            const renamed = await remote.call('zcode-task', 'renameTask', [{ taskId: meta.taskId, workspacePath: meta.workspacePath, title }]);
-            if (renamed.taskId !== meta.taskId || renamed.title !== title) throw new Error('rename_not_confirmed: 原 Host 创建后命名响应不一致');
-            result.title = renamed.title;
-          }
           await setTitlePolicy({ sessionId: meta.taskId, locked: lock_title });
           result.lock_title = lock_title;
-          if (title !== undefined) warnings.push(...await confirmTitleSync(meta.taskId, title, 2));
           Object.assign(result, await send(remote, meta.taskId, createdMessage(message, creator, originWarning)));
           // deferred 会话首发后才落库；继承、确认与回执统一读取 CLI session.permission.mode。
           // createTask 的 meta.mode 来自状态投影，首发前可能仍是默认 build，不能作为权限信源。
@@ -147,6 +141,14 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
             result.permission_mode = reading.mode;
             if (permissionMode !== undefined && reading.mode !== permissionMode)
               throw new Error(`permission_not_confirmed: CLI 会话库权限与请求不一致（请求 ${permissionMode}，读回 ${reading.mode}），开局已提交，请勿重复派发`);
+          }
+          if (title !== undefined) {
+            // sessionMode.observed 为空表示 CLI 库无行；权限为 null 的既有行仍可改名。
+            if (!reading.observed.length) throw new Error('session_not_persisted: 开局已提交，CLI 会话库尚无会话记录，未改名，请勿重复派发');
+            const renamed = await remote.call('zcode-task', 'renameTask', [{ taskId: meta.taskId, workspacePath: meta.workspacePath, title }]);
+            if (renamed.taskId !== meta.taskId || renamed.title !== title) throw new Error('rename_not_confirmed: 原 Host 创建后命名响应不一致');
+            result.title = renamed.title;
+            warnings.push(...await confirmTitleSync(meta.taskId, title, 2));
           }
           return { ...result, ...(warnings.length ? { warnings } : {}) };
         } catch (error) {

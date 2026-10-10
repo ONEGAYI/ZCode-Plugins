@@ -59,9 +59,11 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 {"name":"start_session","arguments":{"workspace_path":"D:/work/example","message":"这是链路测试，只回复 TEST_OK","model":{"provider_id":"account:bigmodel-individual-coding-plan","model_id":"GLM-5.3-Flash","reasoning_level":"low"}}}
 ```
 
-返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`permission_mode`（CLI 会话库读回的实际权限）、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。初始名称和锁定策略在开局前写入。默认不锁，不因提供名称就推断保护。
+返回新 `session_id`、实际 `workspace_path`、初始 `title`、`lock_title`、`permission_mode`（CLI 会话库读回的实际权限）、`input_id`、`delivery_status:accepted`、`source:original_host`；来源唯一确认时附 `creator`，有冲突时附 `warnings`。锁定策略在开局前写入；指定初始名称在首发提交并确认 CLI 会话行落库后，经官方改名链路写入，再复核双库标题。默认不锁，不因提供名称就推断保护。
 
 新会话在首发前尚未落入 CLI 库，因此权限确认在开局提交后进行。最多读取三次，缺少权限时每隔 300 毫秒重读；始终读不到时省略 `permission_mode` 并附 `permission_unverified`，不借用其他信源补齐。CLI 权限与显式或继承的请求值确实不一致时报 `permission_not_confirmed`；读取异常也明确报错。两种错误都携带已提交的 `input_id` 和 `delivery_status:accepted`，不能据此重复派发。重读只查询数据库，不重发消息。
+
+提供 `title` 时，同一次 CLI 读回还必须确认会话行存在。三次读取后仍无行，报 `session_not_persisted` 并保留首发提交回执，不执行改名；行存在但权限字段缺失时，仍可改名，权限未核实警告保留。改名后的双库分叉继续以 `title_store_diverged` 警告报告，命名插件的一致性守卫保留。
 
 `send_message`：必填 `session_id` 和上述二选一正文输入；可选工作区字段同改名。发信方 ID 由服务自动识别，不接受 `deliverer` 输入；`session_id` 始终是接收方 ID。会先完成当前 RPC 连接的 v4 hello/clientHello 握手，再通过 Host 恢复目标会话并提交信息。握手与命令使用同一客户端 ID。`delivery_mode` 可省略，建议通常省略以跟随宿主当前输入策略；显式覆盖只影响本次消息，不改变会话设置：
 
@@ -177,7 +179,7 @@ You are a new zcode session created by another zcode session or the system, inst
 
 `accepted` 是 Host 接收提交的 ACK，不代表模型已完成。用 `read_session` 读取返回的会话 ID，等待新的助手消息；只读取已持久化正文，不伪装成实时流。
 
-首次输入前使用 Host 的 deferred persistence，确保首条 prompt 的账本外键由 Host 正确持久化。创建成功后改名或发信失败会返回 `isError:true`，结构化材料包含已创建的 `session_id`、工作区、名称、`delivery_status:unknown` 与错误。首发已提交后发生权限确认错误时，保留 `delivery_status:accepted` 和 `input_id`。先检查返回 ID 与提交状态，不能盲目再创建。发送超时同样不能认定未送达，不自动重发。
+首次输入前使用 Host 的 deferred persistence，确保首条 prompt 的账本外键由 Host 正确持久化。创建成功后发生错误会返回 `isError:true`，结构化材料包含已创建的 `session_id`、工作区、名称与错误。首发尚未确认提交时为 `delivery_status:unknown`；首发已提交后发生落库、权限确认或改名错误时，保留 `delivery_status:accepted` 和 `input_id`。先检查返回 ID 与提交状态，不能盲目再创建。发送超时同样不能认定未送达，不自动重发。
 
 ## 证据与源码
 

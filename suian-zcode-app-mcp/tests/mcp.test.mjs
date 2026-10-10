@@ -577,6 +577,7 @@ test('startSession 部分失败时 partial_result 保留来源警告，复核不
   const originWarning = { code: 'caller_ambiguous', message: 'fixture 来源歧义', possible_session_ids: ['sess_a', 'sess_b'] };
   const controller = createSessionController({
     reader: { readSession: () => ({ session: { workspace_path: 'D:/fixture' } }),
+      sessionMode: () => ({ mode: 'build', observed: ['build'] }),
       sessionTitle: () => ({ index_title: '初始标题', session_title: '初始标题' }) },
     setTitlePolicy: async () => {},
     connect: async () => ({ workspacePath: 'D:/fixture', close() {}, call: async (channel, method) => {
@@ -589,7 +590,9 @@ test('startSession 部分失败时 partial_result 保留来源警告，复核不
     error => {
       assert.equal(error.partial_result.warnings.length, 1);
       assert.equal(error.partial_result.warnings[0].code, 'caller_ambiguous');
-      assert.equal(error.partial_result.delivery_status, 'unknown');
+      assert.equal(error.partial_result.delivery_status, 'accepted');
+      assert.ok(error.partial_result.input_id);
+      assert.match(error.message, /rename_not_confirmed/);
       return true;
     });
 });
@@ -618,4 +621,50 @@ test('startSession 创建后复核：CLI 库有行但标题不符暴露分叉；
   const untitled = await make('任意值').startSession({ workspace_path: 'D:/fixture', message: '调研' });
   assert.equal(untitled.warnings, undefined, '未指定标题时不复核');
   assert.equal(prompts.length, 4, '复核不改变消息投递行为');
+});
+
+test('startSession 首发延迟落库后对齐双库，锁定策略先于首发且只提交一次', async t => {
+  const f = fixture(t), prompts = [], policies = [];
+  const { createSessionController } = await import('../control.mjs');
+  const { createSessionReader } = await import('../sessions.mjs');
+  const reader = createSessionReader(f);
+  let persisted = false, closed = false;
+  const controller = createSessionController({
+    reader,
+    setTitlePolicy: async policy => { policies.push(policy); },
+    delay: async ms => {
+      assert.equal(ms, 300);
+      if (prompts.length && !persisted) {
+        f.session({ id: 'sess_child', title: '首发标记标题', directory: 'D:/fixture', permission: { mode: 'build' } });
+        persisted = true;
+      }
+    },
+    connect: async () => ({ workspacePath: 'D:/fixture', close() { closed = true; }, call: async (channel, method, params) => {
+      if (method === 'createTask') {
+        assert.equal(params[0].deferPersistenceUntilFirstPrompt, true);
+        f.task({ id: 'sess_child', title: '默认标题', workspace: 'D:/fixture' });
+        return { taskId: 'sess_child', workspacePath: 'D:/fixture', title: '默认标题' };
+      }
+      if (method === 'sendPrompt') {
+        assert.deepEqual(policies, [{ sessionId: 'sess_child', locked: false }]);
+        prompts.push(params[0]);
+        return;
+      }
+      if (method === 'renameTask') {
+        // 模拟宿主尽力同步：CLI 行不存在时 UPDATE 不生效，索引与 RPC 仍成功。
+        f.index.prepare('UPDATE tasks SET title=? WHERE task_id=?').run(params[0].title, 'sess_child');
+        f.history.prepare('UPDATE session SET title=? WHERE id=?').run(params[0].title, 'sess_child');
+        return { taskId: 'sess_child', title: params[0].title };
+      }
+      throw new Error(`fixture unexpected RPC: ${method}`);
+    } })
+  });
+  const result = await controller.startSession({ workspace_path: 'D:/fixture', title: '初始标题', message: '调研' });
+  assert.equal(result.delivery_status, 'accepted');
+  assert.equal(result.title, '初始标题');
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0].traceId, result.input_id);
+  assert.deepEqual(reader.sessionTitle({ session_id: 'sess_child' }), { index_title: '初始标题', session_title: '初始标题' });
+  assert.equal(result.warnings, undefined);
+  assert.equal(closed, true);
 });
