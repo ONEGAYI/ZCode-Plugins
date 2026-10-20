@@ -136,7 +136,7 @@ test('MCP 创建在会话范围内继承项目和目录，跨项目与显式未�
   await start({ workspace_path: 'D:/elsewhere' });
   assert.equal(calls.at(-1).project_id, undefined);
   assert.equal(calls.at(-1).additional_directories, undefined);
-  assert.equal((await start({ project_id: null })).isError, true, '显式 null 已无语义：与 workspace_path 同传被互斥校验拒绝');
+  assert.equal((await start({ project_id: null })).isError, true, '显式 null 已无语义，schema 类型校验直接拒绝（string 不接受 null）');
   await start({ omit_workspace: true, project_id: 'project-b' });
   assert.equal(calls.at(-1).project_id, 'project-b');
   assert.equal(calls.at(-1).workspace_path, 'D:/alpha', '项目模式以项目主根为执行目录（fixture 中 project-b 唯一根，无 is_primary 标记取首个）');
@@ -200,7 +200,8 @@ test('项目注册表读取：探测支持、列表排序过滤、按 ID 与按�
   legacy.task({ id: 'old' });
   const legacyReader = createSessionReader(legacy);
   assert.equal(legacyReader.sessionProjectId({ session_id: 'old' }), undefined, '旧索引无 project_id 列');
-  assert.deepEqual(legacyReader.projectsByRoot('D:/alpha'), [], '旧索引按根反查降级为空');
+  assert.throws(() => legacyReader.projectsByRoot('D:/alpha'), /project_schema_unsupported/, '旧索引按根反查显式报不支持');
+  assert.throws(() => legacyReader.projectById('project-a'), /project_schema_unsupported/, '旧索引按 ID 查询显式报不支持');
   assert.throws(() => legacyReader.listProjects(), /project_schema_unsupported/, '旧索引显式报告不支持项目列表');
 });
 

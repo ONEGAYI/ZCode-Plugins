@@ -2,7 +2,7 @@
 
 目标：做独立的 MCP 服务，让 ZCode 与外部 Agent 查询会话，并逐步沿官方授权原 Host 链路增加控制能力。公共层提供协议、授权与通知模块；suian-zcode-title（会话自动命名）使用它完成命名业务。
 
-当前状态：公开十九个工具，另有仅工件面板可见的 PR/议题状态查询与本机文件定位（get_pr_statuses、reveal_artifact，UI 启用后 visibility=app）。list_sessions、read_session、get_current_session、list_pinned_sessions 与 list_crons 保持本机 SQLite 只读连接；会话控制、定时任务启停、定时任务工具面唤醒与 GLM 工具通过公共网关 connectHost 调用原 Host，不新增官方 terminal。工件列表、非会话详情与 set_artifacts 操作插件自有 SQLite，不依赖网关；会话工件详情每次查询原 Host 实时状态。契约见 docs/readonly-tools.md、docs/write-tools.md、docs/glm-balance-design.md 与 docs/artifact-zone-spec.md。
+当前状态：公开十九个基础工具，宿主索引含 projects 表（3.16+）时另公布只读的 list_projects（共二十个），另有仅工件面板可见的 PR/议题状态查询与本机文件定位（get_pr_statuses、reveal_artifact，UI 启用后 visibility=app）。list_sessions、read_session、get_current_session、list_pinned_sessions、list_projects 与 list_crons 保持本机 SQLite 只读连接；会话控制、定时任务启停、定时任务工具面唤醒与 GLM 工具通过公共网关 connectHost 调用原 Host，不新增官方 terminal。工件列表、非会话详情与 set_artifacts 操作插件自有 SQLite，不依赖网关；会话工件详情每次查询原 Host 实时状态。契约见 docs/readonly-tools.md、docs/write-tools.md、docs/glm-balance-design.md 与 docs/artifact-zone-spec.md。
 
 ## 守则（沿自研究期，开发期继续适用）
 

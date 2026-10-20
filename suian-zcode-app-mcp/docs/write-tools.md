@@ -49,11 +49,11 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 成功返回 `source:original_host`、`session_id`、`workspace_path`、`title`，名称以原 Host 的 `getTaskMeta` 读回为准。显式命名使用宿主的 custom 标题来源；当前自动命名插件只有已记录命名基线、且非 generated 标题相对基线变化时才判手动改名。首次 custom 标题不保证免于命名模型处理，模型也可选择 keep。
 
-`start_session`：必填 `workspace_path` 和上述二选一正文输入。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为新会话初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
+`start_session`：定位参数与上述二选一正文输入。3.16+ 宿主（索引含 projects 表）上 `workspace_path` 与 `project_id` 必须二选一（见下）；旧宿主必填 `workspace_path`，schema 中不出现 `project_id` 字段。创建方 ID 由服务自动识别，不接受 `creator` 输入。`title` 仅为新会话初始名称，可省略；独立 `lock_title` 默认 false。`model` 可省略，交给 Host 默认模型。指定时需 `provider_id`、`model_id`，可选 `reasoning_level`，先在当前 Host 模型目录验证，不猜 provider ID。
 
-3.16 支持可选 `project_id` 和 `additional_directories`。省略时，目标执行目录属于发起会话的执行／附加目录范围，便继承项目及其余目录；来源不唯一、远端、项目已删除或目标在范围之外时不继承。会话冻结的附加目录优先于项目 roots，空数组也有效。项目／目录数据损坏时在创建前明确报错，不猜权限。
+3.16+ 的两种模式：目录模式（`workspace_path`）下，目标执行目录属于发起会话的执行／附加目录范围时继承项目与其余目录（未归类发起会话继承 null，同目录子会话同为未归类）；目标属于已注册项目根但跨项目时，创建前报 `project_id_required`，须先 `list_projects` 按 root_path 反查后改用项目模式，不静默落未归类。项目模式（`project_id`）以项目主根（`is_primary`）为执行目录并归属该项目，附加目录须显式传入、不继承。来源不唯一、远端、项目已删除时不继承。会话冻结的附加目录优先于项目 roots，空数组也有效。项目／目录数据损坏时在创建前明确报错，不猜权限。
 
-显式 `project_id:null` 表示未归类；改为其他项目时不带入原项目附加目录，由 Host 校验项目。显式 `additional_directories:[]` 表示不带附加目录；非空项必须是用户授权的绝对目录。参数转交原 Host 的 `projectId`／`additionalDirectories`，插件不直接写会话索引。旧版原有调用不增加这些字段；显式使用或继承多目录参数但 Host 未提供 3.16 版本能力时，创建前报 `project_host_unsupported`。提交回执不把请求参数冒充持久化确认，项目归属可随后用会话查询核对。
+项目不存在或已删除报 `project_not_found`；显式 `project_id:null` 不再是合法值（未归类创建走目录模式的未注册目录）。显式 `additional_directories:[]` 表示不带附加目录；非空项必须是用户授权的绝对目录。参数转交原 Host 的 `projectId`／`additionalDirectories`，插件不直接写会话索引。显式使用或继承多目录参数但 Host 未提供 3.16 版本能力时，创建前报 `project_host_unsupported`。提交回执不把请求参数冒充持久化确认：开局提交后读回任务索引核对项目归属（最多三次、间隔 300 毫秒，与权限确认同节奏），不一致报 `project_not_confirmed`（勿重复派发），行始终未落库附 `project_unverified` 告警；后续也可用会话查询核对。
 
 `permission_mode` 可选 `build`（变更前确认，可能逐次询问）/`plan`/`edit`/`auto`/`yolo` 五档，是权限策略而非开发任务类型。正常派发省略该参数；仅在用户明确指定权限模式时填写，不能因“实施代码”“构建”或“等待首肯合并”选择 `build`。合并授权边界写入开局正文，不用权限模式代替。显式请求 `yolo` 等高权限档位需用户授权，已有明确授权不重复询问。
 

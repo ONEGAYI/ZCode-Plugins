@@ -22,7 +22,7 @@ node "{{plugin_root}}/install.mjs" --native-plugin --config "{{data_path}}/confi
 
 源码模式执行 node install.mjs 部署路由技能，再按[configuration](../configuration/SKILL.md)合并客户端设置，不加 native 标志。两种注册方式二选一。
 
-4. 完成公共网关配置，再按[debug 的验证步骤](../debug/verification.md)查实际服务清单、stdio 握手和十九个工具。核对工件的 SessionStart、UserPromptSubmit、同步 Stop 仅有一套注册，Hook 和 MCP 使用同一外置库；普通空 get 不建写库。原生侧栏在 ≥3.15.1 且 MCP Apps 能力与目标会话连接就绪时提供，应用版本优先使用 Desktop 的 ZCODE_APP_VERSION，不拿页面 bridge version 比较。隔离数据库可做读取烟测；真实写工具只对用户指定的新测试会话验收。原 Host 未连接部分标记待生效，不提前让用户退出当前 ZCode。
+4. 完成公共网关配置，再按[debug 的验证步骤](../debug/verification.md)查实际服务清单、stdio 握手和工具数（基础十九个；宿主索引含 projects 表时另有 list_projects）。核对工件的 SessionStart、UserPromptSubmit、同步 Stop 仅有一套注册，Hook 和 MCP 使用同一外置库；普通空 get 不建写库。原生侧栏在 ≥3.15.1 且 MCP Apps 能力与目标会话连接就绪时提供，应用版本优先使用 Desktop 的 ZCODE_APP_VERSION，不拿页面 bridge version 比较。隔离数据库可做读取烟测；真实写工具只对用户指定的新测试会话验收。原 Host 未连接部分标记待生效，不提前让用户退出当前 ZCode。
 
 ## 升级与卸载
 

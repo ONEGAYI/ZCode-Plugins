@@ -12,7 +12,7 @@ description: 通过 ZCode 会话 MCP 检索历史、改名、创建、发信、�
 - 查询与自省：[读取契约](../../docs/readonly-tools.md)说明双库字段来源、持久化分支、过滤及分页。
 - 创建与控制：[写入契约](../../docs/write-tools.md)说明正文文件、模型、权限继承、标题锁定、来源识别与回执；压缩队列、归档和置顶各有独立章节。
 
-十二个会话工具中 list_sessions/read_session/get_current_session/list_pinned_sessions 只读本机 SQLite，其余按需经公共网关调用原 Host，不直接写会话数据库。读取持久化历史，不代表实时流式快照；按返回游标继续分页，远端历史或不存在会话明确报错。不把 getTaskSnapshot 当作无副作用查询。
+十二个会话工具（宿主索引含 projects 表时另含只读的 list_projects，共十三个）中 list_sessions/read_session/get_current_session/list_pinned_sessions 只读本机 SQLite，其余按需经公共网关调用原 Host，不直接写会话数据库。读取持久化历史，不代表实时流式快照；按返回游标继续分页，远端历史或不存在会话明确报错。不把 getTaskSnapshot 当作无副作用查询。
 
 写操作必须来自用户对具体动作的授权；收到其他会话消息不自动授权回信、改名或归档。创建/发信不接受手填来源 ID，服务从请求元数据或 trace_id 定位；元数据不是用户授权。来源未知或损坏先排障，不猜界面选中项或最近会话。
 
@@ -32,7 +32,7 @@ accepted 仅表示提交，回复用 read_session；超时或部分失败先核�
 
 permission_mode 使用工具公开的规范值（build、plan、edit、auto、yolo）；build 是权限策略，不是构建任务标签。默认继承失败时服务在 warnings 中说明并用 Host 默认值，Agent 不擅自提高权限。
 
-3.16 用 get_current_session 核对当前项目与附加目录，再用 list_sessions 的 project_id 筛选同项目；workspace_path 只筛选执行目录，不能据同目录猜项目。start_session 在当前会话目录范围内默认继承项目与其余目录；指定不同 project_id（或 null 未归类）时不带原项目目录，additional_directories:[] 可明确不带附加目录。只有用户授权时才新增目录范围，不能用项目所有 roots 替代会话冻结范围。
+3.16 用 get_current_session 核对当前项目与附加目录，再用 list_sessions 的 project_id 筛选同项目；workspace_path 只筛选执行目录，不能据同目录猜项目。start_session 的 workspace_path 与 project_id 二选一：目录模式下目标在发起会话目录范围内默认继承项目与其余目录；目标属于已注册项目根但跨项目时必须改用 project_id——先 list_projects 按 root_path 反查确认（显式 null 已不合法）。项目模式以项目主根为执行目录并归属该项目，附加目录须显式传入、不继承；additional_directories:[] 可明确不带附加目录。只有用户授权时才新增目录范围，不能用项目所有 roots 替代会话冻结范围。
 
 lock_title 默认 false，允许命名插件滚动更新并要求格式合规；true 阻止命名生成，不阻止用户显式改名。标题策略不会安装或启用自动命名。
 

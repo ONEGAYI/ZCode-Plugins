@@ -23,4 +23,4 @@ description: ZCode 会话 MCP 的源码兼容入口，按请求定位安装、�
 | GLM 套餐额度、卡片与许可后重置 | skills/glm/SKILL.md |
 | 服务、来源定位或原 Host 故障 | skills/debug/SKILL.md |
 
-共十九个工具。工件使用插件自有 SQLite；公共模块和网关由公共插件提供，业务插件不复制其实现。
+基础十九个工具，宿主索引含 projects 表（3.16+）时另公布只读的 list_projects（共二十个）。工件使用插件自有 SQLite；公共模块和网关由公共插件提供，业务插件不复制其实现。

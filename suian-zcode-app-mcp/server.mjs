@@ -30,8 +30,12 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
   controller ??= createSessionController({ reader, gatewayConfigPath: config.gatewayConfigPath });
   // 注册工具前探测一次宿主索引能力：无 projects 表的旧宿主不公布项目工具，
   // start_session 维持目录模式 schema（project_id 字段不出现），从源头防误用。
-  // MCP server 为按需拉起的短命进程，宿主升级重连后自动换用新 schema，无陈旧窗口。
-  const projectCapable = (() => { try { return reader.projectsSupported(); } catch { return false; } })();
+  // server 进程随 CLI 会话存活（可达数小时），存活期间宿主升级迁移不会刷新本缓存——
+  // 启动时库尚旧或探测失败按旧宿主软退化（下个会话自愈），失败原因写 stderr 便于定位。
+  const projectCapable = (() => {
+    try { return reader.projectsSupported(); }
+    catch (error) { console.error(`[suian-zcode-app-mcp] projects 能力探测失败，按旧宿主降级：${error.message}`); return false; }
+  })();
   const respond = (name, run) => async (args, extra) => {
     try { return toolResult(name, await run(args, extra)); }
     catch (error) { return { ...toolResult(name, { ...error.partial_result, error: error.message }), isError: true }; }
@@ -51,7 +55,7 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
   }, respond('list_sessions', args => reader.listSessions(args)));
   if (projectCapable) server.registerTool('list_projects', {
     title: '列出 ZCode 项目',
-    description: '读取本机项目注册表，供 start_session 跨项目创建前反查 project_id；返回项目 ID、名称与工作区根含主根标记。未注册目录不在其中，无需 project_id。',
+    description: '读取本机项目注册表，供 start_session 跨项目创建前反查 project_id；返回项目 ID、名称、置顶标记与工作区根（含主根标记）。未注册目录不在其中，无需 project_id。',
     inputSchema: z.object({}).strict(),
     annotations
   }, respond('list_projects', () => reader.listProjects()));
@@ -99,7 +103,7 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
   }, respond('rename_session', args => controller.renameSession(args)));
   const startSessionFields = { title: nonempty.optional(), lock_title: z.boolean().default(false), ...messageFields,
     additional_directories: z.array(nonempty.refine(isAbsolute, '必须是绝对目录路径')).optional()
-      .describe('3.16 附加执行目录。省略且沿用原项目时继承发起会话目录范围；空数组表示不带附加目录。新增目录须有用户授权，不以项目全部目录替代会话冻结范围。'),
+      .describe('3.16 附加执行目录。workspace_path 目录模式下，省略且沿用原项目时继承发起会话目录范围；project_id 项目模式不继承，须显式传入。空数组表示不带附加目录；新增目录须有用户授权，不以项目全部目录替代会话冻结范围。'),
     model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional(),
     permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional().describe('正常省略以继承父会话 CLI 权限，失败用 Host 默认并告警；仅用户明确指定时填写。build=变更前确认，非构建任务类型；plan=规划，edit=自动编辑，auto=Host 自动策略，yolo=完全访问。不得为等待合并批准改为 build，显式提权须用户授权。') };
   server.registerTool('start_session', {
@@ -143,7 +147,8 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
         }
       }
       // 跨项目堵漏（#126）：继承未命中且未归类创建时反查项目注册表，命中已注册根即引导显式
-      // project_id（先 list_projects 反查），不再静默落到未归类分组
+      // project_id（先 list_projects 反查），不再静默落到未归类分组。
+      // 继承得到 null 不在此列：未归类父会话派同目录子会话以发起会话归属为准（同项目继承语义），属预期
       if (projectCapable && input.project_id === undefined) {
         const matches = reader.projectsByRoot(args.workspace_path);
         if (matches.length) throw new Error(`project_id_required: 目标目录属于${matches.length > 1 ? '多个' : ''}已注册项目${matches.map(item => `「${item.name}」（${item.project_id}）`).join('、')}，跨项目创建需显式 project_id，先 list_projects 反查确认`);

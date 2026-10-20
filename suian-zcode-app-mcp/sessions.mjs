@@ -67,17 +67,18 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
     projectById(projectId) {
       const db = openReadOnly(indexDbPath);
       try {
-        if (!projectTablesPresent(db)) return null;
+        if (!projectTablesPresent(db)) throw new Error('project_schema_unsupported: 当前宿主索引不支持项目查询（ZCode Desktop 3.16+）');
         const [project] = assembleProjects(db.prepare(projectRowSql(' AND p.project_id=?')).all(projectId));
         return project ?? null;
       } finally { db.close(); }
     },
-    // 按工作区根反查所属项目：路径经 normalize 精确匹配（大小写/斜杠/尾斜杠归一）；
-    // 旧宿主索引无项目表时按空结果降级，调用方仅在支持项目时进入
+    // 按工作区根反查所属项目：路径经 normalize 精确匹配（大小写/斜杠/尾斜杠归一）。
+    // 两者缺表时与 listProjects 同口径显式报错（#126 第二层防线）：调用方仅在 projectCapable
+    // 分支进入，缺表只可能出现在启动探测后宿主索引被降级覆盖的窗口，报错优于静默停用
     projectsByRoot(workspacePath) {
       const db = openReadOnly(indexDbPath);
       try {
-        if (!projectTablesPresent(db)) return [];
+        if (!projectTablesPresent(db)) throw new Error('project_schema_unsupported: 当前宿主索引不支持项目反查（ZCode Desktop 3.16+）');
         db.function('normalize_workspace', normalizeWorkspace);
         return db.prepare(`SELECT p.project_id,p.name FROM projects p JOIN project_roots r ON r.project_id=p.project_id
           WHERE p.host_id='local' AND p.deleted=0 AND normalize_workspace(r.root_path)=?
