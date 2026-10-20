@@ -190,7 +190,7 @@ test('工件工具描述承载摘要时效、主动登记、增量维护和资�
   const call = await connect(t, fixture(t)), { tools } = await call.listTools();
   const get = tools.find(tool => tool.name === 'get_artifacts').description;
   const set = tools.find(tool => tool.name === 'set_artifacts').description;
-  assert.match(get, /最新.*完整.*统计/);
+  assert.match(get, /最新工件列表、revision 与统计/);
   assert.match(get, /摘要.*可能已过时/);
   assert.match(set, /创建或接手.*后续用途.*登记/);
   assert.match(set, /kind\/ref\/label\/purpose.*pr\/issue\/session\/file\/link/);

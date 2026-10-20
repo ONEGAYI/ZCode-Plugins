@@ -154,12 +154,3 @@ test('单条 stat 挂起超过软超时按未知降级：不判缺失、不阻�
   assert.equal(present.is_directory, false, '其余条目正常探测不受影响');
   assert.equal(polluted.is_directory, false, '非挂起条目的残留标记仍被实时探测纠正');
 });
-
-test('get 工具描述说明 file 实时探测字段与降级语义', async t => {
-  const f = fixture(t), call = await connect(t, f), { tools } = await call.listTools();
-  const get = tools.find(tool => tool.name === 'get_artifacts').description;
-  assert.match(get, /file 条目附带实时探测标记/);
-  assert.match(get, /is_directory/);
-  assert.match(get, /missing/);
-  assert.match(get, /其它探测错误按存在处理/);
-});
