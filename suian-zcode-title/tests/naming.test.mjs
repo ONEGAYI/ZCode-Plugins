@@ -10,7 +10,8 @@ function fixture() {
     read:async()=>structuredClone(box.snapshot),
     generate:async()=>{box.generations++;return{text:JSON.stringify(candidate),finishReason:"stop",usage:{inputTokens:40,outputTokens:10}};},
     rename:async title=>{box.renames++;box.snapshot.title=title;},
-    saveState:async state=>{box.state=structuredClone(state);}
+    saveState:async state=>{box.state=structuredClone(state);},
+    confirmFreezeTitle:async()=>false
   };
   return box;
 }
@@ -179,6 +180,28 @@ test("冻结集合不含当前标题时维持手动改名锁定",async()=>{
   box.snapshot.freezeTitles=[frozenTitle];
   const result=await runNaming({backend:box.backend,selection,state:{lastFingerprint:"content-v0",lastTitle:"🧩 旧标题｜已过时"},apply:true});
   assert.equal(result.status,"manual_title","集合外标题变化仍按用户手动改名处理");
+  assert.equal(box.state.locked,true);
+  assert.equal(box.generations,0);
+});
+test("双库一致的冻结经锁定前二次查证豁免，不视为手动改名（#125）",async()=>{
+  const box=fixture(),frozenTitle="[pr-babysit] ONEGAYI/vsidian#603 每10分钟巡查";
+  box.snapshot.title=frozenTitle;box.snapshot.titleSource="custom";
+  box.snapshot.context.current_title=frozenTitle;
+  // 宿主 3.16+ 冻结同步任务索引：backend 按分裂条件加载的一次证据为空，仅锁定前现查能命中
+  box.snapshot.freezeTitles=[];
+  box.backend.confirmFreezeTitle=async title=>title===frozenTitle;
+  const result=await runNaming({backend:box.backend,selection,state:{lastFingerprint:"content-v0",lastTitle:"🧩 旧标题｜已过时"},apply:true});
+  assert.equal(result.status,"renamed","二次查证命中冻结应接管而非锁定");
+  assert.equal(box.snapshot.title,candidate.title);
+  assert.equal(box.state.locked,undefined);
+});
+test("锁定前二次查证否定时维持手动改名锁定（#125）",async()=>{
+  const box=fixture(),frozenTitle="[pr-babysit] ONEGAYI/vsidian#603 每10分钟巡查";
+  box.snapshot.title=frozenTitle;box.snapshot.titleSource="custom";
+  box.snapshot.context.current_title=frozenTitle;
+  box.snapshot.freezeTitles=[];
+  const result=await runNaming({backend:box.backend,selection,state:{lastFingerprint:"content-v0",lastTitle:"🧩 旧标题｜已过时"},apply:true});
+  assert.equal(result.status,"manual_title","二次查证不命中仍按用户手动改名处理");
   assert.equal(box.state.locked,true);
   assert.equal(box.generations,0);
 });

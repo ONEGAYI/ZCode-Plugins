@@ -119,6 +119,9 @@ test("索引标题分裂时按会话内 CronCreate 冻结证据放行，无证�
     const synced=createBackend({event:{session_id:"sess_synced",cwd:"D:\\anywhere"},config,connect:async()=>{throw Error("read 不应连远控");},saveState:async()=>{},prompt:"规则"});
     const syncsnap=await synced.read();
     assert.deepEqual(syncsnap.freezeTitles,[],"一致双库不加载冻结证据，防止历史 cron 标题旁路手动锁");
+    // 双库一致的冻结由锁定前二次查证兜底：现查会话历史 CronCreate 记录，不依赖分裂信号（#125）
+    assert.equal(await synced.confirmFreezeTitle(frozenTitle),true,"锁定前二次查证可命中双库一致的冻结");
+    assert.equal(await synced.confirmFreezeTitle("用户手改的标题"),false,"二次查证不命中的标题不豁免");
   } finally {rmSync(root,{recursive:true});}
 });
 

@@ -101,6 +101,8 @@ export function createBackend({event,config,saveState,prompt,connect=connectHost
       if(result.taskId&&result.taskId!==sessionId)throw new Error("改名返回了不同会话");
       if(result.title!==title)throw new Error("原 Host 改名响应不一致");
     },
+    // 锁定前二次查证（#125）：不依赖两库分裂条件，现查会话历史 CronCreate 记录判断标题是否冻结
+    async confirmFreezeTitle(title) {return (await loadFreezeTitles()).includes(title);},
     saveState,
     close() {remote?.close();}
   };
