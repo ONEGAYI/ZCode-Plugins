@@ -1,6 +1,7 @@
 // 当前 ZCode 会将 content 与 structuredContent 都投影给模型；文本只报告关键状态。
 const summaries = {
   list_sessions: data => `会话：本次 ${data.sessions.length} 个，共 ${data.total} 个。`,
+  list_projects: data => `项目：共 ${data.projects.length} 个。`,
   list_pinned_sessions: data => `置顶会话：本次 ${data.sessions.length} 个，共 ${data.total} 个。`,
   list_crons: data => `定时任务：本次 ${data.automations.length} 个，共 ${data.total} 个。`,
   read_session: data => `已读取 ${data.messages.length} 条消息。`,

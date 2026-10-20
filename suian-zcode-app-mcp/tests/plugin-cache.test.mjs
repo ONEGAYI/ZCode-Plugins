@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { linkCommon } from '../../suian-zcode-common/link.mjs';
 
-test('分别缓存的两个业务插件通过公共包入口启动，MCP 公布十九个工具', async t => {
+test('分别缓存的两个业务插件通过公共包入口启动，MCP 公布基础十九个工具', async t => {
   const root = await mkdtemp(join(tmpdir(), 'zcode-native-cache-'));
   t.after(() => rm(root, { recursive: true }));
   const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -40,7 +40,10 @@ test('分别缓存的两个业务插件通过公共包入口启动，MCP 公布�
   t.after(() => client.close());
   await client.connect(transport);
   assert.equal(client.getServerVersion().version, JSON.parse(await readFile(join(roots['suian-zcode-app-mcp'], '.zcode-plugin', 'plugin.json'), 'utf8')).version);
-  assert.equal((await client.listTools()).tools.length, 19);
+  // server 按本机真实宿主索引差异化注册：含 projects 表（Desktop 3.16+）时加公布 list_projects
+  const listed = (await client.listTools()).tools.map(tool => tool.name);
+  assert.equal(listed.length, listed.includes('list_projects') ? 20 : 19);
+  assert.ok(listed.includes('start_session') && listed.includes('list_sessions'));
   await client.close();
   const hook = JSON.parse(await readFile(join(roots['suian-zcode-title'], 'hooks', 'hooks.json'), 'utf8')).hooks.Stop[0].hooks[0];
   assert.equal(hook.async, true);

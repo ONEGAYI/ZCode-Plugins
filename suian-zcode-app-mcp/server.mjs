@@ -28,6 +28,10 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
     { capabilities: { resources: { subscribe: true } } });
   const reader = createSessionReader(config);
   controller ??= createSessionController({ reader, gatewayConfigPath: config.gatewayConfigPath });
+  // 注册工具前探测一次宿主索引能力：无 projects 表的旧宿主不公布项目工具，
+  // start_session 维持目录模式 schema（project_id 字段不出现），从源头防误用。
+  // MCP server 为按需拉起的短命进程，宿主升级重连后自动换用新 schema，无陈旧窗口。
+  const projectCapable = (() => { try { return reader.projectsSupported(); } catch { return false; } })();
   const respond = (name, run) => async (args, extra) => {
     try { return toolResult(name, await run(args, extra)); }
     catch (error) { return { ...toolResult(name, { ...error.partial_result, error: error.message }), isError: true }; }
@@ -45,6 +49,12 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
     }).strict(),
     annotations
   }, respond('list_sessions', args => reader.listSessions(args)));
+  if (projectCapable) server.registerTool('list_projects', {
+    title: '列出 ZCode 项目',
+    description: '读取本机项目注册表，供 start_session 跨项目创建前反查 project_id；返回项目 ID、名称与工作区根含主根标记。未注册目录不在其中，无需 project_id。',
+    inputSchema: z.object({}).strict(),
+    annotations
+  }, respond('list_projects', () => reader.listProjects()));
   server.registerTool('read_session', {
     title: '读取 ZCode 聊天消息',
     description: '读取本机持久化分支的可见用户与助手消息，含完整正文与附件信息，不含工具输出、思考及隐藏通知。页内按时间顺序；将 next_before_message_id 传入 before_message_id 续读更早历史。非实时流；远端或未入索引的会话报错。',
@@ -87,29 +97,56 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
     inputSchema: z.object({ ...target, title: nonempty }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   }, respond('rename_session', args => controller.renameSession(args)));
+  const startSessionFields = { title: nonempty.optional(), lock_title: z.boolean().default(false), ...messageFields,
+    additional_directories: z.array(nonempty.refine(isAbsolute, '必须是绝对目录路径')).optional()
+      .describe('3.16 附加执行目录。省略且沿用原项目时继承发起会话目录范围；空数组表示不带附加目录。新增目录须有用户授权，不以项目全部目录替代会话冻结范围。'),
+    model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional(),
+    permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional().describe('正常省略以继承父会话 CLI 权限，失败用 Host 默认并告警；仅用户明确指定时填写。build=变更前确认，非构建任务类型；plan=规划，edit=自动编辑，auto=Host 自动策略，yolo=完全访问。不得为等待合并批准改为 build，显式提权须用户授权。') };
   server.registerTool('start_session', {
     title: '启动 ZCode 会话',
     description: '按用户授权在网关连接的 Desktop 已打开的本地工作区创建独立会话并发送开局消息。服务自动识别来源，来源不是授权、不接受手填来源 ID；冲突附 warnings，缺失或损坏时报错。title 仅命名新会话；lock_title=true 阻止自动命名。accepted 仅表示提交，回复用 read_session；部分失败先核查返回 ID，不盲目重试。',
-    inputSchema: z.object({ workspace_path: nonempty, title: nonempty.optional(), lock_title: z.boolean().default(false), ...messageFields,
-      project_id: nonempty.nullable().optional().describe('3.16 项目 ID；null 表示未归类。省略时，目标在发起会话目录范围内则继承项目。跨项目仅按用户明确要求填写。'),
-      additional_directories: z.array(nonempty.refine(isAbsolute, '必须是绝对目录路径')).optional()
-        .describe('3.16 附加执行目录。省略且沿用原项目时继承发起会话目录范围；空数组表示不带附加目录。新增目录须有用户授权，不以项目全部目录替代会话冻结范围。'),
-      model: z.object({ provider_id: nonempty, model_id: nonempty, reasoning_level: nonempty.optional() }).strict().optional(),
-      permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional().describe('正常省略以继承父会话 CLI 权限，失败用 Host 默认并告警；仅用户明确指定时填写。build=变更前确认，非构建任务类型；plan=规划，edit=自动编辑，auto=Host 自动策略，yolo=完全访问。不得为等待合并批准改为 build，显式提权须用户授权。') }).strict()
-      .refine(oneMessage, 'message 与 message_file 必须且只能填写一个').meta(messageSchemaMeta),
+    // 新宿主（索引含 projects 表）两参二选一：project_id 项目模式 / workspace_path 目录模式；
+    // 旧宿主维持目录模式原 schema，project_id 字段不出现
+    inputSchema: projectCapable
+      ? z.object({ workspace_path: nonempty.optional().describe('执行目录；仅用于未注册为项目的目录（创建后未归类）与同项目快捷继承。与 project_id 二选一'),
+          ...startSessionFields,
+          project_id: nonempty.optional().describe('3.16+ 项目 ID。项目模式：以项目主根（is_primary）为执行目录创建并归属该项目；跨项目创建必填——先 list_projects 按 root_path 反查确认') }).strict()
+        .refine(oneMessage, 'message 与 message_file 必须且只能填写一个')
+        .refine(args => (args.project_id !== undefined) !== (args.workspace_path !== undefined),
+          'project_id 与 workspace_path 必须二选一：project_id 为项目模式（以项目主根为执行目录创建并归属该项目），workspace_path 为目录模式（未注册目录的未归类创建或同项目继承）')
+        .meta(messageSchemaMeta)
+      : z.object({ workspace_path: nonempty, ...startSessionFields }).strict()
+        .refine(oneMessage, 'message 与 message_file 必须且只能填写一个').meta(messageSchemaMeta),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
   }, respond('start_session', async (args, extra) => {
     const input = await messageInput(args);
     const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: 'start_session' });
-    if (origin.sessionId && (args.project_id === undefined || args.additional_directories === undefined)) {
-      const parent = reader.sessionProject({ session_id: origin.sessionId });
-      if (parent && !parent.projectDeleted && parent.workspacePath) {
-        const roots = [parent.workspacePath, ...parent.additionalDirectories];
-        if (roots.some(path => normalizeWorkspace(path) === normalizeWorkspace(args.workspace_path))) {
-          if (args.project_id === undefined) input.project_id = parent.projectId;
-          if (args.additional_directories === undefined && (args.project_id === undefined || args.project_id === parent.projectId))
-            input.additional_directories = roots.filter(path => normalizeWorkspace(path) !== normalizeWorkspace(args.workspace_path));
+    if (projectCapable && args.project_id !== undefined) {
+      // 项目模式：以项目主根（is_primary，缺标记取首个根）为执行目录并归属该项目；
+      // 跳过发起会话继承，附加目录仅认调用方显式传入，不以项目全部目录替代会话冻结范围
+      const project = reader.projectById(args.project_id);
+      if (!project) throw new Error('project_not_found: 指定项目不存在或已删除，请用 list_projects 核对');
+      const root = project.roots.find(item => item.is_primary) ?? project.roots[0];
+      if (!root) throw new Error('project_root_missing: 项目没有注册任何工作区根');
+      input.workspace_path = root.root_path;
+      input.project_id = args.project_id;
+    } else {
+      if (origin.sessionId && (args.project_id === undefined || args.additional_directories === undefined)) {
+        const parent = reader.sessionProject({ session_id: origin.sessionId });
+        if (parent && !parent.projectDeleted && parent.workspacePath) {
+          const roots = [parent.workspacePath, ...parent.additionalDirectories];
+          if (roots.some(path => normalizeWorkspace(path) === normalizeWorkspace(args.workspace_path))) {
+            if (args.project_id === undefined) input.project_id = parent.projectId;
+            if (args.additional_directories === undefined && (args.project_id === undefined || args.project_id === parent.projectId))
+              input.additional_directories = roots.filter(path => normalizeWorkspace(path) !== normalizeWorkspace(args.workspace_path));
+          }
         }
+      }
+      // 跨项目堵漏（#126）：继承未命中且未归类创建时反查项目注册表，命中已注册根即引导显式
+      // project_id（先 list_projects 反查），不再静默落到未归类分组
+      if (projectCapable && input.project_id === undefined) {
+        const matches = reader.projectsByRoot(args.workspace_path);
+        if (matches.length) throw new Error(`project_id_required: 目标目录属于${matches.length > 1 ? '多个' : ''}已注册项目${matches.map(item => `「${item.name}」（${item.project_id}）`).join('、')}，跨项目创建需显式 project_id，先 list_projects 反查确认`);
       }
     }
     // 缺省继承发起者当前权限：仅来源唯一时读 CLI 会话库；来源冲突由 originWarning 说明，不再叠加权限警告。

@@ -54,7 +54,8 @@ async function fixture(overrides = {}) {
         : { sessions: [{ session_id: args.query, archived, pinned }] },
       listSessionStates: args => overrides.listSessionStates ? overrides.listSessionStates(args)
         : [{ session_id: args.session_id, archived, pinned }],
-      sessionMode: args => overrides.sessionMode ? overrides.sessionMode(args) : { mode: persistedMode, observed: [persistedMode] } },
+      sessionMode: args => overrides.sessionMode ? overrides.sessionMode(args) : { mode: persistedMode, observed: [persistedMode] },
+      sessionProjectId: args => overrides.sessionProjectId ? overrides.sessionProjectId(args) : undefined },
     loadAuthorization: async () => { throw new Error('网关调用不得读取旧远控凭据'); },
     setTitlePolicy: async args => { policies.push(args); },
     delay: async () => {},
@@ -687,4 +688,39 @@ test('额度重置保持单飞，确认流程期间的并发重置明确拒绝',
   gate.resolve({ providers: [] });
   await assert.rejects(first, /glm_provider_unavailable/);
   await assert.rejects(f.controller.resetGlmQuota({ workspace_path: workspace, reset_type: 'FIVE_HOUR' }, { requestConfirmation: confirm }), /glm_provider_unavailable/);
+});
+
+test('startSession 首发落库后读回项目归属：一致通过，不一致抛 project_not_confirmed，始终未落仅告警', async () => {
+  // 归属一致通过（含 null === null 的未归类继承）
+  const ok = await fixture({ sessionProjectId: () => 'project-a' });
+  assert.equal(Object.hasOwn(await ok.controller.startSession({ workspace_path: workspace, message: 'hello', project_id: 'project-a' }), 'warnings'), false);
+  const unclassified = await fixture({ sessionProjectId: () => null });
+  assert.equal(Object.hasOwn(await unclassified.controller.startSession({ workspace_path: workspace, message: 'hello', project_id: null }), 'warnings'), false);
+  // 轮询中途落库：只读不重发
+  let reads = 0;
+  const delayed = await fixture({ sessionProjectId: () => (++reads >= 2 ? 'project-a' : undefined) });
+  assert.equal(Object.hasOwn(await delayed.controller.startSession({ workspace_path: workspace, message: 'hello', project_id: 'project-a' }), 'warnings'), false);
+  assert.equal(reads, 2);
+  // 不一致：开局已提交，partial_result 携带回执，不重复派发
+  const mismatched = await fixture({ sessionProjectId: () => 'project-b' });
+  await assert.rejects(mismatched.controller.startSession({ workspace_path: workspace, message: 'hello', project_id: 'project-a' }), error => {
+    assert.match(error.message, /project_not_confirmed/);
+    assert.match(error.message, /请求 project-a，读回 project-b/);
+    assert.equal(error.partial_result.session_id, 'sess_new');
+    assert.equal(error.partial_result.delivery_status, 'accepted');
+    return true;
+  });
+  assert.equal(mismatched.calls.filter(call => call.method === 'sendPrompt').length, 1);
+  // 行始终未落：按读不到告警，不把已提交的开局变成失败
+  reads = 0;
+  const unverified = await fixture({ sessionProjectId: () => { reads++; return undefined; } });
+  const warned = await unverified.controller.startSession({ workspace_path: workspace, message: 'hello', project_id: 'project-a' });
+  assert.deepEqual(warned.warnings.map(w => w.code), ['project_unverified']);
+  assert.equal(reads, 3, '轮询至多三次');
+  // 读库异常与读不到同观感
+  const failing = await fixture({ sessionProjectId: () => { throw new Error('SQLITE_BUSY fixture'); } });
+  assert.deepEqual((await failing.controller.startSession({ workspace_path: workspace, message: 'hello', project_id: 'project-a' })).warnings.map(w => w.code), ['project_unverified']);
+  // 未指定项目归属时不核对
+  const untouched = await fixture({ sessionProjectId: () => { throw new Error('不得在未指定项目时探测'); } });
+  assert.equal(Object.hasOwn(await untouched.controller.startSession({ workspace_path: workspace, message: 'hello' }), 'warnings'), false);
 });

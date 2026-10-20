@@ -29,8 +29,72 @@ function parseScheduleRule(raw) {
 
 const normalizeWorkspace = path => win32.normalize(path).replaceAll('\\', '/').replace(/\/$/, '').toLowerCase();
 
+// 项目注册表（list_projects 与 start_session 项目模式的数据源）：只读本机未删除项目；
+// 左连接展开 roots 后在内存聚合，项目按置顶、位置排序，roots 按位置排序，布尔字段真实化
+const projectTablesPresent = db => db.prepare(
+  "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('projects','project_roots')").get().n === 2;
+const projectRowSql = filter => `SELECT p.project_id,p.name,p.pinned,r.root_path,r.is_primary
+  FROM projects p LEFT JOIN project_roots r ON r.project_id=p.project_id
+  WHERE p.host_id='local' AND p.deleted=0${filter}
+  ORDER BY p.pinned DESC,p.position,p.project_id,r.position,r.root_path`;
+const assembleProjects = rows => {
+  const projects = [];
+  for (const row of rows) {
+    let project = projects.at(-1);
+    if (!project || project.project_id !== row.project_id) {
+      project = { project_id: row.project_id, name: row.name, pinned: !!row.pinned, roots: [] };
+      projects.push(project);
+    }
+    if (row.root_path !== null) project.roots.push({ root_path: row.root_path, is_primary: !!row.is_primary });
+  }
+  return projects;
+};
+
 export function createSessionReader({ indexDbPath, sessionDbPath }) {
   return {
+    // 宿主能力探测：仅当索引同时具备 projects 与 project_roots 两表时按项目能力差异化注册工具
+    projectsSupported() {
+      const db = openReadOnly(indexDbPath);
+      try { return projectTablesPresent(db); } finally { db.close(); }
+    },
+    listProjects() {
+      const db = openReadOnly(indexDbPath);
+      try {
+        if (!projectTablesPresent(db)) throw new Error('project_schema_unsupported: 当前宿主索引不支持项目列表（ZCode Desktop 3.16+）');
+        return { source: 'local_tasks_index', projects: assembleProjects(db.prepare(projectRowSql('')).all()) };
+      } finally { db.close(); }
+    },
+    projectById(projectId) {
+      const db = openReadOnly(indexDbPath);
+      try {
+        if (!projectTablesPresent(db)) return null;
+        const [project] = assembleProjects(db.prepare(projectRowSql(' AND p.project_id=?')).all(projectId));
+        return project ?? null;
+      } finally { db.close(); }
+    },
+    // 按工作区根反查所属项目：路径经 normalize 精确匹配（大小写/斜杠/尾斜杠归一）；
+    // 旧宿主索引无项目表时按空结果降级，调用方仅在支持项目时进入
+    projectsByRoot(workspacePath) {
+      const db = openReadOnly(indexDbPath);
+      try {
+        if (!projectTablesPresent(db)) return [];
+        db.function('normalize_workspace', normalizeWorkspace);
+        return db.prepare(`SELECT p.project_id,p.name FROM projects p JOIN project_roots r ON r.project_id=p.project_id
+          WHERE p.host_id='local' AND p.deleted=0 AND normalize_workspace(r.root_path)=?
+          ORDER BY p.position,p.project_id`).all(normalizeWorkspace(workspacePath));
+      } finally { db.close(); }
+    },
+    // start_session 项目归属的写后读回：按 task_id 精确定位（含归档行、排除删除行，与 listSessionStates 同款精确路径）；
+    // 行缺失、跨工作区歧义或索引无 project_id 列返回 undefined 表示无法核实，null 表示已确认未归类
+    sessionProjectId({ session_id }) {
+      const db = openReadOnly(indexDbPath);
+      try {
+        if (!taskColumnsFor(db).includes('project_id')) return undefined;
+        const rows = db.prepare('SELECT project_id,host_id FROM tasks WHERE task_id=? AND deleted=0').all(session_id);
+        if (rows.length !== 1 || rows[0].host_id !== 'local') return undefined;
+        return rows[0].project_id;
+      } finally { db.close(); }
+    },
     sessionProject({ session_id }) {
       const index = openReadOnly(indexDbPath);
       try {

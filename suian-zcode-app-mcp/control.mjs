@@ -184,6 +184,19 @@ export function createSessionController({ reader, gatewayConfigPath, connect = c
             if (permissionMode !== undefined && reading.mode !== permissionMode)
               throw new Error(`permission_not_confirmed: CLI 会话库权限与请求不一致（请求 ${permissionMode}，读回 ${reading.mode}），开局已提交，请勿重复派发`);
           }
+          // 项目归属写后读回（#126）：按 task_id 精确读回任务索引的 project_id 与请求核对
+          //（null === null 的未归类亦通过）；行未落库或读库异常按未核实告警，防无效 id 静默落未归类
+          if (project_id !== undefined) {
+            let observed;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              if (attempt) await delay(300);
+              try { observed = reader.sessionProjectId?.({ session_id: meta.taskId }); } catch { observed = undefined; }
+              if (observed !== undefined) break;
+            }
+            if (observed === undefined) warnings.push({ code: 'project_unverified', message: '开局已提交，任务索引尚无可读的项目归属，未确认生效项目' });
+            else if (observed !== project_id)
+              throw new Error(`project_not_confirmed: CLI 任务索引项目归属与请求不一致（请求 ${project_id}，读回 ${observed}），开局已提交，请勿重复派发`);
+          }
           if (title !== undefined) {
             // sessionMode.observed 为空表示 CLI 库无行；权限为 null 的既有行仍可改名。
             if (!reading.observed.length) throw new Error('session_not_persisted: 开局已提交，CLI 会话库尚无会话记录，未改名，请勿重复派发');
