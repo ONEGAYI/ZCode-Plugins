@@ -2,7 +2,7 @@
 const summaries = {
   list_sessions: data => `会话：本次 ${data.sessions.length} 个，共 ${data.total} 个。`,
   list_pinned_sessions: data => `置顶会话：本次 ${data.sessions.length} 个，共 ${data.total} 个。`,
-  list_automations: data => `定时任务：本次 ${data.automations.length} 个，共 ${data.total} 个。`,
+  list_crons: data => `定时任务：本次 ${data.automations.length} 个，共 ${data.total} 个。`,
   read_session: data => `已读取 ${data.messages.length} 条消息。`,
   get_current_session: data => `当前会话：${data.session_id}。`,
   rename_session: () => '会话已重命名并读回确认。',
@@ -16,7 +16,7 @@ const summaries = {
   unpin_session: () => '已取消会话置顶。',
   get_glm_balance: data => data.errors?.length ? 'GLM 额度查询完成，部分数据不可用。' : '已读取 GLM 套餐额度与重置卡。',
   reset_glm_quota: data => data.used ? '额度已重置，已消耗一张重置卡。' : '额度重置已取消，未消耗卡片。',
-  set_automation_enabled: data => data.enabled ? '定时任务已恢复，按原计划继续调度（写后读回确认）。' : '定时任务已暂停，调度器不再认领派发（写后读回确认）。',
+  set_cron_enabled: data => data.enabled ? '定时任务已恢复，按原计划继续调度（写后读回确认）。' : '定时任务已暂停，调度器不再认领派发（写后读回确认）。',
   get_artifacts: data => data.item
     ? `已读取工件详情${data.session?.error ? '，会话状态查询失败' : ''}。`
     : `工件：共 ${data.stats.total} 条；版本 ${data.revision}。`,

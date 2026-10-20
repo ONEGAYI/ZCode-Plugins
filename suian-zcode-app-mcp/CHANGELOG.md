@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **破坏性**：定时任务工具更名，工具面命名对齐官方 Cron 工具族，便于工具延迟暴露的场景下仅凭名称识别用途：
+  - `set_automation_enabled` 更名为 `set_cron_enabled`，`list_automations` 更名为 `list_crons`。
+  - 参数 `automation_id`、返回字段 `automationId`、官方 RPC 协议名与错误码均不变；桌面管理页与既有创建记录中的任务 ID 继续可用，调用方需同步更新工具名。
+
 ## [0.10.0] - 2026-10-19
 
 会话列表补充项目多目录信息，并支持通过主目录或附加目录查找所属项目的会话。

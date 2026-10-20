@@ -2,7 +2,7 @@
 
 目标：做独立的 MCP 服务，让 ZCode 与外部 Agent 查询会话，并逐步沿官方授权原 Host 链路增加控制能力。公共层提供协议、授权与通知模块；suian-zcode-title（会话自动命名）使用它完成命名业务。
 
-当前状态：公开十九个工具，另有仅工件面板可见的 PR/议题状态查询与本机文件定位（get_pr_statuses、reveal_artifact，UI 启用后 visibility=app）。list_sessions、read_session、get_current_session、list_pinned_sessions 与 list_automations 保持本机 SQLite 只读连接；会话控制、定时任务启停、定时任务工具面唤醒与 GLM 工具通过公共网关 connectHost 调用原 Host，不新增官方 terminal。工件列表、非会话详情与 set_artifacts 操作插件自有 SQLite，不依赖网关；会话工件详情每次查询原 Host 实时状态。契约见 docs/readonly-tools.md、docs/write-tools.md、docs/glm-balance-design.md 与 docs/artifact-zone-spec.md。
+当前状态：公开十九个工具，另有仅工件面板可见的 PR/议题状态查询与本机文件定位（get_pr_statuses、reveal_artifact，UI 启用后 visibility=app）。list_sessions、read_session、get_current_session、list_pinned_sessions 与 list_crons 保持本机 SQLite 只读连接；会话控制、定时任务启停、定时任务工具面唤醒与 GLM 工具通过公共网关 connectHost 调用原 Host，不新增官方 terminal。工件列表、非会话详情与 set_artifacts 操作插件自有 SQLite，不依赖网关；会话工件详情每次查询原 Host 实时状态。契约见 docs/readonly-tools.md、docs/write-tools.md、docs/glm-balance-design.md 与 docs/artifact-zone-spec.md。
 
 ## 守则（沿自研究期，开发期继续适用）
 
@@ -15,7 +15,7 @@
 
 ## 边界与维护
 
-- 三个会话读取工具与 list_pinned_sessions、list_automations 只查本机持久化数据，不连接远控。十个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在网关连接的 Desktop 窗口打开。置顶写走 zcode-task setTaskPinned 并从本地索引读回确认，与归档状态正交；定时任务启停走 zcode-agent setAutomationEnabled，官方 void 且零行更新静默，写后必须同 scope listAutomations 读回确认，未找到或状态不符按结构化错误返回；定时任务工具面唤醒向来源会话投递 queue 自发消息并要求收到回执后立即结束本轮。
+- 三个会话读取工具与 list_pinned_sessions、list_crons 只查本机持久化数据，不连接远控。十个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在网关连接的 Desktop 窗口打开。置顶写走 zcode-task setTaskPinned 并从本地索引读回确认，与归档状态正交；定时任务启停走 zcode-agent setAutomationEnabled，官方 void 且零行更新静默，写后必须同 scope listAutomations 读回确认，未找到或状态不符按结构化错误返回；定时任务工具面唤醒向来源会话投递 queue 自发消息并要求收到回执后立即结束本轮。
 - 两个 GLM 工具也连接原 Host。重置每次必须真实用户明确许可和客户端 form elicitation，不接受 Agent 自填 confirmed；不自动重试消耗。只读查询不发卡、不消耗、不标记历史已读。
 - 创建和发信不接受来源 ID 参数；服务读取本次 MCP 请求的 session_id，缺失时按 trace_id 与工具名从本地 tool_usage 唯一定位，在 created-by-other-session 注入 creator、在 delivered-by-other-session 注入 deliverer。冲突或歧义降级为 warnings，notice 标注可能来源并继续执行；完全未知或损坏时在写入前报错。不猜界面选中项或最近会话。客户端元数据不等于身份认证或用户授权。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
 - 原 Host 调用统一走公共网关；缺少 RPC 时明确要求升级，不回退官方直连。隔离测试与真实手机验收分别记录，paired 不代表手机身份；手机使用远端工作区时本地调用让位。
@@ -56,7 +56,7 @@
 
 | control.mjs | 原 Host 改名读回、指定模型与权限模式创建、消息包装、v4 可选投递策略与提交回执、compact 维护命令与受理回执、归档保护与复原、置顶写与索引读回确认、定时任务启停（zcode-agent setAutomationEnabled + 同 scope listAutomations 读回确认，workspace_key 透传归属标识）；改名/创建后双库标题复核，分叉时回执 warnings；按调用释放连接 |
 | glm.mjs | GLM 个人套餐额度/卡片投影、确认后重置与同次尝试回执；共用 controller 远控互斥 |
-| sessions.mjs | 只读索引查询、会话定位、历史投影与分页；list_sessions 置顶优先排序，置顶列表查询与之同源；list_automations 直读同库 automations 表（官方 camelCase 投影、脏 scheduleRule 容忍）；sessionTitle 轻量双库标题读取供复核，sessionMode 读取 CLI 会话库权限供继承与首发后确认（不用索引或创建响应的 mode）；sessionOverview 汇集发起会话双库自省字段供 get_current_session，两库无行时字段可空 |
+| sessions.mjs | 只读索引查询、会话定位、历史投影与分页；list_sessions 置顶优先排序，置顶列表查询与之同源；list_crons 直读同库 automations 表（官方 camelCase 投影、脏 scheduleRule 容忍）；sessionTitle 轻量双库标题读取供复核，sessionMode 读取 CLI 会话库权限供继承与首发后确认（不用索引或创建响应的 mode）；sessionOverview 汇集发起会话双库自省字段供 get_current_session，两库无行时字段可空 |
 | tests/projects.test.mjs | 3.16 项目精确筛选、只读冻结目录、自省、创建继承与显式范围覆盖，旧版和远端元信息兼容 |
 | package.json / package-lock.json | package.json 提供插件和运行时自报版本；原生清单与锁文件同步版本，固定依赖与测试入口 |
 | CHANGELOG.md | 本插件的版本变更记录、预览限制和对应源码链接 |

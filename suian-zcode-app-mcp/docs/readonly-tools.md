@@ -80,7 +80,7 @@
 
 ## 列出定时任务
 
-`list_automations` 列出定时任务（automation）清单与调度状态，跨工作区。数据直读任务索引同库的 `automations` 表（tasks-index.sqlite），不连接网关、离线可用，与官方桌面管理页看到的是同一份持久化数据。
+`list_crons` 列出定时任务清单与调度状态，跨工作区。工具名对齐官方 Cron 工具族命名；任务对象在官方数据模型中称 automation，返回字段沿用 `automationId`。数据直读任务索引同库的 `automations` 表（tasks-index.sqlite），不连接网关、离线可用，与官方桌面管理页看到的是同一份持久化数据。
 
 | 参数 | 约定 |
 | --- | --- |

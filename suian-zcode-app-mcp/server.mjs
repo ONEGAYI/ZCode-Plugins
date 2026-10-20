@@ -202,15 +202,15 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
     }).strict(),
     annotations
   }, respond('list_pinned_sessions', args => reader.listPinnedSessions(args)));
-  server.registerTool('list_automations', {
+  server.registerTool('list_crons', {
     title: '列出 ZCode 定时任务',
-    description: '只读本机定时任务清单与持久化调度状态，离线可用；返回 automationId 供定位任务。省略参数查询全部工作区，workspace_path / workspace_key 可选过滤。定时任务触发的轮次中，官方 Cron 写工具不可用时仍可调用。',
+    description: '只读本机定时任务清单与持久化调度状态，离线可用；返回 automationId（即定时任务 ID）供定位任务。省略参数查询全部工作区，workspace_path / workspace_key 可选过滤。定时任务触发的轮次中，官方 Cron 写工具不可用时仍可调用。',
     inputSchema: z.object({
       workspace_path: z.string().min(1).optional(),
       workspace_key: z.string().min(1).optional()
     }).strict(),
     annotations
-  }, respond('list_automations', args => reader.listAutomations(args)));
+  }, respond('list_crons', args => reader.listAutomations(args)));
   server.registerTool('get_glm_balance', {
     title: '查询 GLM 套餐额度与重置卡',
     description: '只读查询当前 Host 的 BigModel 个人 Coding Plan 模型额度、GLM 工具额度、ZCode Server MCP 额度及未过期重置卡。两组 MCP 额度分别展示，不相加；缺失不等于零，不据此猜套餐。不查现金余额；目标本地工作区须在网关连接的 Desktop 打开。',
@@ -233,17 +233,17 @@ export function createMcpServer(config, { controller, prStatus, reveal } = {}) {
       return toolResult('reset_glm_quota', data);
     } catch (error) { return { ...toolResult('reset_glm_quota', { ...error.partial_result, error: error.message }), isError: true }; }
   });
-  server.registerTool('set_automation_enabled', {
+  server.registerTool('set_cron_enabled', {
     title: '暂停或恢复 ZCode 定时任务',
     description: '暂停或恢复定时任务，与桌面管理页的启停操作等价：enabled=false 暂停，调度器不再认领派发；true 恢复，按原计划继续；任务 id、历史与会话绑定不变。操作完成后向原 Host 读回确认实际状态：任务不存在、不属于该工作区或状态未生效时返回明确错误，不会报告虚假成功。会话内官方定时任务工具不能修改启停，需要暂停/恢复时使用本工具。目标工作区须在网关连接的 Desktop 打开。',
     inputSchema: z.object({
-      automation_id: nonempty.describe('定时任务 ID，见桌面管理页或任务创建记录'),
+      automation_id: nonempty.describe('定时任务 ID（官方数据模型字段 automationId），见桌面管理页或任务创建记录'),
       enabled: z.boolean().describe('false 暂停（lifecycle paused，调度器停止派发）；true 恢复（active，按原计划继续）'),
       workspace_path: nonempty.describe('定时任务所属本地工作区路径'),
       workspace_key: nonempty.optional().describe('同 ID 跨工作区歧义时的工作区归属标识')
     }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }, respond('set_automation_enabled', args => controller.setAutomationEnabled(args)));
+  }, respond('set_cron_enabled', args => controller.setAutomationEnabled(args)));
   const artifactStore = registerArtifactTools(server, config, { controller, prStatus, reveal });
   return server;
 }

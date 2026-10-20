@@ -120,8 +120,8 @@ test('MCP 握手版本与插件元信息一致，公布十九个工具并保持�
   assert.equal(lockMetadata.packages[''].version, packageMetadata.version);
   assert.equal(client.getServerVersion().version, packageMetadata.version);
   const listed = await client.listTools();
-  assert.deepEqual(listed.tools.map(tool => tool.name), ['list_sessions', 'read_session', 'get_current_session', 'rename_session', 'start_session', 'send_message', 'reset_cron_tools_visibility', 'compact_session', 'archive_session', 'restore_session', 'pin_session', 'unpin_session', 'list_pinned_sessions', 'list_automations', 'get_glm_balance', 'reset_glm_quota', 'set_automation_enabled', 'get_artifacts', 'set_artifacts']);
-  for (const tool of listed.tools) assert.equal(tool.annotations.readOnlyHint, ['list_sessions', 'read_session', 'get_current_session', 'list_pinned_sessions', 'list_automations', 'get_glm_balance'].includes(tool.name));
+  assert.deepEqual(listed.tools.map(tool => tool.name), ['list_sessions', 'read_session', 'get_current_session', 'rename_session', 'start_session', 'send_message', 'reset_cron_tools_visibility', 'compact_session', 'archive_session', 'restore_session', 'pin_session', 'unpin_session', 'list_pinned_sessions', 'list_crons', 'get_glm_balance', 'reset_glm_quota', 'set_cron_enabled', 'get_artifacts', 'set_artifacts']);
+  for (const tool of listed.tools) assert.equal(tool.annotations.readOnlyHint, ['list_sessions', 'read_session', 'get_current_session', 'list_pinned_sessions', 'list_crons', 'get_glm_balance'].includes(tool.name));
   assert.equal(listed.tools.find(tool => tool.name === 'reset_glm_quota').annotations.destructiveHint, true);
   assert.equal(listed.tools.find(tool => tool.name === 'reset_glm_quota').annotations.idempotentHint, false);
   const list = await client.callTool({ name: 'list_sessions', arguments: { query: 'MCP', limit: 1 } });
@@ -134,7 +134,7 @@ test('MCP 握手版本与插件元信息一致，公布十九个工具并保持�
   assert.ok(!chat.content[0].text.includes('实现只读工具'), '聊天正文只在 structuredContent 中保留');
 });
 
-test('list_automations 公布只读注解与可选工作区过滤，strict 拒绝未知与非法输入', async t => {
+test('list_crons 公布只读注解与可选工作区过滤，strict 拒绝未知与非法输入', async t => {
   const f = fixture(t);
   f.automation({ id: 'automation-alpha', title: '[pr-babysit] org/repo#1', created: 100 });
   f.automation({ id: 'automation-beta', workspace: 'D:\\work\\beta', key: 'kb', created: 300 });
@@ -144,7 +144,7 @@ test('list_automations 公布只读注解与可选工作区过滤，strict 拒�
   const [ct, st] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await client.close(); await server.close(); });
   await server.connect(st); await client.connect(ct);
-  const tool = (await client.listTools()).tools.find(tool => tool.name === 'list_automations');
+  const tool = (await client.listTools()).tools.find(tool => tool.name === 'list_crons');
   assert.ok(tool);
   // schema 公布形状：两个可选过滤参数、无必填、strict 拒绝未知字段
   assert.deepEqual(Object.keys(tool.inputSchema.properties), ['workspace_path', 'workspace_key']);
@@ -153,17 +153,17 @@ test('list_automations 公布只读注解与可选工作区过滤，strict 拒�
   assert.equal(tool.annotations.readOnlyHint, true);
   assert.equal(tool.annotations.destructiveHint, false);
   assert.equal(tool.annotations.idempotentHint, true);
-  const all = await client.callTool({ name: 'list_automations', arguments: {} });
+  const all = await client.callTool({ name: 'list_crons', arguments: {} });
   assert.equal(all.isError, undefined);
   assert.equal(all.structuredContent.source, 'local_tasks_index');
   assert.deepEqual(all.structuredContent.automations.map(a => a.automationId), ['automation-beta', 'automation-alpha']);
   assert.equal(all.structuredContent.total, 2);
   assert.match(all.content[0]?.text ?? '', /定时任务：本次 2 个，共 2 个/);
-  const scoped = await client.callTool({ name: 'list_automations', arguments: { workspace_path: 'd:/work/beta/' } });
+  const scoped = await client.callTool({ name: 'list_crons', arguments: { workspace_path: 'd:/work/beta/' } });
   assert.deepEqual(scoped.structuredContent.automations.map(a => a.automationId), ['automation-beta']);
   for (const invalid of [{ workspace_path: '' }, { workspace_path: 5 },
     { workspace_key: '' }, { unknown: 1 }, { limit: 50 }]) {
-    const response = await client.callTool({ name: 'list_automations', arguments: invalid });
+    const response = await client.callTool({ name: 'list_crons', arguments: invalid });
     assert.equal(response.isError, true, JSON.stringify(invalid));
   }
   // 空表是空列表而非错误；文本摘要保持简短
@@ -173,7 +173,7 @@ test('list_automations 公布只读注解与可选工作区过滤，strict 拒�
   const [ect, est] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await emptyClient.close(); await emptyServer.close(); });
   await emptyServer.connect(est); await emptyClient.connect(ect);
-  const bare = await emptyClient.callTool({ name: 'list_automations', arguments: {} });
+  const bare = await emptyClient.callTool({ name: 'list_crons', arguments: {} });
   assert.equal(bare.isError, undefined);
   assert.deepEqual(bare.structuredContent, { source: 'local_tasks_index', automations: [], total: 0 });
   assert.match(bare.content[0]?.text ?? '', /定时任务：本次 0 个，共 0 个/);
@@ -749,7 +749,7 @@ test('置顶工具转交已验证参数，置顶列表走本地索引且拒绝�
   assert.equal(calls.length, 2);
 });
 
-test('set_automation_enabled 公布暂停/恢复语义，严格校验参数并转交控制器，错误结构化返回', async t => {
+test('set_cron_enabled 公布暂停/恢复语义，严格校验参数并转交控制器，错误结构化返回', async t => {
   const f = fixture(t), calls = [];
   const { createMcpServer } = await import('../server.mjs');
   const receipt = { source: 'original_host', automation_id: 'automation-1', workspace_path: 'D:/fixture', enabled: false };
@@ -763,7 +763,7 @@ test('set_automation_enabled 公布暂停/恢复语义，严格校验参数并�
   const [ct, st] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await client.close(); await server.close(); });
   await server.connect(st); await client.connect(ct);
-  const tool = (await client.listTools()).tools.find(tool => tool.name === 'set_automation_enabled');
+  const tool = (await client.listTools()).tools.find(tool => tool.name === 'set_cron_enabled');
   assert.ok(tool);
   assert.deepEqual(Object.keys(tool.inputSchema.properties), ['automation_id', 'enabled', 'workspace_path', 'workspace_key']);
   assert.equal(tool.inputSchema.properties.enabled.type, 'boolean');
@@ -773,7 +773,7 @@ test('set_automation_enabled 公布暂停/恢复语义，严格校验参数并�
   assert.equal(tool.annotations.idempotentHint, true);
   assert.match(tool.description, /暂停|恢复/);
   const args = { automation_id: 'automation-1', enabled: false, workspace_path: 'D:/fixture', workspace_key: 'fixture-key' };
-  const accepted = await client.callTool({ name: 'set_automation_enabled', arguments: args });
+  const accepted = await client.callTool({ name: 'set_cron_enabled', arguments: args });
   assert.equal(accepted.isError, undefined);
   assert.deepEqual(accepted.structuredContent, receipt);
   assert.deepEqual(calls, [args]);
@@ -783,10 +783,10 @@ test('set_automation_enabled 公布暂停/恢复语义，严格校验参数并�
     { automation_id: ' ', enabled: false, workspace_path: 'D:/fixture' },
     { automation_id: 'automation-1', enabled: false, workspace_path: ' ' },
     { automation_id: 'automation-1', enabled: false, force: true }]) {
-    assert.equal((await client.callTool({ name: 'set_automation_enabled', arguments: invalid })).isError, true, JSON.stringify(invalid));
+    assert.equal((await client.callTool({ name: 'set_cron_enabled', arguments: invalid })).isError, true, JSON.stringify(invalid));
   }
   assert.equal(calls.length, 1);
-  const rejected = await client.callTool({ name: 'set_automation_enabled', arguments: { automation_id: 'automation_rejected', enabled: true, workspace_path: 'D:/fixture' } });
+  const rejected = await client.callTool({ name: 'set_cron_enabled', arguments: { automation_id: 'automation_rejected', enabled: true, workspace_path: 'D:/fixture' } });
   assert.equal(rejected.isError, true);
   assert.equal(rejected.structuredContent.automation_id, 'automation_rejected');
   assert.match(rejected.structuredContent.error, /automation_write_failed/);
