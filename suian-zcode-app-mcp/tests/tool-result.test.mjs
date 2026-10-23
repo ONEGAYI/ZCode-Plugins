@@ -1,6 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toolResult } from '../tool-result.mjs';
+import { toolResult, toolErrorData } from '../tool-result.mjs';
+
+test('业务包装 cause 后仍保留网关诊断和已提交回执，stderr 不复制底层正文', t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const diagnostic = { id: '11111111-1111-4111-8111-111111111111', phase: 'rpc_timeout' };
+  const cause = Object.assign(new Error('private-cause-sentinel'), { stage: 'gateway', reasonCode: 'gateway_timeout', diagnostic });
+  const error = Object.assign(new Error('刷新失败', { cause }), { partial_result: { used: true } });
+  const result = toolErrorData('reset_glm_quota', error);
+  assert.equal(result.used, true);
+  assert.equal(result.stage, 'gateway');
+  assert.equal(result.reasonCode, 'gateway_timeout');
+  assert.deepEqual(result.diagnostic, diagnostic);
+  assert.equal(JSON.stringify(logs).includes('private-cause-sentinel'), false);
+});
 
 test('人类简报保留数量与状态，完整正文仅留在结构化结果中', () => {
   const body = '正文唯一标记，不能复制进简报。'.repeat(100);

@@ -4,7 +4,7 @@ import { createSessionReader } from './sessions.mjs';
 import { createSessionController } from './control.mjs';
 import { resolveCaller } from './caller.mjs';
 import { registerArtifactTools } from './artifact-tools.mjs';
-import { toolResult } from './tool-result.mjs';
+import { toolResult, toolErrorData } from './tool-result.mjs';
 import { readFile } from 'node:fs/promises';
 import { extname, isAbsolute, win32 } from 'node:path';
 import packageMetadata from './package.json' with { type: 'json' };
@@ -39,7 +39,7 @@ export async function createMcpServer(config, { controller, prStatus, reveal } =
   })();
   const respond = (name, run) => async (args, extra) => {
     try { return toolResult(name, await run(args, extra)); }
-    catch (error) { return { ...toolResult(name, { ...error.partial_result, error: error.message }), isError: true }; }
+    catch (error) { return { ...toolResult(name, toolErrorData(name, error)), isError: true }; }
   };
   server.registerTool('list_sessions', {
     title: '列出 ZCode 会话',

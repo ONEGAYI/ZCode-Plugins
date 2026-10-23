@@ -33,7 +33,7 @@ if (deployment) {
 } else {
   // 源码布局：网关的固定执行依赖与启动链；文档、技能及其它插件代码不参与。
   const files = [
-    'gateway-build.mjs', 'gateway.mjs', 'rpc-broker.mjs', 'terminal-gateway.mjs', 'terminal-relay.mjs',
+    'gateway-build.mjs', 'gateway.mjs', 'rpc-broker.mjs', 'rpc-diagnostics.mjs', 'terminal-gateway.mjs', 'terminal-relay.mjs',
     'run.ps1', 'run.vbs', '.zcode-plugin/plugin.json',
     'vendor/remote-shared.js', 'vendor/channelClient.js', 'vendor/serialization.js',
     'vendor/buffer.js', 'vendor/foundation.js', 'vendor/channels.shared.js',
