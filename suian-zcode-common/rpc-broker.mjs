@@ -83,6 +83,8 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
     }
     peers.delete(peer);
     drainInitializations();
+    // Desktop 在终端失配后会结束桥；无人使用时不能把旧身份留给下一次附着。
+    if (!localPeers.size && !phone && !peers.size) resetPhysical(new Error('Host bridge has no remaining peers'));
   };
   const request = (peer, bytes) => {
     const { header, tail } = headerOf(bytes);
@@ -250,7 +252,7 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
       }
       if (['workspace-bridge-ready', 'workspace-bridge-error'].includes(payload.zcode_type) && bridgeRequests.has(payload.requestId)) return true;
       if (!physical || payload.bridgeSessionId !== physical.identity.bridgeSessionId) {
-        if (['rpc-frame', 'rpc-frame-ack'].includes(payload.zcode_type)) return !(phone?.passthrough && payload.bridgeSessionId === phone.identity.bridgeSessionId);
+        if (['rpc-frame', 'rpc-frame-ack', 'bridge-degraded'].includes(payload.zcode_type)) return !(phone?.passthrough && payload.bridgeSessionId === phone.identity.bridgeSessionId);
         return false;
       }
       if (payload.zcode_type === 'rpc-frame-ack') return true;
@@ -310,7 +312,7 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
       });
       socket.on('close', () => { localPeers.delete(peer); cancelPeer(peer); });
     },
-    phoneDisconnected() { if (phone) { cancelPeer(phone); phone = undefined; } },
+    phoneDisconnected() { if (phone) { const ended = phone; phone = undefined; cancelPeer(ended); } },
     // 忙判定 = 请求在飞（call/取消/排队 initialize）+ 未完成的共享桥初始化 + 手机远端透传盲区；
     // 订阅型路由与纯连接不计。透传期间网关看不到请求/应答边界，保守按忙，手机断开或切回本地工作区后解除；
     // 桥初始化有 bridgeTimeoutMs 上界，超时或失败即释放。

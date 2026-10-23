@@ -47,7 +47,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   const requests = [], bridgeOpens = [], desktopMessages = [], phoneMessages = [];
   phone?.on('message', data => phoneMessages.push(JSON.parse(data)));
   let identity, assembler, physical = 1, message = 1, helloIssued = false, boundClientId;
-  let desktopPaired = pairStatus === 'matched';
+  let desktopPaired = pairStatus === 'matched', retiredBridge;
   const respond = (header, body) => {
     for (const f of encode(pack(header, body), { ...identity, firstPhysicalSeq: physical, messageSeq: message++ })) {
       physical++; desktop.send(JSON.stringify({ type: 'data', payload: f }));
@@ -59,6 +59,12 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
     if (incoming.type === 'pair_status_ack') {
       if (options.gateway?.relayProtocolVersion === 2 && Object.keys(incoming).some(key => !['type', 'terminal_sid', 'pair_status', 'server_ts'].includes(key))) return;
       desktopPaired = incoming.pair_status === 'matched';
+      if (options.retireBridgeOnUnpaired && !desktopPaired && identity) {
+        retiredBridge = identity;
+      } else if (desktopPaired && retiredBridge) {
+        desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bridge-degraded', ...retiredBridge, reason: 'terminal-owner-ended' } }));
+        retiredBridge = undefined;
+      }
     }
     // V2 auth_ack 只在首次鉴权时生效；后续配对变化由 pair_status_ack 驱动。
     if (options.gateway?.relayProtocolVersion === 2 && incoming.type === 'data' && !desktopPaired) return;
@@ -133,6 +139,70 @@ test('V2 首次心跳前本地插件即可附着，配对通知不能重复使�
   t.after(() => client.close());
   assert.equal(client.bootstrap.desktopAppVersion, '3.16.1');
   assert.ok(f.desktopMessages.some(message => message.type === 'pair_status_ack' && message.pair_status === 'matched'));
+});
+
+test('V2 空闲失配后的迟到桥失效通知不能破坏下一次本地附着', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'waiting', { retireBridgeOnUnpaired: true, gateway: { relayProtocolVersion: 2 } });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-v2-retired-bridge-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  for (let round = 0; round < 4; round++) {
+    const count = f.desktopMessages.filter(message => message.type === 'pair_status_ack' && message.pair_status === 'waiting').length;
+    const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+    host.close();
+    await until(() => f.desktopMessages.filter(message => message.type === 'pair_status_ack' && message.pair_status === 'waiting').length > count);
+  }
+  assert.equal(f.bridgeOpens.length, 4, '无使用者后释放旧桥，下次附着使用新身份');
+  assert.deepEqual(f.faults, []);
+  assert.equal(f.phoneMessages.some(message => message.payload?.zcode_type === 'bridge-degraded'), false,
+    '旧物理桥的失效通知由网关消费，不泄露给手机');
+});
+
+test('V2 手机作为最后使用者断开后，本地附着不复用旧物理桥', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { retireBridgeOnUnpaired: true, gateway: { relayProtocolVersion: 2 } });
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'retired-phone',
+    bridgeSessionId: 'retired-phone-bridge', bridgeGeneration: 1, workspaceKey: workspace } }));
+  await until(() => f.phoneMessages.some(message => message.payload?.zcode_type === 'workspace-bridge-ready'));
+  f.phone.send(JSON.stringify({ type: 'pair_status_ack', terminal_sid: '', pair_status: 'waiting', server_ts: Math.floor(Date.now() / 1000) }));
+  await until(() => f.desktopMessages.some(message => message.type === 'pair_status_ack' && message.pair_status === 'waiting'));
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-v2-retired-phone-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  assert.equal(f.bridgeOpens.length, 2);
+  assert.deepEqual(f.faults, []);
+});
+
+test('本地附着中途退出时，未结束的内部会话查询仍保留 Host 桥', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { gateway: { relayProtocolVersion: 2 } });
+  const socket = new WebSocket(f.gateway.url.replace('/ws', '/rpc'), { headers: { Authorization: 'Bearer fixture-rpc-token' } });
+  t.after(() => socket.terminate());
+  await once(socket, 'open');
+  socket.send(JSON.stringify({ type: 'attach', workspace_path: workspace, session_id: 'pending-task' }));
+  await until(() => f.requests.some(([header]) => header[3] === 'getTaskMeta'));
+  const lookupId = f.requests[0][0][1];
+  socket.close(); await once(socket, 'close');
+  let health;
+  for (let i = 0; i < 100; i++) {
+    health = await (await fetch(f.gateway.url.replace('ws:', 'http:').replace('/ws', '/health'))).json();
+    if (health.local_clients === 0) break;
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+  assert.equal(health.local_clients, 0);
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-pending-lookup-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  assert.equal(f.bridgeOpens.length, 1, '仍有内部请求时不能提前释放共享桥');
+  f.respond([201, lookupId], { taskId: 'pending-task', workspacePath: workspace });
 });
 
 test('RPC 帧故障保留底层序号与运行身份，网关和调用方用诊断 ID 关联且不记录正文', { timeout: 3000 }, async t => {
@@ -833,7 +903,7 @@ test('手机畸形 RPC 帧降级该桥，网关继续服务本地调用', { time
   const attached = Promise.withResolvers();
   peer.on('message', (data, binary) => { if (!binary && JSON.parse(data).type === 'attached') attached.resolve(); });
   await once(peer, 'open'); peer.send(JSON.stringify({ type: 'attach', workspace_path: workspace })); await attached.promise;
-  assert.equal(f.bridgeOpens.length, 1);
+  assert.equal(f.bridgeOpens.length, 2, '失效手机是最后使用者，后续本地客户端建立新桥');
 });
 
 test('手机独用远端工作区时原样转发桥，MCP 本地请求明确让位而不切走手机', { timeout: 3000 }, async t => {
