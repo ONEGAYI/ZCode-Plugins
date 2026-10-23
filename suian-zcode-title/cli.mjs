@@ -136,7 +136,7 @@ if(args.includes("--help")||!args.length) {
         await appendFile(join(dataDir,"usage.jsonl"),JSON.stringify({at:new Date().toISOString(),...result})+"\n","utf8");
       }
       console.log(JSON.stringify(result));
-      await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),command,sessionId:event.sessionId??event.session_id,status:result.status,reasonCode:result.reasonCode??null,title:result.title??null,durationMs:Date.now()-startedAt})+"\n","utf8").catch(()=>{});
+      await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),command,sessionId:event.sessionId??event.session_id,status:result.status,stage:result.stage,diagnostic:result.diagnostic,reasonCode:result.reasonCode??null,title:result.title??null,durationMs:Date.now()-startedAt})+"\n","utf8").catch(error=>console.error(JSON.stringify({at:new Date().toISOString(),event:"runner_log_failed",command,causeName:error.name,code:error.code})));
     }
   } catch(error) {
     const failure={status:"failed",error:error.name==="SyntaxError"?"JSON 格式无效":error.message};
@@ -144,6 +144,7 @@ if(args.includes("--help")||!args.length) {
     if(typeof error.code==="string"&&error.stage)failure.locator=error.code;
     // 本地数据类校验失败无 stage，也须透出 reasonCode 供日志与诊断（不触发远控失败的 Toast 路径）
     if(error.reasonCode)failure.reasonCode=error.reasonCode;
+    if(error.diagnostic)failure.diagnostic=error.diagnostic;
     if(error.stage) {
       failure.stage=error.stage;
       failure.reasonCode=error.reasonCode??"unknown";
@@ -165,7 +166,7 @@ if(args.includes("--help")||!args.length) {
       }
     }
     console.log(JSON.stringify(failure));
-    if(dataDir)await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),command,sessionId:event?.session_id??null,status:"failed",reasonCode:failure.reasonCode??null,error:String(failure.error).slice(0,200),durationMs:Date.now()-startedAt})+"\n","utf8").catch(()=>{});
+    if(dataDir)await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),command,sessionId:event?.session_id??null,status:"failed",stage:failure.stage,diagnostic:failure.diagnostic,reasonCode:failure.reasonCode??null,error:String(failure.error).slice(0,200),durationMs:Date.now()-startedAt})+"\n","utf8").catch(error=>console.error(JSON.stringify({at:new Date().toISOString(),event:"runner_log_failed",command,causeName:error.name,code:error.code})));
     process.exitCode=1;
   } finally {
     backend?.close();

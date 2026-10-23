@@ -5,7 +5,7 @@ import { createArtifactStatusService } from './artifact-status.mjs';
 import { createArtifactRevealService } from './artifact-reveal.mjs';
 import { registerArtifactUi } from './artifact-ui.mjs';
 import { registerArtifactResources } from './artifact-resources.mjs';
-import { toolResult } from './tool-result.mjs';
+import { toolResult, toolErrorData } from './tool-result.mjs';
 
 export async function registerArtifactTools(server, config, { controller, prStatus, reveal }) {
   // notify 闭包先于 registry 声明：set/linkSessions 只在连接建立后经工具调用到达，届时注册表已就绪
@@ -46,7 +46,7 @@ export async function registerArtifactTools(server, config, { controller, prStat
       hyperlink: ['pr', 'link', 'issue'].includes(item.kind) ? item.ref : null };
     if (item.kind === 'session') {
       try { detail.session = await controller.getSessionStatus({ session_id: item.ref }); }
-      catch (error) { detail.session = { source: 'original_host', error: error.message, queried_at: (config.now ?? Date.now)() }; }
+      catch (error) { detail.session = { source: 'original_host', ...toolErrorData('get_artifacts', error), queried_at: (config.now ?? Date.now)() }; }
     }
     return detail;
   }));

@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {spawnSync,execFileSync} from "node:child_process";
+import {spawn,spawnSync,execFileSync} from "node:child_process";
+import {once} from "node:events";
+import {createServer} from "node:http";
+import {WebSocketServer} from "../../suian-zcode-common/node_modules/ws/wrapper.mjs";
 import {mkdtempSync,mkdirSync,rmSync,writeFileSync,readFileSync,existsSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -125,9 +128,51 @@ test("run 网关未配置时给出分层原因且可静音 Toast",()=>{
     assert.equal(entry.command,"run");
     assert.equal(entry.status,"failed");
     assert.equal(entry.reasonCode,"gateway_not_configured");
+    assert.equal(entry.stage,"config","runner 不能丢掉失败阶段");
     assert.ok(entry.durationMs!==undefined,"失败也必须留日志");
     const titles=execFileSync(sqliteBin,["-readonly",index,"SELECT title FROM tasks;"],{encoding:"utf8"});
     assert.ok(titles.includes("原名"),"失败时不得改动标题");
+  } finally {rmSync(root,{recursive:true});}
+});
+test("probe 的 runner 日志保留安全诊断 ID 和阶段，不落盘对端正文",async t=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-rpc-diagnostic-")),config=join(root,"config.json"),gatewayConfigPath=join(root,"gateway.json");
+  t.after(()=>rmSync(root,{recursive:true}));
+  const http=createServer((_req,res)=>res.end(JSON.stringify({service:"suian-zcode-gateway",rpc_protocol_version:1,desktop_connected:true,upstream_connected:true})));
+  const ws=new WebSocketServer({server:http});
+  ws.on("connection",socket=>socket.once("message",()=>socket.send(JSON.stringify({type:"error",code:"gateway_rpc_protocol_error",message:"fixture",diagnostic:{
+    id:"11111111-1111-4111-8111-111111111111",at:"2026-10-23T13:00:00.000Z",phase:"desktop_payload",causeCode:"remote.rpcFrame.physicalGap",seq:9,expectedSeq:2,payload:"private-title-sentinel"
+  }}))));
+  http.listen(0,"127.0.0.1");await once(http,"listening");
+  t.after(()=>{for(const socket of ws.clients)socket.terminate();ws.close();http.close();});
+  writeFileSync(gatewayConfigPath,JSON.stringify({version:1,port:http.address().port,control_token:"private-control-sentinel"}));
+  writeFileSync(config,JSON.stringify({dataDir:join(root,"state"),gatewayConfigPath}));
+  const child=spawn(process.execPath,[cli,"probe","--config",config],{windowsHide:true,stdio:["pipe","pipe","pipe"]});
+  let stdout="",stderr="";child.stdout.on("data",bytes=>stdout+=bytes);child.stderr.on("data",bytes=>stderr+=bytes);
+  child.stdin.end(JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"}));
+  const [code]=await once(child,"close");assert.equal(code,0,stderr);
+  const result=JSON.parse(stdout);
+  const logged=readFileSync(join(root,"state","runner.log.jsonl"),"utf8");
+  const entry=JSON.parse(logged.trim());
+  assert.equal(result.status,"probe_failed");
+  assert.equal(entry.stage,"gateway");
+  assert.equal(entry.diagnostic.id,result.diagnostic.id);
+  assert.equal(entry.diagnostic.causeCode,"remote.rpcFrame.physicalGap");
+  assert.equal(entry.diagnostic.clientPhase,"attach");
+  assert.equal(logged.includes("private-"),false);
+});
+test("runner 日志不可写时向 stderr 报告，保留原命令结果",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-log-unwritable-")),config=join(root,"config.json"),state=join(root,"state");
+  try {
+    mkdirSync(join(state,"runner.log.jsonl"),{recursive:true});
+    writeFileSync(config,JSON.stringify({dataDir:state,gatewayConfigPath:join(root,"missing-gateway.json")}));
+    const run=spawnSync(process.execPath,[cli,"probe","--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"}),windowsHide:true});
+    assert.equal(run.status,0,run.stderr);
+    assert.equal(JSON.parse(run.stdout).status,"probe_failed");
+    const logged=JSON.parse(run.stderr.trim());
+    assert.equal(logged.event,"runner_log_failed");
+    assert.equal(logged.command,"probe");
+    assert.ok(logged.code);
+    assert.equal(run.stderr.includes(root),false);
   } finally {rmSync(root,{recursive:true});}
 });
 test("probe 网关未配置时不建立连接且尊重共享锁",()=>{

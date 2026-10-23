@@ -1,6 +1,6 @@
 ---
 name: debug-isolated-zcode
-description: 隔离 ZCode lab 的搭建、启动与故障诊断：lab/patch 工具用法、八层排查法与 K1-K29 踩坑索引。触发于 lab 搭建或启动异常、补丁 apply/restore/升级、插件不加载或 Stop 不触发、开关不生效、网关握手与 probeHost、MCP start_session 拒绝、侧栏面板与评论链路。
+description: 隔离 ZCode lab 的搭建、启动与故障诊断：lab/patch 工具用法、八层排查法与 K1-K30 踩坑索引。触发于 lab 搭建或启动异常、补丁 apply/restore/升级、插件不加载或 Stop 不触发、开关不生效、网关握手与 probeHost、MCP start_session 拒绝、侧栏面板与评论链路。
 ---
 
 # 调试隔离 ZCode 环境
@@ -60,6 +60,7 @@ Windows 副本仍会自动注册当前用户的 `zcode:` 协议和右键菜单�
 | 轮次失败、受控服务零调用 | K20、K28 |
 | `probeHost` 报 Invalid workspace attachment | K17 |
 | 网关健康检查失败 / 连不上 | K7、K15、K24 |
+| 空闲后附着报协议错误、terminal-owner-ended | K30 |
 | 网络证据判读（TUN 假象、官方连接判定） | K6 |
 | 会话库 `unable to open database file` | K16 |
 | 启动器静默失败 / JSON 解析错 | K2、K11 |
