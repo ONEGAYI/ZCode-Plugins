@@ -7,14 +7,7 @@ import {parseActionUri,runAction} from "../toast-action.mjs";
 import {encodeWorkspaceOpenUri,defaultFixWorkspace} from "../../suian-zcode-common/notification-action.mjs";
 import {resolveTitleInstallRoot,renderFixPrompt,buildFixPrompt,deployToastTemplate,TOAST_TEMPLATE_FILE} from "../toast.mjs";
 import {homedir} from "node:os";
-
-// title 测试进程经 common-fixture 预载：ZCODE_PLUGIN_DATA 指向合成宿主存储根，
-// 其安装记录含 suian-zcode-title 条目（0.1.5 缓存路径），供“当前安装根”解析测试使用。
-const fixtureTitleRoot=()=>{
-  const dataPath=process.env.ZCODE_PLUGIN_DATA;
-  const storageRoot=join(dataPath,"..","..");
-  return join(storageRoot,"cache","suian-zcode-plugins","suian-zcode-title","0.1.5");
-};
+import {FIXTURE_TITLE_ROOT} from "./common-fixture.mjs";
 
 const writeTemplate=async (dir,text=["请帮我检查并修复 ZCode 自动命名插件的公共网关 RPC。","插件目录：{{plugin_root}}","数据目录：{{data_dir}}"].join("\n"))=>{
   await writeFile(join(dir,TOAST_TEMPLATE_FILE),text,"utf8");
@@ -32,7 +25,7 @@ test("协议处理器读取外置模板并插入当前安装根：先复制提�
   const result=await runAction({uri:"suian-zcode-title://fix",dataDir,...scope});
   assert.deepEqual(result,{ok:true,action:"fix"});
   assert.ok(scope.clipboard[0].includes("修复 ZCode 自动命名插件"),"剪贴板收到外置模板生成的排障提示词");
-  assert.ok(scope.clipboard[0].includes(fixtureTitleRoot()),"提示词插入安装记录中的当前安装根");
+  assert.ok(scope.clipboard[0].includes(FIXTURE_TITLE_ROOT),"提示词插入安装记录中的当前安装根");
   assert.ok(scope.clipboard[0].includes(dataDir),"{{data_dir}} 使用外置数据目录");
   assert.equal(scope.opened.length,1);
   assert.equal(scope.opened[0],"zcode://workspace/open?path="+encodeURIComponent(join(homedir(),".zcode","workspace","default")),"打开用户自带默认工作区，不随插件位置变化");
@@ -58,7 +51,7 @@ test("安装记录中 title 条目缺失时明确说明缺失，不输出旧根�
   const result=await runAction({uri:"suian-zcode-title://fix",dataDir,pluginsFile:emptyRegistry,...scope});
   assert.equal(result.ok,true);
   assert.match(scope.clipboard[0],/安装条目缺失/);
-  assert.ok(!scope.clipboard[0].includes(fixtureTitleRoot()),"不得把旧缓存根当作有效入口输出");
+  assert.ok(!scope.clipboard[0].includes(FIXTURE_TITLE_ROOT),"不得把旧缓存根当作有效入口输出");
 });
 
 test("协议处理器拒绝非法 URI 与未知动作",async()=>{
