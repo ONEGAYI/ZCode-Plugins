@@ -59,6 +59,31 @@ test('GLM 部分查询失败也保留网关诊断并写日志，不回显被屏�
   assert.equal(JSON.stringify(logs).includes('private-provider-sentinel'), false);
 });
 
+for (const reason of [null, undefined]) {
+  for (const [method, component] of [['getEntitlementSnapshot', 'quota'], ['getCodingPlanResetStatus', 'reset_cards']]) {
+    test(`GLM ${component} 以 ${String(reason)} 拒绝时保留另一项成功结果`, async t => {
+      const logs = [];
+      t.mock.method(console, 'error', (...args) => logs.push(args));
+      const f = fixture({ [method]: () => { throw reason; } });
+      const result = await f.controller.getGlmBalance({ workspace_path: 'D:/fixture' });
+      assert.deepEqual(result.errors, [{ component, code: 'host_query_failed' }]);
+      if (component === 'quota') {
+        assert.equal(result.reset_cards.five_hour.available, 2);
+        assert.deepEqual(result.model.five_hour, { status: 'unavailable' });
+      } else {
+        assert.equal(result.model.five_hour.remaining_percent, 16);
+        assert.equal(result.zcode_server_mcp.remaining, 1000);
+        assert.deepEqual(result.reset_cards, { status: 'unavailable' });
+      }
+      assert.equal(f.calls.filter(call => call.method === 'getEntitlementSnapshot').length, 1);
+      assert.equal(f.calls.filter(call => call.method === 'getCodingPlanResetStatus').length, 1);
+      assert.equal(f.calls.some(call => call.method === 'useCodingPlanReset'), false);
+      assert.equal(f.closed.length, 1);
+      assert.deepEqual(logs, []);
+    });
+  }
+}
+
 test('重置没有确认通道、拒绝或取消都不会消耗卡片', async () => {
   const f = fixture();
   await assert.rejects(f.controller.resetGlmQuota({ workspace_path: 'D:/fixture', reset_type: 'FIVE_HOUR' }), /confirmation_unavailable/);

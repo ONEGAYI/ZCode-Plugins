@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-23
+
+修复 GLM 查询单路失败时，诊断处理覆盖另一项成功结果的回归。
+
+### Bug 修复
+
+- 额度或重置卡查询以 `null`／`undefined` 拒绝时，保留另一项成功数据及 `host_query_failed` 标记，不再抛出 TypeError（[#164](https://github.com/ONEGAYI/ZCode-Plugins/pull/164)）。
+- 四种回归组合同时核对查询次数、连接释放和零次额度重置，保持原有部分成功语义。
+
 ## [0.11.1] - 2026-10-23
 
 补齐会话操作失败的分层诊断，配合 common 0.7.3 定位间歇性 Host 附着错误。
@@ -330,6 +339,7 @@
 较早版本链接保留对应源码提交；采用 Release 分发后的新版本链接指向实际发布标签。
 
 <!-- 变更链接 -->
+[0.11.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.2...plugins-2026.10.23.3
 [0.11.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.1...plugins-2026.10.23.2
 [0.11.0]: https://github.com/ONEGAYI/ZCode-Plugins/pull/124
 [0.9.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/13cd1fcf4f24c9d968f1e4235d299ea11ada4f14...761d06764c7fbdcc36f2c30a4b178af44d7b1d40
