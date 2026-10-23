@@ -1,9 +1,11 @@
 // 本地随包注册表：新版本追加档案并保留旧档案，不按版本范围或列表顺序兜底。
 import { SUPPORTED_PACKAGE, PATCH_VERSION, MAIN_ENTRY, applyInjections } from './profiles/windows-3.16.2.8769.mjs';
+import * as windows3163 from './profiles/windows-3.16.3.8992.mjs';
 
 export const TARGET_LAYOUT = Object.freeze({ exeName: 'ZCode.exe', appAsarRelativePath: 'resources/app.asar' });
 export const PATCH_PROFILES = Object.freeze([
   Object.freeze({ id: 'windows-3.16.2.8769-1f960ba2', platform: 'win32', packageIdentity: SUPPORTED_PACKAGE, patchVersion: PATCH_VERSION, mainEntry: MAIN_ENTRY, applyInjections }),
+  Object.freeze({ id: 'windows-3.16.3.8992-21183dbf', platform: 'win32', packageIdentity: windows3163.SUPPORTED_PACKAGE, patchVersion: windows3163.PATCH_VERSION, mainEntry: windows3163.MAIN_ENTRY, applyInjections: windows3163.applyInjections }),
 ]);
 
 export function selectProfile({ actual, state = null, profiles = PATCH_PROFILES, platform = process.platform }) {
