@@ -148,6 +148,35 @@ test('已正式 Release 续作幂等跳过，不重复发转正补丁', async ()
   assert.deepEqual(published.metadataUpdates, [], '已正式版不重发元数据补丁');
 });
 
+test('未授权续作不得转正式：省略或 false 均保持预发布并保留核验结果', async () => {
+  for (const authorize of [undefined, { publish: false }]) {
+    const api = new RecordingApi({
+      release: { id: 7, draft: false, prerelease: true, tag: 't-1' },
+      assets: [{ id: 1, name: 'p.zip', size: 10 }, { id: 2, name: 'q.zip', size: 10 }],
+    });
+    const state = {};
+    const result = await runReleasePipeline({ state, githubApi: api, download: defaultDownload, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize });
+    assert.equal(result.error, undefined, String(authorize));
+    assert.deepEqual(api.metadataUpdates, [], '不得发任何元数据补丁');
+    assert.equal(api.release.prerelease, true, '保持预发布');
+    assert.equal(state.finalizePending, true, '标记待授权转正');
+    assert.equal(state.downloads.every(item => item.ok), true, '只读核验照常完成并保留');
+    assert.match(JSON.stringify(result.report), /待授权转正式/);
+  }
+});
+
+test('未授权续作遇已正式版：零补丁且清理残留待转正标记', async () => {
+  const api = new RecordingApi({
+    release: { id: 7, draft: false, prerelease: false, tag: 't-1' },
+    assets: [{ id: 1, name: 'p.zip', size: 10 }, { id: 2, name: 'q.zip', size: 10 }],
+  });
+  const state = { finalizePending: true };
+  const result = await runReleasePipeline({ state, githubApi: api, download: defaultDownload, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize: { publish: false } });
+  assert.equal(result.error, undefined);
+  assert.deepEqual(api.metadataUpdates, []);
+  assert.equal(state.finalizePending, undefined, '已正式版清理残留待转正标记');
+});
+
 test('不能覆盖现有未知内容：同名资产无可用摘要时拒绝，不得盲传', async () => {
   const api = new RecordingApi({
     release: { id: 7, draft: true, prerelease: false, tag: 't-1' },
