@@ -41,7 +41,7 @@ const P0_IMPORT = 'import{existsSync as __loExists,readFileSync as __loRead}from
 // 插入位置在 cA/dA 所在 var 语句**结束之后**（锚点以分号收尾），下一条语句之前——
 // 在逗号/var 表达式中间插语句是语法错误（契约测试以 node --check 守住）。
 // 语义：cA（relayWsUrl 覆盖值，desktop index.ts:898 顶层求值）在 var 语句内已求值；
-// 门控语句在其后直接重新赋值 cA。manager 构造（pi=gC）与 getEndpointUrls 回调都以闭包
+// 门控语句在其后直接重新赋值 cA。manager 构造（pi=wC）与 getEndpointUrls 回调都以闭包
 // 引用 cA 绑定，运行期读到新值；resolveWebRemoteControlRelayWsUrl 对 overrideUrl 整体直用
 // （zcodeEndpoint.ts，无协议校验），因此 ws://127.0.0.1:port/ws 直接生效。
 // 开关关闭时保留原覆盖值；开启时两个 env 入口都只接受实际主机为回环的 HTTP/WS URL。
@@ -108,7 +108,7 @@ export function renderP6AutoStartCode() {
 }
 
 // 从真实产物（asar-extract 实测）提取的锚点字节串。唯一性已逐一验证（各命中 1 次）。
-// env-override 锚点以分号收尾（var 语句边界），其后紧跟 function TA(e)（语句边界插入的前提）。
+// env-override 锚点以分号收尾（var 语句边界），其后紧跟 function _A(e)（语句边界插入的前提）。
 const ANCHOR_ENV_OVERRIDE = 'cA=process.env.ZCODE_WEB_REMOTE_CONTROL_RELAY_WS_URL?.trim(),dA=process.env.ZCODE_WEB_REMOTE_CONTROL_URL?.trim();';
 const ANCHOR_GET_LOGIN = 'getLogin:s(async()=>{let e=await H2(),t=await z2(e);return t?{userId:e,jwt:t.slice(7)}:void 0},"getLogin")';
 const ANCHOR_GET_TOKEN = 'getToken:s(async ae=>{let ut=await Gn(),jo=await zn.token(ut.jwt,AbortSignal.any([ne,ae]));return await Gn(),e.logger.info("[web-remote-control] V2 device token acquired"),jo},"getToken")';
