@@ -1,5 +1,27 @@
 # 更新日志
 
+## [0.7.3] - 2026-10-23
+
+修复空闲后重新连接 Host 的一条间歇性协议错误路径，并补齐网关与调用方可关联的安全诊断。
+
+### Bug 修复
+
+**空闲后重新附着（Windows 3.16.3 隔离宿主）（[#162](https://github.com/ONEGAYI/ZCode-Plugins/issues/162)）**
+
+- 最后一个使用者及内部查询结束后释放旧 Host 桥，下次附着建立新身份。
+- 消费退役桥迟到的 `terminal-owner-ended` 通知，避免它破坏新连接或泄露物理桥身份；在线客户端仍共用 Host 桥。
+- 保留请求取消顺序和已提交操作结果可能未知的语义，不自动重试业务写入。
+
+### 其他改进
+
+**失败诊断（网关、公共客户端与业务调用方）（[#162](https://github.com/ONEGAYI/ZCode-Plugins/issues/162)）**
+
+- 失败日志记录 UTC 时间、诊断 ID、阶段、帧序号、桥失效原因、关闭来源及实际运行版本和 buildId。
+- 客户端保留健康检查、附着与 RPC 阶段；字段按白名单传递，不记录正文、凭据或会话标识。
+- 诊断模块随网关部署闭包打包并纳入运行指纹。
+
+> **验证范围**：3.16.3.8992 真实隔离副本及回环 relay 夹具已重复验证；最终修复构建在 relay/local-only 各 216 次调用中无失败。官方在线 relay 与真实手机组合仍待验收，不把这条复现归因为所有同码故障，见[验证记录](../suian-zcode-app-mcp/docs/issue-162-idle-bridge-verification.md)。
+
 ## [0.7.2] - 2026-10-23
 
 追加 Windows ZCode 3.16.3.8992 的 local-only 适配档案，沿用 setup 自动路由与现场补丁准备流程。
@@ -49,6 +71,7 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.7.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.1...plugins-2026.10.23.2
 [0.7.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23...plugins-2026.10.23.1
 [0.7.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.22...plugins-2026.10.23
 [0.7.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.21...plugins-2026.10.22

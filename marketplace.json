@@ -3,24 +3,24 @@
   "plugins": [
     {
       "name": "suian-zcode-common",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.23.1/suian-zcode-common-0.7.2.zip",
-        "sha256": "2bd70307dcc8dedb6b58fae91d245140daecf18481cb7459538bfddc19f71a01",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.23.2/suian-zcode-common-0.7.3.zip",
+        "sha256": "e7302db5a69d1d58e85ba2fe58a6496f2a9a7a6e125d63a5238180a22ef7553a",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
     },
     {
       "name": "suian-zcode-title",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.21/suian-zcode-title-0.2.0.zip",
-        "sha256": "87857ee6adb41c22eb08376ee9963fbb1a966ac2dc3bd8b00d755bf835264ccb",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.23.2/suian-zcode-title-0.2.1.zip",
+        "sha256": "821060ca050a87ce678bf2642476f1c1d5ac95d9a65a0a4b61fa4c04882c42f0",
         "stripRoot": false
       },
       "description": "会话 Stop 后自动命名、模型配置与标题保护",
@@ -30,12 +30,12 @@
     },
     {
       "name": "suian-zcode-app-mcp",
-      "version": "0.11.0",
+      "version": "0.11.1",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.21/suian-zcode-app-mcp-0.11.0.zip",
-        "sha256": "e2685b59caf5581bdc134cecc4121ff05144acc39e5099420a54e90402d42427",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.23.2/suian-zcode-app-mcp-0.11.1.zip",
+        "sha256": "32e46e7f0cf800ce7055759beb56efddb2818bd0c86151fb4f961f47c781cbcf",
         "stripRoot": false
       },
       "description": "会话检索、历史读取、原 Host 操作与 GLM 额度 MCP",
