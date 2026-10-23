@@ -50,6 +50,7 @@ export function toolResult(name, data) {
 
 // 公共层已按白名单生成 diagnostic；stderr 只记阶段与诊断，不记工具参数和异常正文。
 export function toolErrorDetails(name, error) {
+  if (error == null) return {};
   const transport = error.diagnostic ? error : error.cause ?? error;
   const stage = error.stage ?? transport.stage, reasonCode = error.reasonCode ?? transport.reasonCode;
   const details = { ...(stage ? { stage } : {}), ...(reasonCode ? { reasonCode } : {}),
