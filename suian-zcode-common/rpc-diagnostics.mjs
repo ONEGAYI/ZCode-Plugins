@@ -5,7 +5,9 @@ const choices = {
   clientPhase: ['health', 'connect', 'attach', 'channel_initialize', 'rpc'],
   mode: ['relay', 'local-only', 'terminal'],
   source: ['desktop', 'upstream', 'local_rpc'],
-  reasonCode: ['gateway_error', 'gateway_rpc_protocol_error', 'gateway_rpc_failed', 'gateway_bridge_timeout', 'gateway_timeout', 'gateway_connection_failed', 'gateway_connection_closed', 'gateway_desktop_offline', 'gateway_unreachable'],
+  reasonCode: ['gateway_error', 'gateway_rpc_protocol_error', 'gateway_rpc_failed', 'gateway_bridge_timeout', 'gateway_timeout', 'gateway_connection_failed', 'gateway_connection_closed', 'gateway_desktop_offline', 'gateway_unreachable',
+    'gateway_upgrade_required', 'gateway_invalid_config', 'gateway_not_configured', 'remote_workspace_busy', 'desktop_unpaired', 'terminal_failed',
+    'relay_timeout', 'relay_connection_failed', 'relay_connection_closed', 'terminal_kicked', 'relay_rejected', 'relay_identity_mismatch', 'relay_heartbeat_timeout'],
   payloadType: ['bootstrap-response', 'workspace-bridge-ready', 'workspace-bridge-error', 'rpc-frame', 'rpc-frame-ack', 'bridge-degraded', 'unknown'],
   bridgeReason: ['terminal-owner-ended', 'rpc-transport-fault', 'source-session-replaced'],
   causeName: ['Error', 'SyntaxError', 'TypeError', 'RangeError', 'AbortError', 'TimeoutError'],
@@ -31,8 +33,9 @@ export function sanitizeRpcDiagnostic(value) {
 }
 
 export function rpcDiagnostic(error, context = {}) {
-  const details = sanitizeRpcDiagnostic({ reasonCode: error.reasonCode ?? error.code ?? 'gateway_error', causeName: error.cause?.name ?? error.name, causeCode: error.cause?.code ?? error.code,
-    ...error.cause?.diagnostic, ...error.diagnostic, ...context });
+  const details = sanitizeRpcDiagnostic({ causeName: error.cause?.name ?? error.name, causeCode: error.cause?.code ?? error.code,
+    ...error.cause?.diagnostic, ...error.diagnostic, ...context,
+    reasonCode: context.reasonCode ?? error.reasonCode ?? error.code ?? error.diagnostic?.reasonCode ?? 'gateway_error' });
   return { id: randomUUID(), at: new Date().toISOString(), ...details };
 }
 

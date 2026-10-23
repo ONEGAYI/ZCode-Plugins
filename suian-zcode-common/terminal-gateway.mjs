@@ -15,7 +15,7 @@ export async function startTerminalGateway({port,instanceId,controlToken,upstrea
   const failed=error=>{
     paired=false;lastError=error.reasonCode??'terminal_failed';
     for(const item of pending.values()){clearTimeout(item.timer);item.reject(error);}pending.clear();
-    broker.close(error);relay.close();onError(error);
+    onError(error);broker.close(error);relay.close();
   };
   function bootstrap({timeoutMs=bridgeTimeoutMs}={}) {
     if(!paired)throw new Error('终端尚未与 Desktop 配对');

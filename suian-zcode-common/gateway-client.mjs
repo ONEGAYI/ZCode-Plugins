@@ -27,15 +27,18 @@ export async function connectHost({ workspacePath, sessionId, gatewayConfigPath 
   catch (error) { throw Object.assign(failure('gateway_unreachable', '公共网关健康检查失败：' + error.name), {
     cause: error, diagnostic: rpcDiagnostic(error, { phase: 'health', clientPhase, elapsedMs: Date.now() - started })
   }); }
-  if (health.service !== 'suian-zcode-gateway' || health.rpc_protocol_version !== 1) throw failure('gateway_upgrade_required', '运行中的网关未提供 RPC，请按公共 skill 暂停移动端远控并重载网关，保留 ZCode 完成升级');
   const mode = health.mode === undefined ? 'relay' : health.mode;
-  if (!['relay', 'local-only', 'terminal'].includes(mode)) throw failure('gateway_rpc_protocol_error', '公共网关返回未知运行模式');
-  if (!health.desktop_connected || (mode === 'local-only' ? !health.desktop_ready : !health.upstream_connected)) throw failure('gateway_desktop_offline', 'Desktop 尚未就绪，或 relay 模式的官方上游尚未连接');
-  const diagnose = error => {
+  const diagnose = (error, context = {}) => {
+    // ChannelClient 的 PromiseErrorObj 可以直接拒绝字符串或 null；保留其原值。
+    if (error === null || typeof error !== 'object') return error;
     error.diagnostic = rpcDiagnostic(error, { clientPhase, elapsedMs: Date.now() - started,
-      gatewayVersion: health.build?.version, gatewayBuildId: health.build?.id, mode, relayProtocolVersion: health.relay_protocol_version });
+      gatewayVersion: health.build?.version ?? error.diagnostic?.gatewayVersion, gatewayBuildId: health.build?.id ?? error.diagnostic?.gatewayBuildId,
+      mode, relayProtocolVersion: health.relay_protocol_version ?? error.diagnostic?.relayProtocolVersion, ...context });
     return error;
   };
+  if (health.service !== 'suian-zcode-gateway' || health.rpc_protocol_version !== 1) throw diagnose(failure('gateway_upgrade_required', '运行中的网关未提供 RPC，请按公共 skill 暂停移动端远控并重载网关，保留 ZCode 完成升级'), { phase: 'health' });
+  if (!['relay', 'local-only', 'terminal'].includes(mode)) throw diagnose(failure('gateway_rpc_protocol_error', '公共网关返回未知运行模式'), { phase: 'health' });
+  if (!health.desktop_connected || (mode === 'local-only' ? !health.desktop_ready : !health.upstream_connected)) throw diagnose(failure('gateway_desktop_offline', 'Desktop 尚未就绪，或 relay 模式的官方上游尚未连接'), { phase: 'health' });
   const ready = Promise.withResolvers(), fault = Promise.withResolvers(), emitter = new Emitter();
   const socket = new WebSocket(`ws://127.0.0.1:${config.port}/rpc`, { headers: { Authorization: `Bearer ${config.control_token}` }, handshakeTimeout: handshakeTimeoutMs });
   const client = new ChannelClient({ onMessage: emitter.event, send: bytes => socket.send(bytes.buffer), drain: () => Promise.resolve() });
@@ -72,8 +75,12 @@ export async function connectHost({ workspacePath, sessionId, gatewayConfigPath 
       call: (channel, method, args = []) => Promise.race([client.getChannel(channel).call(method, args), fault.promise]).catch(error => { throw diagnose(error); }),
       listen: (channel, event, args) => client.getChannel(channel).listen(event, args),
       probe: async () => {
-        const current = await (await fetch(healthUrl, { signal: AbortSignal.timeout(handshakeTimeoutMs) })).json();
-        return { ok: current.desktop_connected && (mode === 'local-only' ? current.desktop_ready : current.upstream_connected), stage: 'gateway', mode, paired: current.paired, upstreamPaired: current.upstream_paired, localClients: current.local_clients };
+        try {
+          const current = await (await fetch(healthUrl, { signal: AbortSignal.timeout(handshakeTimeoutMs) })).json();
+          return { ok: current.desktop_connected && (mode === 'local-only' ? current.desktop_ready : current.upstream_connected), stage: 'gateway', mode, paired: current.paired, upstreamPaired: current.upstream_paired, localClients: current.local_clients };
+        } catch (cause) {
+          throw diagnose(Object.assign(failure('gateway_unreachable', '公共网关健康检查失败：' + cause.name), { cause }), { phase: 'health', clientPhase: 'health' });
+        }
       },
       close
     };

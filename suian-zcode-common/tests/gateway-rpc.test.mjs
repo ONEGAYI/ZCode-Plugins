@@ -148,6 +148,7 @@ test('RPC 帧故障保留底层序号与运行身份，网关和调用方用诊�
     assert.equal(error.reasonCode, 'gateway_rpc_protocol_error');
     assert.equal(error.stage, 'gateway');
     assert.equal(error.diagnostic.phase, 'desktop_payload');
+    assert.equal(error.diagnostic.reasonCode, 'gateway_rpc_protocol_error');
     assert.equal(error.diagnostic.clientPhase, 'rpc');
     assert.equal(error.diagnostic.causeCode, 'remote.rpcFrame.physicalGap');
     assert.equal(error.diagnostic.seq, 99);
@@ -170,6 +171,7 @@ test('RPC 帧故障保留底层序号与运行身份，网关和调用方用诊�
   }
   await rejected;
   assert.equal(errors.length, 1);
+  assert.equal(errors[0].diagnostic.reasonCode, 'gateway_rpc_protocol_error');
 });
 
 test('默认网关日志为带时间戳的 JSON，合法桥失效保留原因且不误称字节损坏', { timeout: 3000 }, async t => {
@@ -276,6 +278,70 @@ test('Desktop 无 error 事件的异常关闭也有日志，并将诊断关联�
   f.desktop.terminate();
   await pending;
   assert.equal(errors.length, 1, '同一次关闭不重复记录两条错误');
+});
+
+test('健康检查报告未就绪时仍保留健康阶段和实际网关身份', async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const http = createServer((_req, res) => res.end(JSON.stringify({ service: 'suian-zcode-gateway', rpc_protocol_version: 1,
+    desktop_connected: false, upstream_connected: true, relay_protocol_version: 2, build: { version: '0.7.2', id: 'a'.repeat(64) } })));
+  http.listen(0, '127.0.0.1'); await once(http, 'listening');
+  t.after(() => http.close());
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-health-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: http.address().port, control_token: 'fixture-token' }));
+  await assert.rejects(connectHost({ workspacePath: workspace, gatewayConfigPath }), error => {
+    assert.equal(error.reasonCode, 'gateway_desktop_offline');
+    assert.equal(error.diagnostic.phase, 'health');
+    assert.equal(error.diagnostic.gatewayBuildId, 'a'.repeat(64));
+    assert.equal(error.diagnostic.gatewayVersion, '0.7.2');
+    return true;
+  });
+});
+
+test('诊断附加不把 Host 允许的非 Error 拒绝值改写为 TypeError', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t);
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-rejection-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  for (const value of ['remote rejection', null]) {
+    const count = f.requests.length;
+    const pending = host.call('fixture', 'noAck').then(() => assert.fail('应保留 Host 拒绝值'), error => assert.equal(error, value));
+    await until(() => f.requests.length > count);
+    f.respond([203, f.requests.at(-1)[0][1]], value);
+    await pending;
+  }
+});
+
+test('附着后的健康复查失败仍返回健康阶段及诊断信息', async t => {
+  const { probeHost } = await import('../gateway-client.mjs');
+  let checks = 0;
+  const http = createServer((req, res) => {
+    if (++checks > 1) { req.socket.destroy(); return; }
+    res.end(JSON.stringify({ service: 'suian-zcode-gateway', rpc_protocol_version: 1, desktop_connected: true, upstream_connected: true,
+      build: { version: '0.7.2', id: 'b'.repeat(64) } }));
+  });
+  const ws = new WebSocketServer({ server: http });
+  ws.on('connection', socket => socket.once('message', () => {
+    socket.send(JSON.stringify({ type: 'attached', bootstrap: {}, workspace_path: workspace }));
+    socket.send(pack([200]));
+  }));
+  http.listen(0, '127.0.0.1'); await once(http, 'listening');
+  t.after(() => { for (const socket of ws.clients) socket.terminate(); ws.close(); http.close(); });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-reprobe-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: http.address().port, control_token: 'fixture-token' }));
+  const result = await probeHost({ workspacePath: workspace, gatewayConfigPath, timeoutMs: 1000 });
+  assert.equal(result.ok, false);
+  assert.equal(result.reasonCode, 'gateway_unreachable');
+  assert.equal(result.diagnostic.phase, 'health');
+  assert.equal(result.diagnostic.clientPhase, 'health');
+  assert.equal(result.diagnostic.gatewayBuildId, 'b'.repeat(64));
 });
 
 test('V2 多执行目录按各自会话归属附着，手机与插件仍共用一个 Host 桥', { timeout: 4000 }, async t => {
