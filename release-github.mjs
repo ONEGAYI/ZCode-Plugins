@@ -2,7 +2,7 @@
 // 测试使用内存桩，不触真实网络写操作；真实 REST 适配器由 createGithubRestApi 提供，
 // 仅在另行授权的正式发布中由人显式调用。
 // 顺序强制（规格 9.3）：草稿资产齐全 -> 授权公开（先预发布）-> 匿名公开下载核验 ->
-// 市场就绪报告；下载核验失败不得切换市场。已发布资产不删除重传；
+// 核验全部通过转正式版 -> 市场就绪报告；下载核验失败不得转正，也不得切换市场。已发布资产不删除重传；
 // 上传结果未知时先读取远端现状再续作，不盲重传；不能覆盖现有未知内容。
 import { readFile } from 'node:fs/promises';
 import { validateMarketplaceEntry } from './release-marketplace.mjs';
@@ -106,6 +106,12 @@ export async function runReleasePipeline({ state, githubApi, download, zips, rel
   }
   if (reached(run.stage) < reached('verify-download')) run.stage = 'verify-download';
   if (zips.some(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok && record.sha256 === zip.sha256))) return fail('download_failed');
+
+  // 下载核验全部通过：预发布转正式版。幂等——已正式（含人工先行转正）不再发补丁；
+  // 转正只代表资产可信可公开引用，不等待市场清单切换授权。
+  if (release.prerelease) {
+    release = await githubApi.updateRelease(release, { prerelease: false });
+  }
 
   // 阶段五：市场就绪——核对候选条目 URL/摘要与已公开资产一致；切换须另行授权。
   if (marketCandidate?.plugins) {

@@ -20,6 +20,7 @@
 - **版本范围**：正式集成前，对照 `dev` 与正式分支的差异，确定受影响的插件并更新其版本；未受影响的插件不联动升版。公共层有变化时，按实际影响核对依赖它的业务插件。
 - **版本清单**：同步受影响插件的 `.zcode-plugin/plugin.json`；已有版本字段的 `package.json`、锁文件根包与运行时自报版本也必须一致，已有 CHANGELOG 按发布范围更新。修改任一插件清单的 `version` 时，必须在同一变更中同步根 `marketplace.json` 对应条目的 `version`；提交前核对一致，避免原生市场漏检更新。
 - **完成条件**：版本更新必须随正式集成内容一并进入 `master`；核对版本一致性、完成受影响范围的验证，并在提交或 PR 正文说明插件版本与验证结果。未完成版本同步，不得宣称正式集成完成。
+- **发布命名**：仓库 Release 是四插件集总发布，标题与发布说明必须自明归属，不写裸版本号。标题固定 `ZCode Plugins · <短名> <版本>[ + <短名> <版本>…] · <主题>`，短名为 common / title / app-mcp / side-editor。发布说明的版本段标题写 `## [<短名> <版本>] - 日期`，底部变更链接键同步带短名（如 `[common 0.7.3]: <compare url>`）。各插件自身 CHANGELOG.md 保持 Keep a Changelog 原样，仅在拼入仓库级 Release 说明时补短名；标题与说明由发布执行方按此格式组装，发布脚本不内置模板。
 
 ## 文件树
 
@@ -38,7 +39,7 @@ ZCode-Plugins/
 ├── release-zip.mjs         # 确定性 ZIP 写入/读取/安全解压（Node 内置 zlib；排序与时间戳固定，同输入同字节）
 ├── release-verify.mjs      # 发布组装目录契约校验：身份/版本/必备资源/敏感内容/公共代码内联/文件摘要
 ├── release-marketplace.mjs # 市场条目形状校验、候选生成（只改受影响条目）、版本统一检查（只报告）与回退候选
-├── release-github.mjs      # Release 发布流水线编排（GitHub API 与下载依赖注入；真实写操作须另行发布授权）
+├── release-github.mjs      # Release 发布流水线编排（GitHub API 与下载依赖注入；先预发布公开，下载核验通过后自动转正式；真实写操作须另行发布授权）
 ├── tests/                  # 根级发布工具契约测试（release-*.test.mjs，含外部边界桩与 loopback HTTP fixture）
 │
 ├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 命名决策 + 通知文案；公共导入经客户端契约定位）
