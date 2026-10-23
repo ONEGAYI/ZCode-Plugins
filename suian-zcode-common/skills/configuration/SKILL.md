@@ -24,7 +24,7 @@ description: 修改 ZCode 公共网关的连接模式、端口或上游，保留
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{{common_root}}/setup.ps1" -Action Restart -ZcodeAppVersion 3.16.1 -NativePlugin
 ```
 
-原配置为 local-only 而应用升级到不受支持的 3.16 包时，切换前会因补丁身份不符被拒绝；此时保持 `-Mode relay` 并按完整还原处理旧补丁。协议与真机共存的历史验证见[3.16 开发记录](../../../suian-zcode-app-mcp/docs/zcode-3.16-gateway-validation.md)，不能将隔离安装测试当作用户真机验收。
+原配置为 local-only 而应用升级到 3.16 时：受支持包按 [setup](../setup/SKILL.md) 的补丁安装流程迁移并引导用户应用补丁；不受支持包在切换前会因补丁身份不符被拒绝，保持 `-Mode relay` 并按完整还原处理旧补丁。协议与真机共存的历史验证见[3.16 开发记录](../../../suian-zcode-app-mcp/docs/zcode-3.16-gateway-validation.md)，不能将隔离安装测试当作用户真机验收。
 
 ## local-only 开关与网关
 
