@@ -16,6 +16,7 @@ test('3.16 网关作为独立终端连接官方 relay，多个本地客户端共
   await once(relay,'listening');
   t.after(()=>{for(const s of relay.clients)s.terminate();relay.close();});
   let connections=0,opens=0;
+  const errors=[],pendingCall=Promise.withResolvers();
   const workspace='D:\\fixture316';
   relay.on('connection',socket=>{
     connections++;
@@ -39,11 +40,12 @@ test('3.16 网关作为独立终端连接官方 relay，多个本地客户端共
         const result=assembler.accept(parse(p));
         if(result.kind!=='complete')return;
         const reader=new BufferReader(VSBuffer.wrap(result.bytes)),header=deserialize(reader),args=deserialize(reader);
+        if(header[3]==='noAck'){pendingCall.resolve();return;}
         if(header[0]===100)respond([201,header[1]],header[3]==='getTaskMeta'?(args[0].taskId==='session-test'?{taskId:'session-test',workspacePath:workspace}:null):args[0]);
       }
     });
   });
-  const gateway=await startGateway({mode:'terminal',deviceSid:'d_fixture',deviceMid:'mid_fixture',getToken:async()=>'fixture-token',upstreamUrl:`ws://127.0.0.1:${relay.address().port}/api/v1/remote/ws2`,controlToken:'local-token',WebSocketImpl:WebSocket});
+  const gateway=await startGateway({mode:'terminal',deviceSid:'d_fixture',deviceMid:'mid_fixture',getToken:async()=>'fixture-token',upstreamUrl:`ws://127.0.0.1:${relay.address().port}/api/v1/remote/ws2`,controlToken:'local-token',WebSocketImpl:WebSocket,onError:error=>errors.push(error)});
   t.after(()=>gateway.close());
   assert.equal((await fetch(gateway.healthUrl,{headers:{Origin:'https://example.test'}})).status,403);
   for(const headers of [{Authorization:'Bearer wrong'},{Authorization:'Bearer local-token',Origin:'https://example.test'}]){
@@ -63,4 +65,15 @@ test('3.16 网关作为独立终端连接官方 relay，多个本地客户端共
   assert.equal(health.mode,'terminal');
   assert.equal(health.desktop_ready,true);
   assert.equal(connections,1);assert.equal(opens,1);
+  const failed=assert.rejects(a.call('fixture','noAck'),error=>{
+    assert.equal(error.diagnostic.mode,'terminal');
+    assert.equal(error.diagnostic.relayProtocolVersion,2);
+    assert.match(error.diagnostic.gatewayBuildId,/^[a-f0-9]{64}$/);
+    assert.equal(error.diagnostic.id,errors.at(-1).diagnostic.id);
+    assert.equal(errors.at(-1).diagnostic.reasonCode,'relay_connection_closed');
+    return true;
+  });
+  await pendingCall.promise;
+  for(const socket of relay.clients)socket.terminate();
+  await failed;
 });

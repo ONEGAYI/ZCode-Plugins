@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { toolErrorDetails } from './tool-result.mjs';
 
 const providerId = 'account:bigmodel-individual-coding-plan';
 const iso = time => time === undefined || time === null ? null : new Date(time).toISOString();
@@ -25,13 +26,14 @@ function cardCounts(status, observedAt) {
   return { status: 'available', observed_at: iso(observedAt), five_hour: project(status.availableFiveHourResets), weekly: project(status.availableWeekResets) };
 }
 
-async function readState(remote, now, scope) {
-  scope ??= await resolveScope(remote);
+async function readState(remote, now, toolName = 'get_glm_balance') {
+  const scope = await resolveScope(remote);
   const settled = await Promise.allSettled([
     remote.call('usage-stats', 'getEntitlementSnapshot', [{ ...scope, requirePreferredProvider: true, allowEnvApiKey: false, includeSubscription: true }]),
     remote.call('usage-stats', 'getCodingPlanResetStatus', [scope])
   ]);
-  const errors = settled.flatMap((item, index) => item.status === 'rejected' ? [{ component: index === 0 ? 'quota' : 'reset_cards', code: 'host_query_failed' }] : []);
+  const errors = settled.flatMap((item, index) => item.status === 'rejected' ? [{ component: index === 0 ? 'quota' : 'reset_cards', code: 'host_query_failed',
+    ...toolErrorDetails(toolName, item.reason) }] : []);
   const snapshot = settled[0].status === 'fulfilled' ? settled[0].value : null;
   const status = settled[1].status === 'fulfilled' ? settled[1].value : null;
   if (snapshot?.quota && (snapshot.provider?.id !== providerId || snapshot.context?.scope !== 'personal')) throw new Error('glm_scope_mismatch: 额度不属于指定的 GLM 个人套餐');
@@ -65,7 +67,7 @@ export async function resetGlmQuota(remote, args, { requestConfirmation, attempt
   if (args.attempt_id && (!previous || previous.workspace_path !== args.workspace_path || previous.reset_type !== args.reset_type)) throw new Error('reset_attempt_mismatch: 重试标识未知或不属于本次工作区/额度类型；未重置');
   if (previous?.result) return previous.result;
   if (!requestConfirmation) throw new Error('confirmation_unavailable: 重置需要客户端用户确认通道，未消耗卡片');
-  const before = await readState(remote, now);
+  const before = await readState(remote, now, 'reset_glm_quota');
   const identity = before.snapshot?.subscription?.identityMasked;
   if (!identity || !before.snapshot.authenticated || before.snapshot.provider?.id !== providerId || before.snapshot.context?.scope !== 'personal') throw new Error('glm_account_unverified: 无法确认当前套餐账号，未重置');
   if (previous && previous.identity !== identity) throw new Error('reset_attempt_mismatch: 当前账号与原尝试不同，未重置');
@@ -74,7 +76,7 @@ export async function resetGlmQuota(remote, args, { requestConfirmation, attempt
   const decision = await requestConfirmation({ account: identity, provider_id: providerId, reset_type: args.reset_type,
     available_cards: cards.available, earliest_expires_at: cards.expires_at[0], remaining_percent: before.balance.model[key].remaining_percent ?? null, retry: Boolean(previous) });
   if (decision.action !== 'accept' || decision.content?.confirm !== true) return { source: 'zcode_host', status: 'cancelled', used: false, reset_type: args.reset_type };
-  const checked = await readState(remote, now);
+  const checked = await readState(remote, now, 'reset_glm_quota');
   if (checked.snapshot?.subscription?.identityMasked !== identity) throw new Error('glm_account_changed: 确认期间账号发生变化，未重置');
   if (JSON.stringify(checked.balance.reset_cards[key]?.expires_at) !== JSON.stringify(cards.expires_at)) throw new Error('reset_cards_changed: 确认期间卡片列表变化，请重新查询并取得许可，未重置');
   signal?.throwIfAborted();
@@ -89,7 +91,7 @@ export async function resetGlmQuota(remote, args, { requestConfirmation, attempt
   const result = { ...receipt, status: 'reset', used: true };
   attempts.get(attempt_id).result = result;
   try {
-    result.balance_after = (await readState(remote, now)).balance;
+    result.balance_after = (await readState(remote, now, 'reset_glm_quota')).balance;
   } catch (cause) {
     throw Object.assign(new Error('glm_reset_refresh_failed: 重置已成功，但刷新结果失败；不要再次消耗', { cause }), { partial_result: result });
   }

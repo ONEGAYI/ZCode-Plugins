@@ -10,6 +10,32 @@ import packageMetadata from '../package.json' with { type: 'json' };
 import pluginMetadata from '../.zcode-plugin/plugin.json' with { type: 'json' };
 import lockMetadata from '../package-lock.json' with { type: 'json' };
 
+test('网关失败的 MCP 结果与 stderr 保留分层诊断，消息正文不写日志', async t => {
+  const f = fixture(t), logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const diagnostic = { id: '11111111-1111-4111-8111-111111111111', at: '2026-10-23T13:00:00.000Z', phase: 'desktop_payload', causeCode: 'bridge_degraded' };
+  const { createMcpServer } = await import('../server.mjs');
+  const server = await createMcpServer(f, { controller: { sendMessage: async () => { throw Object.assign(new Error('fixture failure'), {
+    stage: 'gateway', reasonCode: 'gateway_rpc_protocol_error', diagnostic, partial_result: { delivery_status: 'unknown' }
+  }); } } });
+  const client = new Client({ name: 'diagnostic-contract', version: '1.0.0' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  t.after(async () => { await client.close(); await server.close(); });
+  await server.connect(st); await client.connect(ct);
+  const response = await client.callTool({ name: 'send_message', arguments: { session_id: 'sess_target', message: 'private-mcp-body-sentinel' }, _meta: { session_id: 'sess_parent' } });
+  assert.equal(response.isError, true);
+  assert.equal(response.structuredContent.stage, 'gateway');
+  assert.equal(response.structuredContent.reasonCode, 'gateway_rpc_protocol_error');
+  assert.deepEqual(response.structuredContent.diagnostic, diagnostic);
+  assert.equal(response.structuredContent.delivery_status, 'unknown');
+  assert.equal(logs.length, 1);
+  const record = JSON.parse(logs[0][0]);
+  assert.equal(record.tool, 'send_message');
+  assert.equal(record.diagnostic.id, diagnostic.id);
+  assert.ok(Number.isFinite(Date.parse(record.at)));
+  assert.equal(JSON.stringify(record).includes('private-mcp-body-sentinel'), false);
+});
+
 test('创建和发信公布正文与 Markdown 路径二选一，文件正文按 UTF-8 原样交给控制器', async t => {
   const f = fixture(t), calls = [];
   const { createMcpServer } = await import('../server.mjs');

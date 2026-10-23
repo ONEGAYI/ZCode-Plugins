@@ -1,4 +1,4 @@
-# 隔离 ZCode 环境踩坑详录（K1-K29）
+# 隔离 ZCode 环境踩坑详录（K1-K30）
 
 每条按 症状 / 根因 / 解法 / 来源 记录。来源指向 `suian-zcode-app-mcp/docs/local-only/` 的脱敏证据文档；编号在合并或删除时保持连续。
 未定位的事项如实标注"根因未定位"，与已证实事实分开。
@@ -215,3 +215,10 @@
 - **事实四**（归属与独立回执）：评论快照带 `sessionId`/`workspacePath`，页面不能指定目标身份；会话 A/B 各自 sandbox 实例与评论状态隔离。原文件哈希、恢复副本 `<lab>/storage/cli/plugins/data/suian-side-editor@suian-zcode-plugins/editor-state.sqlite`、评论受理是三份独立证据；评论验收期间源文件保持只读（本轮源哈希前后不变）。
 - **事实五**（真实选区）：面板是真实构建页面与真实 CodeMirror；标准键盘事件建立选区后，"评论选区"对话框显示绝对路径、1-based 行列与选文。合成 DOM 生命周期或伪造 bridge 不能替代真实宿主验收。
 - **来源**：LO-07（[LO-07 证据](../../../../suian-zcode-app-mcp/docs/local-only/07-editor-acceptance-evidence.md) §3）；评论契约与 #47/#57 边界见 `suian-side-editor/docs/comment-guard-verification.md`、`docs/adr/0005-temporary-comment-send-guard.md`。
+
+## K30 连续短测正常，空闲后重新附着报协议错误
+
+- **症状**：隔离 Desktop 3.16.3.8992 + relay V2，连续和并发各 100 次无失败，间隔 12 秒后 6 次附着有 3 次报 `gateway_rpc_protocol_error`。诊断底层为 `bridge-degraded / terminal-owner-ended`，失败发生在 attach。
+- **根因**：Desktop 失配宽限期约 3 秒，之后结束旧桥并暂存失效通知。网关在无人使用后仍保留物理桥，下一次配对收到迟到通知，旧桥复用使新附着失败。
+- **解法**：最后使用者退出后先取消请求再释放桥；下一次附着建立新身份，消费退役通知。验证必须加入跨宽限期的多轮空闲重连，不能只跑连续连接；不自动重试业务写入。
+- **来源与边界**：[隔离重复验证](../../../../suian-zcode-app-mcp/docs/issue-162-idle-bridge-verification.md)。真实 Desktop 副本、受控 relay 夹具；未验证官方在线 relay 或真实手机，也不把这条复现归因到全部同码故障。

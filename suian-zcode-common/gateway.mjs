@@ -8,6 +8,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { createRpcBroker } from './rpc-broker.mjs';
 import { startTerminalGateway } from './terminal-gateway.mjs';
 import { gatewayBuild } from './gateway-build.mjs';
+import { rpcDiagnostic, rpcPayloadDiagnostic } from './rpc-diagnostics.mjs';
 
 export const OFFICIAL_RELAY = 'wss://zcode.z.ai/ws';
 export const OFFICIAL_RELAY_V2 = 'wss://zcode.z.ai/api/v1/remote/ws2';
@@ -23,12 +24,20 @@ function envelope(data, isBinary) {
 }
 
 // 只接受一个 Desktop，消息体及文本/二进制类型原样转发。
-export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, upstreamUrl = mode === 'terminal' || relayProtocolVersion === 2 ? OFFICIAL_RELAY_V2 : OFFICIAL_RELAY, port = 0, instanceId = 'standalone', controlToken, bridgeTimeoutMs = 5000, onError = (error) => console.error('gateway socket error:', error.code ?? error.name), onTraffic = () => {}, deviceSid, deviceMid, getToken, WebSocketImpl } = {}) {
+export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, upstreamUrl = mode === 'terminal' || relayProtocolVersion === 2 ? OFFICIAL_RELAY_V2 : OFFICIAL_RELAY, port = 0, instanceId = 'standalone', controlToken, bridgeTimeoutMs = 5000, onError = error => console.error(JSON.stringify({ event: 'gateway_error', ...error.diagnostic })), onTraffic = () => {}, deviceSid, deviceMid, getToken, WebSocketImpl } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid gateway port');
   if (![1, 2].includes(relayProtocolVersion)) throw new Error('Invalid relay protocol version');
-  if (mode === 'terminal') return startTerminalGateway({port,instanceId,controlToken,upstreamUrl,deviceSid,deviceMid,getToken,bridgeTimeoutMs,WebSocketImpl,onError});
+  if (mode === 'terminal') return startTerminalGateway({port,instanceId,controlToken,upstreamUrl,deviceSid,deviceMid,getToken,bridgeTimeoutMs,WebSocketImpl,onError: error => {
+    error.diagnostic = rpcDiagnostic(error, { mode, relayProtocolVersion: 2, gatewayVersion: gatewayBuild.version, gatewayBuildId: gatewayBuild.id });
+    onError(error);
+  }});
   if (!['relay', 'local-only'].includes(mode)) throw new Error('Invalid gateway mode');
   let active;
+  const reportError = (error, context = {}) => {
+    error.diagnostic = rpcDiagnostic(error, { mode, relayProtocolVersion, gatewayVersion: gatewayBuild.version, gatewayBuildId: gatewayBuild.id,
+      desktopVersion: active?.desktopVersion, localClients: active?.localClients.size ?? 0, rpcInFlight: rpcInFlight(), ...context });
+    onError(error);
+  };
   // 忙判定聚合：RPC 路由在飞数 + 发往 Desktop 尚未应答的 bootstrap 请求；无活动连接时为 0。
   const rpcInFlight = () => (active?.broker.inFlight?.() ?? 0) + (active?.pending.size ?? 0);
   const http = createServer(async (request, response) => {
@@ -75,7 +84,7 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
     connection.localClients.add(socket);
     connection.paired = true;
     if (mode === 'relay' && !connection.phonePaired) connection.sendPairStatus('matched');
-    socket.on('error', onError);
+    socket.on('error', error => reportError(error, { phase: 'socket', source: 'local_rpc' }));
     connection.broker.acceptLocal(socket);
     socket.on('close', () => {
       connection.localClients.delete(socket);
@@ -121,7 +130,7 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
         ? { server_ts: unixNow() }
         : relayProtocolVersion === 2 ? { [socket === desktop ? 'server_ts' : 'client_ts']: Math.floor(Date.now() / 1000) } : { client_ts: Date.now() }) }));
     connection.sendDesktop = payload => sendData(desktop, payload);
-    connection.broker = createRpcBroker({ bootstrap: () => requestBootstrap(connection), bridgeTimeoutMs,
+    connection.broker = createRpcBroker({ bootstrap: () => requestBootstrap(connection), bridgeTimeoutMs, onError: reportError,
       sendDesktop: connection.sendDesktop, sendPhone: payload => { if (upstream?.readyState === WebSocket.OPEN) sendData(upstream, payload); } });
     active = connection;
     const queued = [];
@@ -132,14 +141,26 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
       }
       connection.pending.clear();
     };
-    const disconnect = () => {
+    let disconnected = false;
+    const disconnect = diagnostic => {
+      if (disconnected) return;
+      disconnected = true;
       connection.paired = false;
-      rejectPending(new Error('连接断开'));
-      connection.broker.close(new Error('Desktop disconnected'));
+      rejectPending(Object.assign(new Error('连接断开'), { diagnostic }));
+      connection.broker.close(Object.assign(new Error('Desktop disconnected'), { diagnostic }));
       for (const socket of rpcServer.clients) socket.close(1011, 'Desktop disconnected');
       desktop.terminate();
       upstream?.terminate();
       if (active === connection) active = undefined;
+    };
+    const connectionClosed = (source, code) => {
+      let diagnostic;
+      if (!disconnected && !closing && (code !== 1000 || rpcInFlight() > 0)) {
+        const error = new Error('Gateway connection closed');
+        reportError(error, { phase: 'socket', source, closeCode: code, reasonCode: 'gateway_connection_closed' });
+        diagnostic = error.diagnostic;
+      }
+      disconnect(diagnostic);
     };
     desktop.on('message', (data, isBinary) => {
       const message = envelope(data, isBinary);
@@ -178,6 +199,7 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
         if (pending) {
           clearTimeout(pending.timer);
           connection.pending.delete(payload.requestId);
+          connection.desktopVersion = payload.result?.desktopAppVersion;
           pending.resolve(payload);
         }
         // 超时、配对结束后的迟到回复也属于本地请求，不发往手机。
@@ -187,15 +209,16 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
         try { if (connection.broker.desktopPayload(payload)) return; }
         catch (error) {
           const failed = Object.assign(new Error('原 Host RPC 协议错误，已提交操作结果可能未知', { cause: error }), { code: 'gateway_rpc_protocol_error' });
-          connection.broker.close(failed); onError(failed); return;
+          reportError(failed, { phase: 'desktop_payload', source: 'desktop', ...rpcPayloadDiagnostic(payload) });
+          connection.broker.close(failed); return;
         }
       }
       if (mode === 'local-only') return;
       if (upstream.readyState === WebSocket.OPEN) upstream.send(data, { binary: isBinary });
       else queued.push([data, isBinary]);
     });
-    desktop.on('error', (error) => { onError(error); disconnect(); });
-    desktop.on('close', disconnect);
+    desktop.on('error', (error) => { reportError(error, { phase: 'socket', source: 'desktop' }); disconnect(error.diagnostic); });
+    desktop.on('close', code => connectionClosed('desktop', code));
     if (!upstream) return;
     upstream.on('open', () => {
       for (const [data, isBinary] of queued) upstream.send(data, { binary: isBinary });
@@ -223,14 +246,16 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
         // 已鉴权的 INTERNAL 仅影响手机配对；本地 Host 调用可能仍在执行，不截断其 ACK。
         if (connection.paired) { connection.sendPairStatus('matched'); return; }
         rejectPending(new Error(`relay error: ${message.code}`));
-        connection.broker.close(new Error(`relay error: ${message.code}`));
+        const failed = new Error(`relay error: ${message.code}`);
+        reportError(failed, { phase: 'socket', source: 'upstream' });
+        connection.broker.close(failed);
       }
       if (message?.type === 'data' && message.payload?.zcode_type === 'workspace-bridge-open') { void connection.broker.phoneOpen(message.payload); return; }
       if (message?.type === 'data' && ['rpc-frame', 'rpc-frame-ack'].includes(message.payload?.zcode_type)) { connection.broker.phoneFrame(message.payload); return; }
       desktop.send(data, { binary: isBinary });
     });
-    upstream.on('error', (error) => { onError(error); disconnect(); });
-    upstream.on('close', disconnect);
+    upstream.on('error', (error) => { reportError(error, { phase: 'socket', source: 'upstream' }); disconnect(error.diagnostic); });
+    upstream.on('close', code => connectionClosed('upstream', code));
   });
   http.listen(port, '127.0.0.1');
   await once(http, 'listening');

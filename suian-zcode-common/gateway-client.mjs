@@ -5,11 +5,14 @@ import WebSocket from 'ws';
 import { ChannelClient } from './vendor/channelClient.js';
 import { Emitter } from './vendor/foundation.js';
 import { VSBuffer } from './vendor/buffer.js';
+import { rpcDiagnostic, sanitizeRpcDiagnostic } from './rpc-diagnostics.mjs';
 
 const failure = (reasonCode, message, stage = 'gateway') => Object.assign(new Error(message), { stage, reasonCode });
 const defaultConfig = join(homedir(), '.zcode', 'tools', 'suian-zcode-gateway', 'config.json');
 
 export async function connectHost({ workspacePath, sessionId, gatewayConfigPath = defaultConfig, timeoutMs = 120000, handshakeTimeoutMs = 8000 }) {
+  const started = Date.now();
+  let clientPhase = 'health';
   let config;
   try { config = JSON.parse(await readFile(gatewayConfigPath, 'utf8')); }
   catch (error) {
@@ -21,45 +24,67 @@ export async function connectHost({ workspacePath, sessionId, gatewayConfigPath 
   const healthUrl = `http://127.0.0.1:${config.port}/health`;
   let health;
   try { health = await (await fetch(healthUrl, { signal: AbortSignal.timeout(handshakeTimeoutMs) })).json(); }
-  catch (error) { throw failure('gateway_unreachable', '公共网关健康检查失败：' + error.name); }
-  if (health.service !== 'suian-zcode-gateway' || health.rpc_protocol_version !== 1) throw failure('gateway_upgrade_required', '运行中的网关未提供 RPC，请按公共 skill 暂停移动端远控并重载网关，保留 ZCode 完成升级');
+  catch (error) { throw Object.assign(failure('gateway_unreachable', '公共网关健康检查失败：' + error.name), {
+    cause: error, diagnostic: rpcDiagnostic(error, { phase: 'health', clientPhase, elapsedMs: Date.now() - started })
+  }); }
   const mode = health.mode === undefined ? 'relay' : health.mode;
-  if (!['relay', 'local-only', 'terminal'].includes(mode)) throw failure('gateway_rpc_protocol_error', '公共网关返回未知运行模式');
-  if (!health.desktop_connected || (mode === 'local-only' ? !health.desktop_ready : !health.upstream_connected)) throw failure('gateway_desktop_offline', 'Desktop 尚未就绪，或 relay 模式的官方上游尚未连接');
+  const diagnose = (error, context = {}) => {
+    // ChannelClient 的 PromiseErrorObj 可以直接拒绝字符串或 null；保留其原值。
+    if (error === null || typeof error !== 'object') return error;
+    error.diagnostic = rpcDiagnostic(error, { clientPhase, elapsedMs: Date.now() - started,
+      gatewayVersion: health.build?.version ?? error.diagnostic?.gatewayVersion, gatewayBuildId: health.build?.id ?? error.diagnostic?.gatewayBuildId,
+      mode, relayProtocolVersion: health.relay_protocol_version ?? error.diagnostic?.relayProtocolVersion, ...context });
+    return error;
+  };
+  if (health.service !== 'suian-zcode-gateway' || health.rpc_protocol_version !== 1) throw diagnose(failure('gateway_upgrade_required', '运行中的网关未提供 RPC，请按公共 skill 暂停移动端远控并重载网关，保留 ZCode 完成升级'), { phase: 'health' });
+  if (!['relay', 'local-only', 'terminal'].includes(mode)) throw diagnose(failure('gateway_rpc_protocol_error', '公共网关返回未知运行模式'), { phase: 'health' });
+  if (!health.desktop_connected || (mode === 'local-only' ? !health.desktop_ready : !health.upstream_connected)) throw diagnose(failure('gateway_desktop_offline', 'Desktop 尚未就绪，或 relay 模式的官方上游尚未连接'), { phase: 'health' });
   const ready = Promise.withResolvers(), fault = Promise.withResolvers(), emitter = new Emitter();
   const socket = new WebSocket(`ws://127.0.0.1:${config.port}/rpc`, { headers: { Authorization: `Bearer ${config.control_token}` }, handshakeTimeout: handshakeTimeoutMs });
   const client = new ChannelClient({ onMessage: emitter.event, send: bytes => socket.send(bytes.buffer), drain: () => Promise.resolve() });
   let attached, closing = false;
-  let timer = setTimeout(() => fault.reject(failure('gateway_timeout', '公共网关附着超时')), handshakeTimeoutMs);
-  socket.on('open', () => socket.send(JSON.stringify({ type: 'attach', workspace_path: workspacePath, ...(sessionId === undefined ? {} : { session_id: sessionId }) })));
+  let timer = setTimeout(() => fault.reject(Object.assign(failure('gateway_timeout', '公共网关附着超时'), {
+    diagnostic: { phase: 'attach_timeout' }
+  })), handshakeTimeoutMs);
+  clientPhase = 'connect';
+  socket.on('open', () => { clientPhase = 'attach'; socket.send(JSON.stringify({ type: 'attach', workspace_path: workspacePath, ...(sessionId === undefined ? {} : { session_id: sessionId }) })); });
   socket.on('message', (data, binary) => {
     try {
       if (binary) { emitter.fire(VSBuffer.wrap(data)); return; }
       const message = JSON.parse(data.toString());
-      if (message.type === 'attached') { attached = message; ready.resolve(); }
-      else if (message.type === 'error') fault.reject(failure(message.code, message.message));
+      if (message.type === 'attached') { attached = message; clientPhase = 'channel_initialize'; ready.resolve(); }
+      else if (message.type === 'error') fault.reject(Object.assign(failure(message.code, message.message), { diagnostic: sanitizeRpcDiagnostic(message.diagnostic) }));
     } catch (error) {
-      fault.reject(Object.assign(failure('gateway_rpc_protocol_error', '公共网关 RPC 消息无效，已提交操作结果可能未知'), { cause: error }));
+      fault.reject(Object.assign(failure('gateway_rpc_protocol_error', '公共网关 RPC 消息无效，已提交操作结果可能未知'), {
+        cause: error, diagnostic: { phase: 'rpc_message', frameBinary: binary, frameBytes: data.length }
+      }));
       close();
     }
   });
-  socket.on('error', () => fault.reject(failure('gateway_connection_failed', '公共网关 RPC 连接失败')));
-  socket.on('close', () => { if (!closing) fault.reject(failure('gateway_connection_closed', '公共网关 RPC 连接已断开，已提交的操作结果可能未知')); });
+  socket.on('error', error => fault.reject(Object.assign(failure('gateway_connection_failed', '公共网关 RPC 连接失败'), { cause: error, diagnostic: { phase: 'socket' } })));
+  socket.on('close', code => { if (!closing) fault.reject(Object.assign(failure('gateway_connection_closed', '公共网关 RPC 连接已断开，已提交的操作结果可能未知'), { diagnostic: { phase: 'socket', closeCode: code } })); });
   const close = () => { closing = true; clearTimeout(timer); socket.close(); client.dispose(); emitter.dispose(); };
   try {
     await Promise.race([Promise.all([ready.promise, client.whenInitialized()]), fault.promise]);
-    clearTimeout(timer); timer = setTimeout(() => fault.reject(failure('gateway_timeout', '原 Host RPC 执行超时，结果可能未知')), timeoutMs);
+    clearTimeout(timer); timer = setTimeout(() => fault.reject(Object.assign(failure('gateway_timeout', '原 Host RPC 执行超时，结果可能未知'), {
+      diagnostic: { phase: 'rpc_timeout' }
+    })), timeoutMs);
+    clientPhase = 'rpc';
     return {
       bootstrap: attached.bootstrap, workspacePath: attached.workspace_path,
-      call: (channel, method, args = []) => Promise.race([client.getChannel(channel).call(method, args), fault.promise]),
+      call: (channel, method, args = []) => Promise.race([client.getChannel(channel).call(method, args), fault.promise]).catch(error => { throw diagnose(error); }),
       listen: (channel, event, args) => client.getChannel(channel).listen(event, args),
       probe: async () => {
-        const current = await (await fetch(healthUrl, { signal: AbortSignal.timeout(handshakeTimeoutMs) })).json();
-        return { ok: current.desktop_connected && (mode === 'local-only' ? current.desktop_ready : current.upstream_connected), stage: 'gateway', mode, paired: current.paired, upstreamPaired: current.upstream_paired, localClients: current.local_clients };
+        try {
+          const current = await (await fetch(healthUrl, { signal: AbortSignal.timeout(handshakeTimeoutMs) })).json();
+          return { ok: current.desktop_connected && (mode === 'local-only' ? current.desktop_ready : current.upstream_connected), stage: 'gateway', mode, paired: current.paired, upstreamPaired: current.upstream_paired, localClients: current.local_clients };
+        } catch (cause) {
+          throw diagnose(Object.assign(failure('gateway_unreachable', '公共网关健康检查失败：' + cause.name), { cause }), { phase: 'health', clientPhase: 'health' });
+        }
       },
       close
     };
-  } catch (error) { close(); throw error; }
+  } catch (error) { close(); throw diagnose(error); }
 }
 
 export async function probeHost(options) {
@@ -68,6 +93,6 @@ export async function probeHost(options) {
     connection = await connectHost({ ...options, handshakeTimeoutMs: options.timeoutMs ?? 8000 });
     return { ...await connection.probe(), hostReachable: true, workspaceFound: true, sessionFound: true };
   } catch (error) {
-    return { ok: false, stage: error.stage ?? 'gateway', reasonCode: error.reasonCode ?? 'gateway_error', paired: false, message: error.message };
+    return { ok: false, stage: error.stage ?? 'gateway', reasonCode: error.reasonCode ?? 'gateway_error', paired: false, message: error.message, ...(error.diagnostic ? { diagnostic: error.diagnostic } : {}) };
   } finally { connection?.close(); }
 }

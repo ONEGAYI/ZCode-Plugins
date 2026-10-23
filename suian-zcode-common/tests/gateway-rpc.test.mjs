@@ -29,8 +29,10 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   const relay = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(relay, 'listening');
   t.after(() => { for (const s of relay.clients) s.terminate(); relay.close(); });
-  const faults = [];
-  const gateway = await startGateway({ upstreamUrl: `ws://127.0.0.1:${relay.address().port}/ws`, controlToken: 'fixture-rpc-token', onError: error => faults.push(error.code ?? error.name), ...options.gateway });
+  const faults = [], diagnostics = [];
+  const gateway = await startGateway({ upstreamUrl: `ws://127.0.0.1:${relay.address().port}/ws`, controlToken: 'fixture-rpc-token', onError: error => {
+    faults.push(error.code ?? error.name); diagnostics.push(error.diagnostic);
+  }, ...options.gateway });
   t.after(() => gateway.close());
   const accepted = options.gateway?.mode === 'local-only' ? undefined : once(relay, 'connection');
   const desktop = new WebSocket(gateway.url);
@@ -45,7 +47,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   const requests = [], bridgeOpens = [], desktopMessages = [], phoneMessages = [];
   phone?.on('message', data => phoneMessages.push(JSON.parse(data)));
   let identity, assembler, physical = 1, message = 1, helloIssued = false, boundClientId;
-  let desktopPaired = pairStatus === 'matched';
+  let desktopPaired = pairStatus === 'matched', retiredBridge;
   const respond = (header, body) => {
     for (const f of encode(pack(header, body), { ...identity, firstPhysicalSeq: physical, messageSeq: message++ })) {
       physical++; desktop.send(JSON.stringify({ type: 'data', payload: f }));
@@ -57,6 +59,12 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
     if (incoming.type === 'pair_status_ack') {
       if (options.gateway?.relayProtocolVersion === 2 && Object.keys(incoming).some(key => !['type', 'terminal_sid', 'pair_status', 'server_ts'].includes(key))) return;
       desktopPaired = incoming.pair_status === 'matched';
+      if (options.retireBridgeOnUnpaired && !desktopPaired && identity) {
+        retiredBridge = identity;
+      } else if (desktopPaired && retiredBridge) {
+        desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bridge-degraded', ...retiredBridge, reason: 'terminal-owner-ended' } }));
+        retiredBridge = undefined;
+      }
     }
     // V2 auth_ack 只在首次鉴权时生效；后续配对变化由 pair_status_ack 驱动。
     if (options.gateway?.relayProtocolVersion === 2 && incoming.type === 'data' && !desktopPaired) return;
@@ -117,7 +125,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
       }
     }
   });
-  return { gateway, desktop, phone, relay, requests, bridgeOpens, respond, faults, desktopMessages, phoneMessages };
+  return { gateway, desktop, phone, relay, requests, bridgeOpens, respond, faults, diagnostics, desktopMessages, phoneMessages };
 }
 
 test('V2 首次心跳前本地插件即可附着，配对通知不能重复使用 auth_ack', { timeout: 2500 }, async t => {
@@ -131,6 +139,305 @@ test('V2 首次心跳前本地插件即可附着，配对通知不能重复使�
   t.after(() => client.close());
   assert.equal(client.bootstrap.desktopAppVersion, '3.16.1');
   assert.ok(f.desktopMessages.some(message => message.type === 'pair_status_ack' && message.pair_status === 'matched'));
+});
+
+test('V2 空闲失配后的迟到桥失效通知不能破坏下一次本地附着', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'waiting', { retireBridgeOnUnpaired: true, gateway: { relayProtocolVersion: 2 } });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-v2-retired-bridge-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  for (let round = 0; round < 4; round++) {
+    const count = f.desktopMessages.filter(message => message.type === 'pair_status_ack' && message.pair_status === 'waiting').length;
+    const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+    host.close();
+    await until(() => f.desktopMessages.filter(message => message.type === 'pair_status_ack' && message.pair_status === 'waiting').length > count);
+  }
+  assert.equal(f.bridgeOpens.length, 4, '无使用者后释放旧桥，下次附着使用新身份');
+  assert.deepEqual(f.faults, []);
+  assert.equal(f.phoneMessages.some(message => message.payload?.zcode_type === 'bridge-degraded'), false,
+    '旧物理桥的失效通知由网关消费，不泄露给手机');
+});
+
+test('V2 手机作为最后使用者断开后，本地附着不复用旧物理桥', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { retireBridgeOnUnpaired: true, gateway: { relayProtocolVersion: 2 } });
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'retired-phone',
+    bridgeSessionId: 'retired-phone-bridge', bridgeGeneration: 1, workspaceKey: workspace } }));
+  await until(() => f.phoneMessages.some(message => message.payload?.zcode_type === 'workspace-bridge-ready'));
+  f.phone.send(JSON.stringify({ type: 'pair_status_ack', terminal_sid: '', pair_status: 'waiting', server_ts: Math.floor(Date.now() / 1000) }));
+  await until(() => f.desktopMessages.some(message => message.type === 'pair_status_ack' && message.pair_status === 'waiting'));
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-v2-retired-phone-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  assert.equal(f.bridgeOpens.length, 2);
+  assert.deepEqual(f.faults, []);
+});
+
+test('V2 手机导航失败再失配后，本地附着不复用无人使用的旧桥', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { retireBridgeOnUnpaired: true, projectDirectories: {}, gateway: { relayProtocolVersion: 2 } });
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'phone-before-failed-navigation',
+    bridgeSessionId: 'phone-initial-bridge', bridgeGeneration: 1, workspaceKey: workspace } }));
+  await until(() => f.phoneMessages.some(message => message.payload?.requestId === 'phone-before-failed-navigation'));
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'failed-phone-navigation',
+    bridgeSessionId: 'phone-missing-project', bridgeGeneration: 2, workspaceKey: workspace, project: { projectId: 'missing', hostId: 'local' } } }));
+  await until(() => f.phoneMessages.some(message => message.payload?.requestId === 'failed-phone-navigation'));
+  const failure = f.phoneMessages.find(message => message.payload?.requestId === 'failed-phone-navigation').payload;
+  assert.equal(failure.zcode_type, 'workspace-bridge-error');
+  assert.equal(failure.error, 'project.not-found');
+  f.phone.send(JSON.stringify({ type: 'pair_status_ack', terminal_sid: '', pair_status: 'waiting', server_ts: Math.floor(Date.now() / 1000) }));
+  await until(() => f.desktopMessages.some(message => message.type === 'pair_status_ack' && message.pair_status === 'waiting'));
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-failed-phone-navigation-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  assert.equal(f.bridgeOpens.length, 2);
+  assert.deepEqual(f.faults, []);
+});
+
+test('本地附着中途退出时，未结束的内部会话查询仍保留 Host 桥', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { gateway: { relayProtocolVersion: 2 } });
+  const socket = new WebSocket(f.gateway.url.replace('/ws', '/rpc'), { headers: { Authorization: 'Bearer fixture-rpc-token' } });
+  t.after(() => socket.terminate());
+  await once(socket, 'open');
+  socket.send(JSON.stringify({ type: 'attach', workspace_path: workspace, session_id: 'pending-task' }));
+  await until(() => f.requests.some(([header]) => header[3] === 'getTaskMeta'));
+  const lookupId = f.requests[0][0][1];
+  socket.close(); await once(socket, 'close');
+  let health;
+  for (let i = 0; i < 100; i++) {
+    health = await (await fetch(f.gateway.url.replace('ws:', 'http:').replace('/ws', '/health'))).json();
+    if (health.local_clients === 0) break;
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+  assert.equal(health.local_clients, 0);
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-pending-lookup-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  assert.equal(f.bridgeOpens.length, 1, '仍有内部请求时不能提前释放共享桥');
+  f.respond([201, lookupId], { taskId: 'pending-task', workspacePath: workspace });
+});
+
+test('RPC 帧故障保留底层序号与运行身份，网关和调用方用诊断 ID 关联且不记录正文', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const errors = [];
+  const f = await fixture(t, 'matched', { gateway: { relayProtocolVersion: 2, onError: error => errors.push(error) } });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  const pending = host.call('fixture', 'noAck', ['private-message-sentinel']);
+  const rejected = assert.rejects(pending, error => {
+    assert.equal(error.reasonCode, 'gateway_rpc_protocol_error');
+    assert.equal(error.stage, 'gateway');
+    assert.equal(error.diagnostic.phase, 'desktop_payload');
+    assert.equal(error.diagnostic.reasonCode, 'gateway_rpc_protocol_error');
+    assert.equal(error.diagnostic.clientPhase, 'rpc');
+    assert.equal(error.diagnostic.causeCode, 'remote.rpcFrame.physicalGap');
+    assert.equal(error.diagnostic.seq, 99);
+    assert.equal(error.diagnostic.expectedSeq, 2);
+    assert.equal(error.diagnostic.expectedMessageSeq, 2);
+    assert.equal(error.diagnostic.relayProtocolVersion, 2);
+    assert.equal(error.diagnostic.desktopVersion, '3.16.1');
+    assert.match(error.diagnostic.gatewayBuildId, /^[a-f0-9]{64}$/);
+    assert.match(error.diagnostic.id, /^[a-f0-9-]{36}$/);
+    assert.ok(Number.isFinite(Date.parse(error.diagnostic.at)));
+    assert.equal(error.diagnostic.id, errors[0].diagnostic.id);
+    const serialized = JSON.stringify(error.diagnostic);
+    for (const privateValue of ['private-message-sentinel', 'fixture-rpc-token', workspace, f.bridgeOpens[0].bridgeSessionId]) assert.equal(serialized.includes(privateValue), false);
+    return true;
+  });
+  await until(() => f.requests.length === 1);
+  const { bridgeSessionId, bridgeGeneration } = f.bridgeOpens[0];
+  for (const frame of encode(pack([201, f.requests[0][0][1]], 'private-message-sentinel'), { bridgeSessionId, bridgeGeneration, firstPhysicalSeq: 99, messageSeq: 2 })) {
+    f.desktop.send(JSON.stringify({ type: 'data', payload: frame }));
+  }
+  await rejected;
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].diagnostic.reasonCode, 'gateway_rpc_protocol_error');
+});
+
+test('默认网关日志为带时间戳的 JSON，合法桥失效保留原因且不误称字节损坏', { timeout: 3000 }, async t => {
+  const logged = [];
+  t.mock.method(console, 'error', (...args) => logged.push(args));
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { gateway: { onError: undefined } });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-log-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  const pending = assert.rejects(host.call('fixture', 'noAck'), error => {
+    assert.equal(error.diagnostic.causeCode, 'bridge_degraded');
+    assert.equal(error.diagnostic.bridgeReason, 'terminal-owner-ended');
+    return true;
+  });
+  const { bridgeSessionId, bridgeGeneration } = f.bridgeOpens[0];
+  f.desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bridge-degraded', bridgeSessionId, bridgeGeneration, reason: 'terminal-owner-ended', secret: 'private-log-sentinel' } }));
+  await pending;
+  assert.equal(logged.length, 1);
+  assert.equal(logged[0].length, 1);
+  const record = JSON.parse(logged[0][0]);
+  assert.equal(record.event, 'gateway_error');
+  assert.equal(record.reasonCode, 'gateway_rpc_protocol_error');
+  assert.equal(record.causeCode, 'bridge_degraded');
+  assert.match(record.at, /^\d{4}-\d\d-\d\dT/);
+  assert.equal(JSON.stringify(record).includes('private-log-sentinel'), false);
+});
+
+test('桥初始化超时在网关与客户端保留附着阶段', { timeout: 3000 }, async t => {
+  const errors = [];
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { ignoreBridge: true, gateway: { bridgeTimeoutMs: 50, onError: error => errors.push(error) } });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-timeout-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  await assert.rejects(connectHost({ workspacePath: workspace, gatewayConfigPath, handshakeTimeoutMs: 1000 }), error => {
+    assert.equal(error.reasonCode, 'gateway_bridge_timeout');
+    assert.equal(error.diagnostic.phase, 'bridge_initialize');
+    assert.equal(error.diagnostic.clientPhase, 'attach');
+    assert.equal(error.diagnostic.id, errors[0].diagnostic.id);
+    return true;
+  });
+});
+
+test('无效本地帧和异常关闭保留客户端阶段，拒收对端诊断中的正文与任意文本', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  let scenario = 'json';
+  const http = createServer((_req, res) => res.end(JSON.stringify({ service: 'suian-zcode-gateway', rpc_protocol_version: 1, desktop_connected: true, upstream_connected: true })));
+  const ws = new WebSocketServer({ server: http });
+  ws.on('connection', socket => socket.once('message', () => {
+    if (scenario === 'json') socket.send('{private-frame-sentinel');
+    else if (scenario === 'close') socket.terminate();
+    else socket.send(JSON.stringify({ type: 'error', code: 'gateway_rpc_failed', message: 'fixture', diagnostic: {
+      phase: 'bootstrap', causeCode: 'private-token-sentinel', causeName: 'private-name-sentinel', payload: 'private-body-sentinel', seq: -5, expectedSeq: 2
+    } }));
+  }));
+  http.listen(0, '127.0.0.1'); await once(http, 'listening');
+  t.after(() => { for (const socket of ws.clients) socket.terminate(); ws.close(); http.close(); });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-client-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: http.address().port, control_token: 'fixture-token' }));
+  for (scenario of ['json', 'close', 'untrusted']) {
+    await assert.rejects(connectHost({ workspacePath: workspace, gatewayConfigPath }), error => {
+      assert.equal(error.diagnostic.clientPhase, 'attach');
+      if (scenario === 'json') {
+        assert.equal(error.diagnostic.phase, 'rpc_message');
+        assert.equal(error.diagnostic.causeName, 'SyntaxError');
+        assert.equal(error.diagnostic.frameBinary, false);
+        assert.equal(error.diagnostic.frameBytes, 23);
+      } else if (scenario === 'close') assert.equal(error.diagnostic.closeCode, 1006);
+      else {
+        assert.equal(error.diagnostic.phase, 'bootstrap');
+        assert.equal(error.diagnostic.expectedSeq, 2);
+        assert.equal(error.diagnostic.seq, undefined);
+      }
+      assert.equal(JSON.stringify(error.diagnostic).includes('private-'), false);
+      return true;
+    });
+  }
+});
+
+test('Desktop 无 error 事件的异常关闭也有日志，并将诊断关联到在飞 RPC', { timeout: 3000 }, async t => {
+  const errors = [];
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { gateway: { onError: error => errors.push(error) } });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-close-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  const pending = assert.rejects(host.call('fixture', 'noAck'), error => {
+    assert.equal(error.diagnostic.closeCode, 1006);
+    assert.equal(error.diagnostic.source, 'desktop');
+    assert.equal(error.diagnostic.id, errors[0].diagnostic.id);
+    return true;
+  });
+  await until(() => f.requests.length === 1);
+  f.desktop.terminate();
+  await pending;
+  assert.equal(errors.length, 1, '同一次关闭不重复记录两条错误');
+});
+
+test('健康检查报告未就绪时仍保留健康阶段和实际网关身份', async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const http = createServer((_req, res) => res.end(JSON.stringify({ service: 'suian-zcode-gateway', rpc_protocol_version: 1,
+    desktop_connected: false, upstream_connected: true, relay_protocol_version: 2, build: { version: '0.7.2', id: 'a'.repeat(64) } })));
+  http.listen(0, '127.0.0.1'); await once(http, 'listening');
+  t.after(() => http.close());
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-health-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: http.address().port, control_token: 'fixture-token' }));
+  await assert.rejects(connectHost({ workspacePath: workspace, gatewayConfigPath }), error => {
+    assert.equal(error.reasonCode, 'gateway_desktop_offline');
+    assert.equal(error.diagnostic.phase, 'health');
+    assert.equal(error.diagnostic.gatewayBuildId, 'a'.repeat(64));
+    assert.equal(error.diagnostic.gatewayVersion, '0.7.2');
+    return true;
+  });
+});
+
+test('诊断附加不把 Host 允许的非 Error 拒绝值改写为 TypeError', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t);
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-rejection-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  for (const value of ['remote rejection', null]) {
+    const count = f.requests.length;
+    const pending = host.call('fixture', 'noAck').then(() => assert.fail('应保留 Host 拒绝值'), error => assert.equal(error, value));
+    await until(() => f.requests.length > count);
+    f.respond([203, f.requests.at(-1)[0][1]], value);
+    await pending;
+  }
+});
+
+test('附着后的健康复查失败仍返回健康阶段及诊断信息', async t => {
+  const { probeHost } = await import('../gateway-client.mjs');
+  let checks = 0;
+  const http = createServer((req, res) => {
+    if (++checks > 1) { req.socket.destroy(); return; }
+    res.end(JSON.stringify({ service: 'suian-zcode-gateway', rpc_protocol_version: 1, desktop_connected: true, upstream_connected: true,
+      build: { version: '0.7.2', id: 'b'.repeat(64) } }));
+  });
+  const ws = new WebSocketServer({ server: http });
+  ws.on('connection', socket => socket.once('message', () => {
+    socket.send(JSON.stringify({ type: 'attached', bootstrap: {}, workspace_path: workspace }));
+    socket.send(pack([200]));
+  }));
+  http.listen(0, '127.0.0.1'); await once(http, 'listening');
+  t.after(() => { for (const socket of ws.clients) socket.terminate(); ws.close(); http.close(); });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-rpc-reprobe-diagnostic-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: http.address().port, control_token: 'fixture-token' }));
+  const result = await probeHost({ workspacePath: workspace, gatewayConfigPath, timeoutMs: 1000 });
+  assert.equal(result.ok, false);
+  assert.equal(result.reasonCode, 'gateway_unreachable');
+  assert.equal(result.diagnostic.phase, 'health');
+  assert.equal(result.diagnostic.clientPhase, 'health');
+  assert.equal(result.diagnostic.gatewayBuildId, 'b'.repeat(64));
 });
 
 test('V2 多执行目录按各自会话归属附着，手机与插件仍共用一个 Host 桥', { timeout: 4000 }, async t => {
@@ -164,7 +471,9 @@ test('V2 多执行目录按各自会话归属附着，手机与插件仍共用�
   assert.equal((await ready.promise).bridge.workspacePath, 'D:\\other');
   assert.equal(f.bridgeOpens.length, 1);
   assert.equal(f.relay.clients.size, 1);
-  assert.deepEqual(f.faults, []);
+  assert.deepEqual(f.faults, ['Error'], '会话归属不符也应留失败诊断');
+  assert.equal(f.diagnostics[0].phase, 'session_lookup');
+  assert.equal(f.diagnostics[0].reasonCode, 'gateway_error');
 });
 
 for (const rootCount of [1, 3]) test(`V2 ${rootCount} 个根目录项目导航采用 Host 主目录且不打断插件`, { timeout: 4000 }, async t => {
@@ -386,7 +695,9 @@ for (const relayProtocolVersion of [1, 2]) test(`relay V${relayProtocolVersion}�
       gate.resolve();
       await Promise.all([phoneHandshake, localHandshake]);
       assert.match(await invalidResult, /Invalid v4 clientId/);
-      assert.deepEqual(f.faults, [], '外部客户端的非法输入不能变成 Host 协议故障');
+      assert.deepEqual(f.faults, ['Error']);
+      assert.equal(f.diagnostics[0].phase, 'rpc_request', '非法输入记录为本地请求失败，不能冒充 Desktop 协议故障');
+      assert.equal(f.diagnostics[0].reasonCode, 'gateway_error');
       assert.equal(f.requests.filter(([header]) => header[3] === 'initializeConversationV4').at(-1)[1][0].capabilities?.workflowRunDeltas, true);
     } else {
       await handshake(first, 'local-first');
@@ -616,7 +927,7 @@ test('手机畸形 RPC 帧降级该桥，网关继续服务本地调用', { time
   const attached = Promise.withResolvers();
   peer.on('message', (data, binary) => { if (!binary && JSON.parse(data).type === 'attached') attached.resolve(); });
   await once(peer, 'open'); peer.send(JSON.stringify({ type: 'attach', workspace_path: workspace })); await attached.promise;
-  assert.equal(f.bridgeOpens.length, 1);
+  assert.equal(f.bridgeOpens.length, 2, '失效手机是最后使用者，后续本地客户端建立新桥');
 });
 
 test('手机独用远端工作区时原样转发桥，MCP 本地请求明确让位而不切走手机', { timeout: 3000 }, async t => {

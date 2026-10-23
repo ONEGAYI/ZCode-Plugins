@@ -46,7 +46,7 @@
 | build-release.mjs | 发布目录构建（PKG-03）：esbuild 多入口 bundle（SDK/zod 内联）、ui/skills/许可组装、release.json 与构建输入记录；强制 common 输入仅薄定位器 |
 | skills/ | setup / configuration / sessions / automations / artifacts / glm / debug，paths.md 统一路径与配置说明 |
 | server.mjs | MCP 工具注册、参数校验与结构化响应 |
-| tool-result.mjs | 当前 ZCode 的关键状态简报与完整结构化结果，避免文本重复承载完整 JSON |
+| tool-result.mjs | 当前 ZCode 的关键状态简报与完整结构化结果；保留公共层分层诊断，stderr 仅写时间、工具名和安全诊断，不写参数或异常正文 |
 | caller.mjs | 每次请求的发起会话定位：MCP 元数据优先，trace_id 与工具名只读匹配本地调用记录 |
 | artifacts.mjs | 插件 SQLite 的当前状态、CAS、服务记录时间、双向创建关系、不可变快照和幂等分叉初始化；每次读取工件登记与 session_title；可选 artifact_status 表持久化 PR/议题成功快照，读取时附加 github_status，不写回登记、revision 或历史快照；可选 notify 钩子在工件实际写入事务 COMMIT 后触发变更信号 |
 | artifact-host.mjs | 只读宿主消息的原始 Stop 断点与隐藏 forkOrigin，不用时间或父最新状态猜测 |

@@ -11,11 +11,11 @@ export async function startTerminalGateway({port,instanceId,controlToken,upstrea
   if(typeof controlToken!=='string'||!controlToken||typeof deviceMid!=='string'||!deviceMid)throw new Error('终端网关需要本机 control token 和目标设备 MID');
   let relay,paired=false,lastError,closing=false;
   const clients=new Set(),pending=new Map();
-  const broker=createRpcBroker({bridgeTimeoutMs,bootstrap:()=>bootstrap(),sendDesktop:p=>relay.sendData(p),sendPhone:()=>{throw new Error('终端网关不代理手机连接');}});
+  const broker=createRpcBroker({bridgeTimeoutMs,bootstrap:()=>bootstrap(),onError,sendDesktop:p=>relay.sendData(p),sendPhone:()=>{throw new Error('终端网关不代理手机连接');}});
   const failed=error=>{
     paired=false;lastError=error.reasonCode??'terminal_failed';
     for(const item of pending.values()){clearTimeout(item.timer);item.reject(error);}pending.clear();
-    broker.close(error);relay.close();onError(error);
+    onError(error);broker.close(error);relay.close();
   };
   function bootstrap({timeoutMs=bridgeTimeoutMs}={}) {
     if(!paired)throw new Error('终端尚未与 Desktop 配对');

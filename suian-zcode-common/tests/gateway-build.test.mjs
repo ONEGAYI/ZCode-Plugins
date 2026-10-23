@@ -26,7 +26,7 @@ test('健康接口固定启动时的代码指纹，磁盘代码变化可识别�
   assert.deepEqual(await diskBuild(), initial.build);
   await appendFile(join(root, 'README.md'), '\n文档修改\n');
   assert.deepEqual(await diskBuild(), initial.build);
-  for (const file of ['rpc-broker.mjs', 'vendor/channels.shared.js', 'node_modules/ws/lib/receiver.js']) {
+  for (const file of ['rpc-broker.mjs', 'rpc-diagnostics.mjs', 'vendor/channels.shared.js', 'node_modules/ws/lib/receiver.js']) {
     const previous = await diskBuild();
     await appendFile(join(root, file), '\n// fixture runtime change\n');
     assert.notEqual((await diskBuild()).id, previous.id, file + ' 应纳入指纹');

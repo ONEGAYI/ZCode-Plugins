@@ -15,9 +15,12 @@ const references = items => items.map(({ kind, ref, label, purpose }) => ({ kind
 
 test('会话工件每次详情查询原 Host，失败保留引用详情并明确返回查询错误；列表不查询 Host', async t => {
   const f = fixture(t), queries = [];
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const diagnostic = { id: '11111111-1111-4111-8111-111111111111', phase: 'rpc_timeout' };
   const call = await connect(t, f, { controller: { getSessionStatus: async args => {
     queries.push(args);
-    if (queries.length === 3) throw new Error('gateway_unavailable: 网关未连接');
+    if (queries.length === 3) throw Object.assign(new Error('gateway_unavailable: 网关未连接'), { stage: 'gateway', reasonCode: 'gateway_timeout', diagnostic });
     return { source: 'original_host', session_id: args.session_id, title: '实时名称', status: queries.length === 1 ? 'running' : 'completed', queried_at: queries.length * 1000 };
   } } });
   const item = { kind: 'session', ref: 'sess_child', label: '关联会话', purpose: '跟进' };
@@ -31,6 +34,9 @@ test('会话工件每次详情查询原 Host，失败保留引用详情并明确
   const failed = (await call('get_artifacts', { ref: item.ref })).structuredContent;
   assert.equal(failed.item.ref, item.ref); assert.match(failed.session.error, /gateway_unavailable/);
   assert.equal(failed.session.status, undefined);
+  assert.equal(failed.session.stage, 'gateway');
+  assert.deepEqual(failed.session.diagnostic, diagnostic);
+  assert.equal(JSON.parse(logs[0][0]).tool, 'get_artifacts');
   await call('get_artifacts', { ref: 'sess_not_registered' });
   assert.equal(queries.length, 3);
 });

@@ -16,6 +16,7 @@ const RUNTIME_STATIC = [
   { from: 'gateway.mjs', to: 'gateway.mjs' },
   { from: 'gateway-build.mjs', to: 'gateway-build.mjs' },
   { from: 'rpc-broker.mjs', to: 'rpc-broker.mjs' },
+  { from: 'rpc-diagnostics.mjs', to: 'rpc-diagnostics.mjs' },
   { from: 'terminal-gateway.mjs', to: 'terminal-gateway.mjs' },
   { from: 'terminal-relay.mjs', to: 'terminal-relay.mjs' },
   { from: 'vendor/remote-shared.js', to: 'vendor/remote-shared.js' },

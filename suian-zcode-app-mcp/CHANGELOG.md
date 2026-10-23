@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-23
+
+补齐会话操作失败的分层诊断，配合 common 0.7.3 定位间歇性 Host 附着错误。
+
+### Bug 修复
+
+**跨层错误回执（会话工具、工件详情与 GLM）（[#162](https://github.com/ONEGAYI/ZCode-Plugins/issues/162)）**
+
+- 工具结果保留网关阶段、原因码和安全诊断 ID，包括包装错误与部分成功中的失败。
+- stderr 记录带时间戳的受控工具失败日志，不复制工具参数、对话正文或异常中的任意文本。
+- 工具参数、写入语义及失败后不自动重试的行为保持。
+
 ## [0.11.0] - 2026-10-20
 
 发布包自带运行依赖，使用独立共享的 common 0.5.0；补充项目查询与明确的项目会话创建方式。
@@ -315,9 +327,10 @@
 - 提供 GLM 套餐额度查询和经过本次用户许可、客户端确认表单的重置操作。
 - 原生市场安装以 common 为依赖，自动注册 stdio 服务；技能按配置、会话、GLM 与排障职责拆分，支持旧源码接入迁移。
 
-仓库尚未建立版本标签，以下版本链接使用对应源码提交。
+较早版本链接保留对应源码提交；采用 Release 分发后的新版本链接指向实际发布标签。
 
 <!-- 变更链接 -->
+[0.11.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.1...plugins-2026.10.23.2
 [0.11.0]: https://github.com/ONEGAYI/ZCode-Plugins/pull/124
 [0.9.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/13cd1fcf4f24c9d968f1e4235d299ea11ada4f14...761d06764c7fbdcc36f2c30a4b178af44d7b1d40
 [0.8.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/cbb4f7613c53a66bf0a2f6c62ba641587462f51f...485cdc1be1c1ee9ad356e682df1374fe41d6d5c0

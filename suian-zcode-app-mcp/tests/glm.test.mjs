@@ -45,6 +45,20 @@ test('GLM 查询归一化额度、区分两个 MCP 来源、过滤过期卡且�
   assert.equal(f.closed.length, 1);
 });
 
+test('GLM 部分查询失败也保留网关诊断并写日志，不回显被屏蔽的异常正文', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const diagnostic = { id: '11111111-1111-4111-8111-111111111111', phase: 'rpc_timeout' };
+  const f = fixture({ getEntitlementSnapshot: () => { throw Object.assign(new Error('private-provider-sentinel'), {
+    stage: 'gateway', reasonCode: 'gateway_timeout', diagnostic
+  }); } });
+  const result = await f.controller.getGlmBalance({ workspace_path: 'D:/fixture' });
+  assert.deepEqual(result.errors[0], { component: 'quota', code: 'host_query_failed', stage: 'gateway', reasonCode: 'gateway_timeout', diagnostic });
+  assert.equal(JSON.parse(logs[0][0]).tool, 'get_glm_balance');
+  assert.equal(JSON.stringify(result).includes('private-provider-sentinel'), false);
+  assert.equal(JSON.stringify(logs).includes('private-provider-sentinel'), false);
+});
+
 test('重置没有确认通道、拒绝或取消都不会消耗卡片', async () => {
   const f = fixture();
   await assert.rejects(f.controller.resetGlmQuota({ workspace_path: 'D:/fixture', reset_type: 'FIVE_HOUR' }), /confirmation_unavailable/);

@@ -51,9 +51,10 @@ const commonVersion = JSON.parse(await readFile(join(releaseDir, "release.json")
 const titleVersion = JSON.parse(await readFile(join(titleRoot, ".zcode-plugin", "plugin.json"), "utf8")).version;
 const storageRoot = join(tmpdir(), `pkg02-storage-${process.pid}`);
 const dataPath = join(storageRoot, "data", TITLE_PLUGIN_ID);
+export const FIXTURE_TITLE_ROOT = join(storageRoot, "cache", "suian-zcode-plugins", "suian-zcode-title", titleVersion);
 export const COMMON_RELEASE_DIR = releaseDir;
 export const FIXTURE_STORAGE_ROOT = storageRoot;
-await mkdir(join(storageRoot, "cache", "suian-zcode-plugins", "suian-zcode-title", titleVersion, ".zcode-plugin"), { recursive: true });
+await mkdir(join(FIXTURE_TITLE_ROOT, ".zcode-plugin"), { recursive: true });
 await mkdir(dataPath, { recursive: true });
 await writeFile(join(storageRoot, "installed_plugins.json"), JSON.stringify({
   version: 1,
@@ -65,7 +66,7 @@ await writeFile(join(storageRoot, "installed_plugins.json"), JSON.stringify({
     },
     {
       id: TITLE_PLUGIN_ID, name: "suian-zcode-title", marketplace: "suian-zcode-plugins",
-      version: titleVersion, installPath: join(storageRoot, "cache", "suian-zcode-plugins", "suian-zcode-title", titleVersion),
+      version: titleVersion, installPath: FIXTURE_TITLE_ROOT,
       installedAt: "2026-10-20T00:00:00.000Z", updatedAt: "2026-10-20T00:00:00.000Z", scope: "user",
     },
   ],

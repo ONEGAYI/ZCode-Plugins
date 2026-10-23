@@ -59,7 +59,12 @@ test('独立 stdio 进程完成握手、分页、消息读取与错误反馈，�
   assert.match(unauthorized.content[0].text, /操作失败/);
   assert.deepEqual([digest(f.indexDbPath), digest(f.sessionDbPath)], before);
   await client.close();
-  assert.equal(stderr, '');
+  const [{ at, ...record }] = stderr.trim().split('\n').map(JSON.parse);
+  assert.ok(Number.isFinite(Date.parse(at)));
+  assert.deepEqual(record, { event: 'tool_error', tool: 'send_message', stage: 'config', reasonCode: 'gateway_not_configured' });
+  assert.equal(stderr.trim().split('\n').length, 1);
+  assert.equal(stderr.includes('sess_sender'), false);
+  assert.equal(stderr.includes('hello'), false);
 });
 
 test('授权配置入口从 stdin 保存当前用户 DPAPI 密文，不启动 MCP、不输出链接', { skip: process.platform !== 'win32' }, async t => {

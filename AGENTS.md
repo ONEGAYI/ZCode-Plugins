@@ -32,7 +32,7 @@ ZCode-Plugins/
 ├── marketplace.json        # 四个原生插件的版本、市场清单与业务依赖（手工维护单一数据源；ZIP 切换候选由发布工具生成、人工核对采纳）
 ├── LICENSE                 # MIT（自有代码）；vendor 第三方代码保留原许可
 ├── .gitignore              # 仓库级通用忽略规则
-├── .agents/skills/         # 项目级技能（ZCode 兼容发现路径）：debug-isolated-zcode 隔离 ZCode 环境调试方法论（主文件速查+八层排查+症状索引，K1-K29 详录在 references/），local-only 系列逐票回填
+├── .agents/skills/         # 项目级技能（ZCode 兼容发现路径）：debug-isolated-zcode 隔离 ZCode 环境调试方法论（主文件速查+八层排查+症状索引，K1-K30 详录在 references/），逐票回填
 │
 ├── release-orchestrate.mjs # PKG-07 仓库级发布编排 CLI：四包构建、确定性 ZIP、门禁核对与市场候选；输出落 .scratch/
 ├── release-zip.mjs         # 确定性 ZIP 写入/读取/安全解压（Node 内置 zlib；排序与时间戳固定，同输入同字节）
@@ -82,6 +82,7 @@ ZCode-Plugins/
 │   ├── hooks/              # 原生 Stop 注册（async 触发 depcheck-hook.mjs）
 │   ├── link.mjs            # 源码开发用公共入口与业务端 Node 包链接；正式安装与诊断不依赖
 │   ├── client.mjs / client-install.mjs  # 公共客户端运行期/安装期入口（PKG-01 契约，commonApiVersion 1）
+│   ├── rpc-broker.mjs / rpc-diagnostics.mjs # Host 桥生命周期与多客户端分流、跨网关和消费者的安全失败诊断
 │   ├── locate.mjs         # 薄定位器：安装记录定位 common，单一源码分发业务包
 │   ├── build-release.mjs  # 发布目录构建：esbuild 打包、release.json、buildId 与构建输入记录
 │   ├── gateway-deploy.mjs / gateway-launcher.ps1 # 缓存外网关部署与稳定启动器（PKG-05：deployments/<buildId> 真实副本、活动记录原子切换、六步升级与失败回退）

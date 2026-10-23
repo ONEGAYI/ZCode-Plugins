@@ -47,3 +47,18 @@ export function toolResult(name, data) {
   text = characters.length > 160 ? characters.slice(0, 159).join('') + '…' : characters.join('');
   return { content: [{ type: 'text', text }], structuredContent: data };
 }
+
+// 公共层已按白名单生成 diagnostic；stderr 只记阶段与诊断，不记工具参数和异常正文。
+export function toolErrorDetails(name, error) {
+  const transport = error.diagnostic ? error : error.cause ?? error;
+  const stage = error.stage ?? transport.stage, reasonCode = error.reasonCode ?? transport.reasonCode;
+  const details = { ...(stage ? { stage } : {}), ...(reasonCode ? { reasonCode } : {}),
+    ...(transport.diagnostic ? { diagnostic: transport.diagnostic } : {}) };
+  if (stage || transport.diagnostic) console.error(JSON.stringify({ at: new Date().toISOString(), event: 'tool_error', tool: name, ...details }));
+  return details;
+}
+
+export function toolErrorData(name, error) {
+  const details = toolErrorDetails(name, error);
+  return { ...error.partial_result, error: error.message, ...details };
+}

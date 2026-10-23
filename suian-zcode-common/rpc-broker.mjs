@@ -5,6 +5,7 @@ import { BufferReader, BufferWriter, deserialize, serialize } from './vendor/ser
 import { VSBuffer } from './vendor/buffer.js';
 import { ChannelClient } from './vendor/channelClient.js';
 import { Emitter } from './vendor/foundation.js';
+import { rpcDiagnostic, rpcPayloadDiagnostic } from './rpc-diagnostics.mjs';
 
 const samePath = (a, b) => win32.normalize(a).toLowerCase() === win32.normalize(b).toLowerCase();
 const packet = (header, tail = Buffer.from([0])) => {
@@ -14,11 +15,14 @@ const headerOf = bytes => { const reader = new BufferReader(VSBuffer.wrap(bytes)
 
 // Local workspace attachments all enter the same window Host in ZCode 3.14.4.
 // The broker owns its one physical bridge; peers retain separate RPC ID spaces.
-export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeoutMs = 5000 }) {
+export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeoutMs = 5000, onError = () => {} }) {
   let physical, phone, nextId = 1;
   const peers = new Set(), localPeers = new Set(), routes = new Map(), bridgeRequests = new Set();
   const resetPhysical = error => {
-    if (physical) { clearTimeout(physical.timer); physical.ready.reject(error); physical.initialize.reject(error); physical = undefined; }
+    if (physical) {
+      error.diagnostic = { bridgeReady: physical.readyReceived, bridgeInitialized: physical.initialized, ...error.diagnostic };
+      clearTimeout(physical.timer); physical.ready.reject(error); physical.initialize.reject(error); physical = undefined;
+    }
   };
   const hostSend = bytes => {
     const frames = encode(bytes, { ...physical.identity, firstPhysicalSeq: physical.seq, messageSeq: physical.message++ });
@@ -79,6 +83,8 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
     }
     peers.delete(peer);
     drainInitializations();
+    // Desktop 在终端失配后会结束桥；无人使用时不能把旧身份留给下一次附着。
+    if (!localPeers.size && !phone && !peers.size) resetPhysical(new Error('Host bridge has no remaining peers'));
   };
   const request = (peer, bytes) => {
     const { header, tail } = headerOf(bytes);
@@ -111,7 +117,7 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
     if (!physical) {
       const identity = { bridgeSessionId: randomUUID(), bridgeGeneration: 1 };
       const ready = Promise.withResolvers(), initialize = Promise.withResolvers();
-      physical = { identity, clientId: randomUUID(), initializations: [], requestId: randomUUID(), assembler: new Assembler({ identity }), seq: 1, message: 1, ready, initialize, initialized: false };
+      physical = { identity, clientId: randomUUID(), initializations: [], requestId: randomUUID(), assembler: new Assembler({ identity }), seq: 1, message: 1, ready, initialize, readyReceived: false, initialized: false };
       physical.timer = setTimeout(() => resetPhysical(Object.assign(new Error('原 Host 桥初始化超时'), { code: 'gateway_bridge_timeout' })), bridgeTimeoutMs);
       bridgeRequests.add(physical.requestId);
       sendDesktop({ zcode_type: 'workspace-bridge-open', requestId: physical.requestId, ...identity, workspaceKey: workspacePath,
@@ -134,6 +140,7 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
   };
   const attach = async (peer, workspacePath, sessionId, suppliedBootstrap) => {
     if (phone?.passthrough) throw Object.assign(new Error('手机当前使用远端工作区，本地 RPC 暂时让位'), { code: 'remote_workspace_busy' });
+    peer.phase = 'bootstrap';
     const result = suppliedBootstrap ?? await bootstrap();
     if (!result.success) throw new Error('Desktop bootstrap failed');
     const workspace = result.result.workspaces.find(w => w.kind === 'local' && samePath(w.workspacePath, workspacePath));
@@ -142,9 +149,11 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
     if (!workspace && sessionId === undefined) throw new Error('Requested local workspace is not open in the Desktop window');
     const anchorPath = workspace ? workspace.workspacePath : workspacePath;
     if (workspace && sessionId !== undefined && result.result.tasks !== undefined && !result.result.tasks.some(t => t.taskId === sessionId && samePath(t.workspacePath, anchorPath))) throw new Error('Session is not present in the requested workspace');
+    peer.phase = 'bridge_initialize';
     const meta = await ensureHost(anchorPath, workspace ? undefined : { taskId: sessionId, taskHostId: 'local' });
     // 3.16 bootstrap 不再返回 tasks；由目标工作区 Host 查询会话归属。
     if (sessionId !== undefined && (result.result.tasks === undefined || !workspace)) {
+      peer.phase = 'session_lookup';
       const task = await callHost('zcode-task', 'getTaskMeta', [{ taskId: sessionId, workspacePath: anchorPath }], 'Host session lookup timed out');
       if (!task || task.taskId !== sessionId || !samePath(task.workspacePath, anchorPath)) throw new Error('Session is not present in the requested workspace');
     }
@@ -217,8 +226,10 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
           bridge: { ...attached.meta, ...identity, workspaceKey: attached.workspace_path, workspacePath: attached.workspace_path, initialTaskId: payload.taskId } });
         peer.send(packet([200]));
       } catch (error) {
+        const current = phone === peer;
+        if (current) phone = undefined;
         cancelPeer(peer);
-        if (phone === peer) { phone = undefined; sendPhone({ zcode_type: 'workspace-bridge-error', requestId: payload.requestId, ...identity, reason: 'gateway_attach_failed', error: error.message }); }
+        if (current) sendPhone({ zcode_type: 'workspace-bridge-error', requestId: payload.requestId, ...identity, reason: 'gateway_attach_failed', error: error.message });
       }
     },
     phoneFrame(payload) {
@@ -237,20 +248,24 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
       } catch (error) { const failed = phone; phone = undefined; cancelPeer(failed); failed.fail(error); }
     },
     desktopPayload(payload) {
-      if (payload.zcode_type === 'workspace-bridge-ready' && physical?.requestId === payload.requestId) { physical.ready.resolve(payload.bridge); return true; }
+      if (payload.zcode_type === 'workspace-bridge-ready' && physical?.requestId === payload.requestId) { physical.readyReceived = true; physical.ready.resolve(payload.bridge); return true; }
       if (payload.zcode_type === 'workspace-bridge-error' && physical?.requestId === payload.requestId) {
         resetPhysical(new Error(payload.error ?? payload.reason)); return true;
       }
       if (['workspace-bridge-ready', 'workspace-bridge-error'].includes(payload.zcode_type) && bridgeRequests.has(payload.requestId)) return true;
       if (!physical || payload.bridgeSessionId !== physical.identity.bridgeSessionId) {
-        if (['rpc-frame', 'rpc-frame-ack'].includes(payload.zcode_type)) return !(phone?.passthrough && payload.bridgeSessionId === phone.identity.bridgeSessionId);
+        if (['rpc-frame', 'rpc-frame-ack', 'bridge-degraded'].includes(payload.zcode_type)) return !(phone?.passthrough && payload.bridgeSessionId === phone.identity.bridgeSessionId);
         return false;
       }
       if (payload.zcode_type === 'rpc-frame-ack') return true;
-      if (payload.zcode_type === 'bridge-degraded') throw new Error('原 Host RPC 桥已降级');
+      if (payload.zcode_type === 'bridge-degraded') throw Object.assign(new Error('原 Host RPC 桥已降级'), {
+        diagnostic: { causeCode: 'bridge_degraded', ...rpcPayloadDiagnostic(payload), bridgeInitialized: physical.initialized }
+      });
       if (payload.zcode_type !== 'rpc-frame') return false;
       const result = physical.assembler.accept(parse(payload));
-      if (result.kind === 'fault') throw new Error(result.fault.reasonCode);
+      if (result.kind === 'fault') throw Object.assign(new Error(result.fault.reasonCode), {
+        diagnostic: { ...result.fault, causeCode: result.fault.reasonCode, ...rpcPayloadDiagnostic(payload), bridgeInitialized: physical.initialized }
+      });
       if (result.kind === 'complete') {
         const bytes = Buffer.from(result.bytes), { header, tail } = headerOf(bytes);
         if (header[0] === 200) { physical.initialized = true; clearTimeout(physical.timer); physical.initialize.resolve(); }
@@ -273,13 +288,13 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
     },
     acceptLocal(socket) {
       const peer = { ids: new Map(), send: bytes => socket.send(bytes), fail: error => {
-        if (socket.readyState === 1) { socket.send(JSON.stringify({ type: 'error', code: error.code ?? 'gateway_rpc_failed', message: error.message })); socket.close(1011, 'RPC attachment failed'); }
+        if (socket.readyState === 1) { socket.send(JSON.stringify({ type: 'error', code: error.code ?? 'gateway_rpc_failed', message: error.message, diagnostic: error.diagnostic })); socket.close(1011, 'RPC attachment failed'); }
       } };
       localPeers.add(peer);
       let stage = 'new';
       socket.on('message', async (data, binary) => {
         try {
-          if (binary) { if (stage !== 'attached') throw new Error('Attach a workspace before RPC'); request(peer, data); }
+          if (binary) { peer.phase = 'rpc_request'; if (stage !== 'attached') throw new Error('Attach a workspace before RPC'); request(peer, data); }
           else {
             if (stage !== 'new') throw new Error('Workspace already attached');
             const message = JSON.parse(data.toString());
@@ -292,12 +307,14 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
             peer.send(packet([200]));
           }
         } catch (error) {
+          error.diagnostic = rpcDiagnostic(error, { phase: peer.phase ?? 'rpc_attach' });
+          onError(error);
           peer.fail(error);
         }
       });
       socket.on('close', () => { localPeers.delete(peer); cancelPeer(peer); });
     },
-    phoneDisconnected() { if (phone) { cancelPeer(phone); phone = undefined; } },
+    phoneDisconnected() { if (phone) { const ended = phone; phone = undefined; cancelPeer(ended); } },
     // 忙判定 = 请求在飞（call/取消/排队 initialize）+ 未完成的共享桥初始化 + 手机远端透传盲区；
     // 订阅型路由与纯连接不计。透传期间网关看不到请求/应答边界，保守按忙，手机断开或切回本地工作区后解除；
     // 桥初始化有 bridgeTimeoutMs 上界，超时或失败即释放。
