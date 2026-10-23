@@ -1,5 +1,16 @@
 # 更新日志
 
+## [0.7.1] - 2026-10-23
+
+补齐安装与升级路径的 local-only 补丁引导：已有 local-only 配置的机器升级后不再静默保留不可用状态。仅修订技能指引，无运行时代码变化，业务插件无需联动升版。
+
+### 其他改进
+
+- setup 升级流程（[#158](https://github.com/ONEGAYI/ZCode-Plugins/pull/158)）：已有 local-only 配置时补核补丁状态（`local_only_patch`）并向用户交付三选一决策（补丁迁移 / 完整还原保持 relay / 明确暂缓），补丁未应用不得汇报升级完成
+- setup 升级流程：local-only 完成判据改为重开后 `desktop_ready` 与原 Host 探针通过，网关健康检查通过不等于 Desktop 已连上本地网关
+- setup 首次安装：部署网关前确认连接模式，local-only 受支持包直接走补丁安装完整流程，不在 relay 装成后再改
+- configuration：补全"原配置 local-only 且应用升级到 3.16"的双分支引导，受支持包走补丁迁移、不受支持包完整还原切 relay
+
 ## [0.7.0] - 2026-10-22
 
 新增指定 Windows 3.16.2 运行包的 local-only 安装流程，并为后续版本适配建立自动路由。业务插件继续复用公共网关，无需联动升版。
@@ -26,4 +37,5 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.7.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.22...plugins-2026.10.23
 [0.7.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.21...plugins-2026.10.22
