@@ -48,9 +48,9 @@ Desktop 未连接时，先检查远控面板的状态与错误，再结合日志
 新诊断代码启用后，`gateway.error.log` 的每条失败记录为 JSON，`at` 是 UTC 时间；`event` 为 `gateway_error`。历史纯文本行保留，不据其文件修改时间推断每次失败时间。
 
 - 用 `id` 关联网关记录与调用方的 `diagnostic.id`。命名插件在 `runner.log.jsonl` 中保留 `stage` 和 `diagnostic`；MCP 在结构化错误、会话工件详情错误及 GLM 部分查询错误中保留诊断，并向宿主收集的 MCP stderr 写 `tool_error` 记录。MCP stdout 仍只承载协议。
-- `phase` 标识网关或解析边界；`clientPhase` 区分健康检查、连接、附着、Channel 初始化和 RPC 调用。`bridgeReady`／`bridgeInitialized` 在已知时区分桥就绪与协议初始化；`closeCode` 和 `source` 定位异常关闭来自 Desktop、上游或本地 RPC。
+- `phase` 标识网关或解析边界；`clientPhase` 区分健康检查、连接、附着、Channel 初始化和 RPC 调用。`elapsedMs` 从本次 `connectHost` 开始计时，非单次业务 RPC 耗时。`bridgeReady`／`bridgeInitialized` 在已知时区分桥就绪与协议初始化；`closeCode` 和 `source` 定位异常关闭来自 Desktop、上游或本地 RPC。
 - `causeCode` 为受控底层原因；帧故障附实际 `seq`／`messageSeq` 与预期序号等数值。`bridge_degraded` 配合 `bridgeReason` 表示桥生命周期失效，不能直接认定帧正文损坏。外层既有 `reasonCode` 和结果未知语义保留，不自动重试写操作。
-- `gatewayVersion`／`gatewayBuildId` 是实际运行网关身份；`desktopVersion` 来自成功的 bootstrap，可能只到应用报告的三段版本，不能当成完整安装包版本。未知原因只记异常类型，不收集原始异常文本、堆栈、正文或完整帧。
+- `gatewayVersion`／`gatewayBuildId` 是实际运行网关身份；`desktopVersion` 来自成功的 bootstrap，可能只到应用报告的三段版本，不能当成完整安装包版本。未知原因仅保留白名单支持的异常类型，不收集原始异常文本、堆栈、正文或完整帧。Host 协议允许的字符串或 `null` 拒绝值保留原值，不强制包装或附加诊断对象。
 - 命名日志不可写时，stderr 另报 `runner_log_failed` 与文件系统错误码；原命令结果不因诊断写入失败而重发。
 
 采样时保留失败前后同一时间窗口的上述记录及网关健康状态，使用诊断 ID 对齐；不要只摘外层错误码。新字段需要公共客户端与活动网关均加载新代码，命名／MCP 的落盘与输出也需对应消费者代码；本地源码修改不代表日常安装已更新。按正常发布与 setup 安全激活流程部署，禁止手工修改缓存或部署文件以绕过完整性清单。

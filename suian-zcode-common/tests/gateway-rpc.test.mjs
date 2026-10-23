@@ -29,8 +29,10 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   const relay = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(relay, 'listening');
   t.after(() => { for (const s of relay.clients) s.terminate(); relay.close(); });
-  const faults = [];
-  const gateway = await startGateway({ upstreamUrl: `ws://127.0.0.1:${relay.address().port}/ws`, controlToken: 'fixture-rpc-token', onError: error => faults.push(error.code ?? error.name), ...options.gateway });
+  const faults = [], diagnostics = [];
+  const gateway = await startGateway({ upstreamUrl: `ws://127.0.0.1:${relay.address().port}/ws`, controlToken: 'fixture-rpc-token', onError: error => {
+    faults.push(error.code ?? error.name); diagnostics.push(error.diagnostic);
+  }, ...options.gateway });
   t.after(() => gateway.close());
   const accepted = options.gateway?.mode === 'local-only' ? undefined : once(relay, 'connection');
   const desktop = new WebSocket(gateway.url);
@@ -117,7 +119,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
       }
     }
   });
-  return { gateway, desktop, phone, relay, requests, bridgeOpens, respond, faults, desktopMessages, phoneMessages };
+  return { gateway, desktop, phone, relay, requests, bridgeOpens, respond, faults, diagnostics, desktopMessages, phoneMessages };
 }
 
 test('V2 首次心跳前本地插件即可附着，配对通知不能重复使用 auth_ack', { timeout: 2500 }, async t => {
@@ -375,7 +377,9 @@ test('V2 多执行目录按各自会话归属附着，手机与插件仍共用�
   assert.equal((await ready.promise).bridge.workspacePath, 'D:\\other');
   assert.equal(f.bridgeOpens.length, 1);
   assert.equal(f.relay.clients.size, 1);
-  assert.deepEqual(f.faults, []);
+  assert.deepEqual(f.faults, ['Error'], '会话归属不符也应留失败诊断');
+  assert.equal(f.diagnostics[0].phase, 'session_lookup');
+  assert.equal(f.diagnostics[0].reasonCode, 'gateway_error');
 });
 
 for (const rootCount of [1, 3]) test(`V2 ${rootCount} 个根目录项目导航采用 Host 主目录且不打断插件`, { timeout: 4000 }, async t => {
@@ -597,7 +601,9 @@ for (const relayProtocolVersion of [1, 2]) test(`relay V${relayProtocolVersion}�
       gate.resolve();
       await Promise.all([phoneHandshake, localHandshake]);
       assert.match(await invalidResult, /Invalid v4 clientId/);
-      assert.deepEqual(f.faults, [], '外部客户端的非法输入不能变成 Host 协议故障');
+      assert.deepEqual(f.faults, ['Error']);
+      assert.equal(f.diagnostics[0].phase, 'rpc_request', '非法输入记录为本地请求失败，不能冒充 Desktop 协议故障');
+      assert.equal(f.diagnostics[0].reasonCode, 'gateway_error');
       assert.equal(f.requests.filter(([header]) => header[3] === 'initializeConversationV4').at(-1)[1][0].capabilities?.workflowRunDeltas, true);
     } else {
       await handshake(first, 'local-first');

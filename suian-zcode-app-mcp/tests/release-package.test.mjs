@@ -141,7 +141,10 @@ test('隔离环境无业务依赖时 MCP initialize 与工具列表正常，公�
   assert.match(sent.structuredContent.error, /公共网关尚未配置/);
   assert.ok(!sent.structuredContent.error.includes('anchor') && !stderr().includes('anchor_missing'), '公共定位不应失败');
   await client.close();
-  assert.equal(stderr(), '');
+  const [{ at, ...record }] = stderr().trim().split('\n').map(JSON.parse);
+  assert.ok(Number.isFinite(Date.parse(at)));
+  assert.deepEqual(record, { event: 'tool_error', tool: 'send_message', stage: 'config', reasonCode: 'gateway_not_configured' });
+  assert.equal(stderr().trim().split('\n').length, 1);
 });
 
 test('工件 Hook 与 stdio 使用同一外置配置：三事件链路后工具可读写同一工件库', async t => {
