@@ -226,8 +226,10 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
           bridge: { ...attached.meta, ...identity, workspaceKey: attached.workspace_path, workspacePath: attached.workspace_path, initialTaskId: payload.taskId } });
         peer.send(packet([200]));
       } catch (error) {
+        const current = phone === peer;
+        if (current) phone = undefined;
         cancelPeer(peer);
-        if (phone === peer) { phone = undefined; sendPhone({ zcode_type: 'workspace-bridge-error', requestId: payload.requestId, ...identity, reason: 'gateway_attach_failed', error: error.message }); }
+        if (current) sendPhone({ zcode_type: 'workspace-bridge-error', requestId: payload.requestId, ...identity, reason: 'gateway_attach_failed', error: error.message });
       }
     },
     phoneFrame(payload) {

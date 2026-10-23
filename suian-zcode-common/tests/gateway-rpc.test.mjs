@@ -178,6 +178,30 @@ test('V2 手机作为最后使用者断开后，本地附着不复用旧物理�
   assert.deepEqual(f.faults, []);
 });
 
+test('V2 手机导航失败再失配后，本地附着不复用无人使用的旧桥', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { retireBridgeOnUnpaired: true, projectDirectories: {}, gateway: { relayProtocolVersion: 2 } });
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'phone-before-failed-navigation',
+    bridgeSessionId: 'phone-initial-bridge', bridgeGeneration: 1, workspaceKey: workspace } }));
+  await until(() => f.phoneMessages.some(message => message.payload?.requestId === 'phone-before-failed-navigation'));
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'failed-phone-navigation',
+    bridgeSessionId: 'phone-missing-project', bridgeGeneration: 2, workspaceKey: workspace, project: { projectId: 'missing', hostId: 'local' } } }));
+  await until(() => f.phoneMessages.some(message => message.payload?.requestId === 'failed-phone-navigation'));
+  const failure = f.phoneMessages.find(message => message.payload?.requestId === 'failed-phone-navigation').payload;
+  assert.equal(failure.zcode_type, 'workspace-bridge-error');
+  assert.equal(failure.error, 'project.not-found');
+  f.phone.send(JSON.stringify({ type: 'pair_status_ack', terminal_sid: '', pair_status: 'waiting', server_ts: Math.floor(Date.now() / 1000) }));
+  await until(() => f.desktopMessages.some(message => message.type === 'pair_status_ack' && message.pair_status === 'waiting'));
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-failed-phone-navigation-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  assert.equal(f.bridgeOpens.length, 2);
+  assert.deepEqual(f.faults, []);
+});
+
 test('本地附着中途退出时，未结束的内部会话查询仍保留 Host 桥', { timeout: 3000 }, async t => {
   const { connectHost } = await import('../gateway-client.mjs');
   const f = await fixture(t, 'matched', { gateway: { relayProtocolVersion: 2 } });

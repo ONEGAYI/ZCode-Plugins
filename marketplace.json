@@ -8,7 +8,7 @@
         "source": "url",
         "type": "zip",
         "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.23.2/suian-zcode-common-0.7.3.zip",
-        "sha256": "e7302db5a69d1d58e85ba2fe58a6496f2a9a7a6e125d63a5238180a22ef7553a",
+        "sha256": "0ac8ebdd92d019f6e009b6fecd7460236ff9b557144b4c9d2fd104e80239ac5e",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
