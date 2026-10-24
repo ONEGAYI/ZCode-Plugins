@@ -33,7 +33,7 @@ ZCode-Plugins/
 ├── marketplace.json        # 四个原生插件的版本、市场清单与业务依赖（手工维护单一数据源；ZIP 切换候选由发布工具生成、人工核对采纳）
 ├── LICENSE                 # MIT（自有代码）；vendor 第三方代码保留原许可
 ├── .gitignore              # 仓库级通用忽略规则
-├── .agents/skills/         # 项目级技能（ZCode 兼容发现路径）：debug-isolated-zcode 隔离 ZCode 环境调试方法论（主文件速查+八层排查+症状索引，K1-K30 详录在 references/），逐票回填
+├── .agents/skills/         # 项目级技能（ZCode 兼容发现路径）：debug-isolated-zcode 隔离调试与 K1-K30 症状索引；zcode-local-patch-routing 新包补丁档案编写、路由接入及验证
 │
 ├── release-orchestrate.mjs # PKG-07 仓库级发布编排 CLI：四包构建、确定性 ZIP、门禁核对与市场候选；输出落 .scratch/
 ├── release-zip.mjs         # 确定性 ZIP 写入/读取/安全解压（Node 内置 zlib；排序与时间戳固定，同输入同字节）
