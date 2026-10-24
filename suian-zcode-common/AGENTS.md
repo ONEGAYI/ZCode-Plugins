@@ -28,6 +28,8 @@
 
 local-only 按随包档案自动路由，历史记录兼容与新增档案流程见[规格](../suian-zcode-app-mcp/docs/local-only-routing-spec.md)及[验证记录](../suian-zcode-app-mcp/docs/local-only/10-routing-acceptance.md)。
 
+新增发行包适配、维护注入锚点或扩展 setup 补丁路由时，使用项目技能 [zcode-local-patch-routing](../.agents/skills/zcode-local-patch-routing/SKILL.md)；仅安装已有补丁不进入此开发流程。
+
 当前 local-only 补丁为 v3：最终 WS 地址统一按 URL 实际主机校验，完整还原通过现有 setup 事务恢复 relay 配置。v2 的历史证据不作为 v3 运行证明；当前摘要、真实升级与验收边界见[开发集成总验收](../suian-zcode-app-mcp/docs/local-only/09-development-acceptance.md)。
 
 | 路径 | 职责 |
