@@ -754,9 +754,11 @@ if ($null -eq $health) {
         $task = Register-GatewayTask
         $vbsLauncher = $true
     } elseif (-not $actionMatches) {
-        $recordedInterval = $KeepaliveIntervalMin
+        # 比较基准是已装记录而非请求值：0.8 之前的旧配置没有该字段（任务无看护触发），
+        # 视为无已装间隔，任何间隔写入（含未传参默认值）都会制造未生效记录，一律拒绝。
+        $recordedInterval = $null
         if ($null -ne $config -and $config.PSObject.Properties['keepalive_interval_min']) { $recordedInterval = [int]$config.keepalive_interval_min }
-        if ($KeepaliveIntervalMin -ne $recordedInterval) {
+        if ($null -eq $recordedInterval -or $KeepaliveIntervalMin -ne $recordedInterval) {
             throw ('Keepalive interval change requires the safe reload path: the running task still uses the legacy launcher; re-run Restart with -KeepaliveIntervalMin ' + $KeepaliveIntervalMin + ' to apply it; nothing was changed')
         }
     }

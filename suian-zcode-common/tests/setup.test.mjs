@@ -1519,3 +1519,25 @@ test('健康网关上的 Install：旧启动链下改间隔被拒绝并引导 Re
   assert.equal(after.task.Triggers[1].RepetitionIntervalMinutes, 15);
   assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).keepalive_interval_min, 15);
 });
+
+test('健康网关上的 Install：0.8 之前无间隔字段的旧配置在旧启动链下任何间隔写入均拒绝', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install');
+  const state = await f.state();
+  state.task.Actions.Execute = join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  await writeFile(f.stateFile, JSON.stringify(state));
+  // 构造真实 0.7.x 旧配置：无 keepalive_interval_min 字段（任务无看护触发，写入间隔即未生效）
+  const configPath = join(f.dataDir, 'config.json');
+  const oldConfig = JSON.parse(await readFile(configPath, 'utf8'));
+  delete oldConfig.keepalive_interval_min;
+  await writeFile(configPath, JSON.stringify(oldConfig));
+  const before = await readFile(configPath, 'utf8');
+  await assert.rejects(f.run('Install'), /Restart/, '未传参的默认间隔同样拒绝：基准是已装记录而非请求值');
+  await assert.rejects(f.run('Install', { keepaliveIntervalMin: 60 }), /Restart/);
+  assert.equal(await readFile(configPath, 'utf8'), before, '拒绝路径不写 config');
+  assert.equal((await f.state()).registrations, 1, '不重注册旧启动链任务');
+  const restarted = await f.run('Restart');
+  assert.equal(restarted.keepalive_interval_min, 30, 'Restart 以默认间隔完成安全重载并写入字段');
+  assert.equal(JSON.parse(await readFile(configPath, 'utf8')).keepalive_interval_min, 30);
+  assert.equal((await f.state()).task.Triggers[1].RepetitionIntervalMinutes, 30);
+});
