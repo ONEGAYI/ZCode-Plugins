@@ -88,14 +88,14 @@ function Invoke-PatchCli {
     }
     throw ('fixture: setup 不得直接调用补丁工具的 ' + $cmd)
 }
-function New-ScheduledTaskAction { param([string]$Execute, [string]$Argument, [string]$WorkingDirectory) return [pscustomobject]@{ Execute=$Execute; Arguments=$Argument; WorkingDirectory=$WorkingDirectory } }
-function New-ScheduledTaskTrigger { param([switch]$AtLogOn, [string]$User, [switch]$Once, [datetime]$At, [TimeSpan]$RepetitionInterval, [TimeSpan]$RepetitionDuration) if ($Once) { return [pscustomobject]@{ Once=$true; At=$At; RepetitionIntervalMinutes=[Math]::Round($RepetitionInterval.TotalMinutes); RepetitionDurationDays=[Math]::Round($RepetitionDuration.TotalDays) } }; return [pscustomobject]@{ AtLogOn=[bool]$AtLogOn; User=$User } }
-function New-ScheduledTaskPrincipal { param([string]$UserId, [string]$LogonType, [string]$RunLevel) return [pscustomobject]@{ UserId=$UserId; LogonType=$LogonType; RunLevel=$RunLevel } }
-function New-ScheduledTaskSettingsSet { param([TimeSpan]$ExecutionTimeLimit, [int]$RestartCount, [TimeSpan]$RestartInterval, [string]$MultipleInstances, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries) return [pscustomobject]@{ ExecutionTimeLimit=$ExecutionTimeLimit.TotalSeconds; RestartCount=$RestartCount; MultipleInstances=$MultipleInstances } }
-function Register-ScheduledTask { param([string]$TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) if ($global:fixture.fail_register_count -gt 0) { $global:fixture.fail_register_count--; Save-Fixture; throw 'fixture: register denied' }; $nextState = if ($null -ne $global:fixture.task -and $global:fixture.task.State -eq 'Running') { 'Running' } else { 'Ready' }; $global:fixture.task = [pscustomobject]@{ TaskName=$TaskName; TaskPath='\'; Actions=$Action; Trigger=(@($Trigger)[0]); Triggers=@($Trigger); Principal=$Principal; Settings=$Settings; State=$nextState }; $global:fixture.registrations++; Save-Fixture }
-function Start-ScheduledTask { param([string]$TaskName) if ($global:fixture.fail_start_count -gt 0) { $global:fixture.fail_start_count--; Save-Fixture; throw 'fixture: start denied' }; if ($TaskName -ne $global:fixture.task.TaskName) { throw '启动了其他任务' }; $global:fixture.task.State='Running'; $global:fixture.health_available=$true; $global:fixture.starts++; Save-Fixture }
+function New-ScheduledTaskAction { [CmdletBinding()] param([string]$Execute, [string]$Argument, [string]$WorkingDirectory) return [pscustomobject]@{ Execute=$Execute; Arguments=$Argument; WorkingDirectory=$WorkingDirectory } }
+function New-ScheduledTaskTrigger { [CmdletBinding()] param([switch]$AtLogOn, [string]$User, [switch]$Once, [datetime]$At, [TimeSpan]$RepetitionInterval, [TimeSpan]$RepetitionDuration) if ($Once) { return [pscustomobject]@{ Once=$true; At=$At; RepetitionIntervalMinutes=[Math]::Round($RepetitionInterval.TotalMinutes); RepetitionDurationDays=[Math]::Round($RepetitionDuration.TotalDays) } }; return [pscustomobject]@{ AtLogOn=[bool]$AtLogOn; User=$User } }
+function New-ScheduledTaskPrincipal { [CmdletBinding()] param([string]$UserId, [string]$LogonType, [string]$RunLevel) return [pscustomobject]@{ UserId=$UserId; LogonType=$LogonType; RunLevel=$RunLevel } }
+function New-ScheduledTaskSettingsSet { [CmdletBinding()] param([TimeSpan]$ExecutionTimeLimit, [int]$RestartCount, [TimeSpan]$RestartInterval, [string]$MultipleInstances, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries) return [pscustomobject]@{ ExecutionTimeLimit=$ExecutionTimeLimit.TotalSeconds; RestartCount=$RestartCount; MultipleInstances=$MultipleInstances } }
+function Register-ScheduledTask { [CmdletBinding()] param([string]$TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) if ($global:fixture.fail_register_count -gt 0) { $global:fixture.fail_register_count--; Save-Fixture; throw 'fixture: register denied' }; $nextState = if ($null -ne $global:fixture.task -and $global:fixture.task.State -eq 'Running') { 'Running' } else { 'Ready' }; $global:fixture.task = [pscustomobject]@{ TaskName=$TaskName; TaskPath='\'; Actions=$Action; Trigger=(@($Trigger)[0]); Triggers=@($Trigger); Principal=$Principal; Settings=$Settings; State=$nextState }; $global:fixture.registrations++; Save-Fixture }
+function Start-ScheduledTask { [CmdletBinding()] param([string]$TaskName) if ($global:fixture.fail_start_count -gt 0) { $global:fixture.fail_start_count--; Save-Fixture; throw 'fixture: start denied' }; if ($TaskName -ne $global:fixture.task.TaskName) { throw '启动了其他任务' }; $global:fixture.task.State='Running'; $global:fixture.health_available=$true; $global:fixture.starts++; Save-Fixture }
 function Stop-ScheduledTask { throw 'Gateway already accepted self shutdown; do not terminate its exiting launcher' }
-function Unregister-ScheduledTask { param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; if ($global:fixture.unregister_fail) { throw 'fixture: task cleanup failed' }; $global:fixture.task=$null; Save-Fixture }
+function Unregister-ScheduledTask { [CmdletBinding()] param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; if ($global:fixture.unregister_fail) { throw 'fixture: task cleanup failed' }; $global:fixture.task=$null; Save-Fixture }
 function Invoke-RestMethod {
     param([string]$Uri, [int]$TimeoutSec, [switch]$UseBasicParsing, [string]$Method, $Headers)
     $global:fixture.http_attempts++; Save-Fixture
@@ -1476,4 +1476,27 @@ test('旧形状任务（仅登录触发）在重跑 setup 时自动自愈为双�
   const after = await f.run('Status');
   assert.equal(after.keepalive_trigger_ok, true);
   assert.equal(after.gateway_restart_required, false);
+});
+
+test('setup 调用任务计划程序 cmdlet 的参数名必须存在于真实 cmdlet 参数集合', { skip: process.platform !== 'win32' }, async t => {
+  const cmdlets = ['New-ScheduledTaskAction', 'New-ScheduledTaskTrigger', 'New-ScheduledTaskPrincipal', 'New-ScheduledTaskSettingsSet', 'Register-ScheduledTask'];
+  const source = await readFile(setup, 'utf8');
+  const usage = new Map(cmdlets.map(c => [c, new Set()]));
+  for (const line of source.split(/\r?\n/)) {
+    for (const c of cmdlets) {
+      if (new RegExp('(?<![A-Za-z])' + c + '\\b').test(line)) {
+        for (const token of line.match(/(?<![A-Za-z:])-(\w+)/g) ?? []) usage.get(c).add(token.slice(1));
+      }
+    }
+  }
+  const { stdout } = await nativeExec('powershell.exe', ['-NoProfile', '-Command', "$ErrorActionPreference='Stop'; $out=@{}; foreach ($c in @('" + cmdlets.join("','") + "')) { $cmd = Get-Command -Name $c -CommandType Function,Cmdlet -ErrorAction SilentlyContinue; $out[$c] = if ($cmd) { @($cmd.Parameters.Keys) } else { $null } }; $out | ConvertTo-Json -Compress"], { windowsHide: true });
+  const real = JSON.parse(stdout.trim());
+  for (const c of cmdlets) {
+    const realParams = real[c];
+    if (!realParams) { t.diagnostic(c + '：本机无真实 cmdlet，跳过该项核对'); continue; }
+    const allowed = new Set(realParams.map(p => p.toLowerCase()));
+    for (const used of usage.get(c)) {
+      assert.ok(allowed.has(used.toLowerCase()), c + ' 的参数 -' + used + ' 不在真实 cmdlet 参数集合中（疑似拼写错误）');
+    }
+  }
 });
