@@ -146,7 +146,11 @@ function Get-TaskTriggerShape {
         $intervalMinutes = $null
         if ($trigger.PSObject.Properties['RepetitionIntervalMinutes'] -and $null -ne $trigger.RepetitionIntervalMinutes) { $intervalMinutes = [int]$trigger.RepetitionIntervalMinutes }
         elseif ($trigger.PSObject.Properties['RepetitionInterval'] -and $trigger.RepetitionInterval -is [TimeSpan]) { $intervalMinutes = [int][Math]::Round($trigger.RepetitionInterval.TotalMinutes) }
-        elseif ($trigger.PSObject.Properties['Repetition'] -and $trigger.Repetition -and $trigger.Repetition.PSObject.Properties['Interval'] -and $trigger.Repetition.Interval -and $trigger.Repetition.Interval -match '^PT(\d+)M$') { $intervalMinutes = [int]$Matches[1] }
+        # 真实 CIM 的 Interval 是完整 ISO 8601 duration（PT15M/PT1H/PT1H30M/P1D…），统一换算总分钟比较；
+        # 非 duration 文本按无周期触发处理（XmlConvert.FormatException → catch）。
+        elseif ($trigger.PSObject.Properties['Repetition'] -and $trigger.Repetition -and $trigger.Repetition.PSObject.Properties['Interval'] -and $trigger.Repetition.Interval) {
+            try { $intervalMinutes = [int][Math]::Round([Xml.XmlConvert]::ToTimeSpan([string]$trigger.Repetition.Interval).TotalMinutes) } catch {}
+        }
         if ($null -ne $intervalMinutes) { $shape.keepalive = $intervalMinutes }
     }
     return $shape

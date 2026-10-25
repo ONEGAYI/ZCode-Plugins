@@ -1381,16 +1381,17 @@ test('看护间隔参数：自定义间隔写入 config 与触发器，重跑沿
   await assert.rejects(f.run('Status', { keepaliveIntervalMin: 1441 }), /KeepaliveIntervalMin/);
 });
 
-test('触发器形状识别真实 CIM 形态（Repetition.Interval PT{N}M）并参与自愈判定', { skip: process.platform !== 'win32' }, async t => {
+test('触发器形状识别真实 CIM 形态的完整 ISO 8601 间隔（PT{N}M/PT1H/PT1H30M/P1D）并参与自愈判定', { skip: process.platform !== 'win32' }, async t => {
   const f = await fixture(t);
   await f.run('Install', { keepaliveIntervalMin: 15 });
   const state = await f.state();
-  // 模拟真实 Get-ScheduledTask 对象经 fixture JSON 往返后的 CIM 形态：
-  // 登录触发以 CimClass.CimClassName 标识，看护触发的间隔在 Repetition.Interval（PT{N}M 字符串）。
-  state.task.Triggers = [
+  const cimTriggers = interval => ([
     { CimClass: { CimClassName: 'MSFT_TaskLogonTrigger' } },
-    { Repetition: { Interval: 'PT15M' } },
-  ];
+    { Repetition: { Interval: interval } },
+  ]);
+  // 模拟真实 Get-ScheduledTask 对象经 fixture JSON 往返后的 CIM 形态：
+  // 登录触发以 CimClass.CimClassName 标识，看护触发的间隔在 Repetition.Interval（ISO 8601 duration）。
+  state.task.Triggers = cimTriggers('PT15M');
   state.task.Trigger = state.task.Triggers[0];
   await writeFile(f.stateFile, JSON.stringify(state));
   const matched = await f.run('Status');
@@ -1401,6 +1402,24 @@ test('触发器形状识别真实 CIM 形态（Repetition.Interval PT{N}M）并�
   const mismatched = await f.run('Status');
   assert.equal(mismatched.keepalive_trigger_ok, false, '间隔漂移被识别');
   assert.equal(mismatched.gateway_restart_required, true);
+  // 等价写法：任务计划程序对 60/90/1440 分钟可能登记为 PT1H/PT1H30M/P1D，语义与分钟写法等价，
+  // 不得误判形状不符并在 Restart 时反复重注册。
+  for (const [interval, minutes] of [['PT1H', 60], ['PT1H30M', 90], ['P1D', 1440]]) {
+    const eq = await fixture(t);
+    await eq.run('Install', { keepaliveIntervalMin: minutes });
+    const eqState = await eq.state();
+    eqState.task.Triggers = cimTriggers(interval);
+    eqState.task.Trigger = eqState.task.Triggers[0];
+    await writeFile(eq.stateFile, JSON.stringify(eqState));
+    const receipt = await eq.run('Status');
+    assert.equal(receipt.keepalive_trigger_ok, true, interval + ' 与已装 ' + minutes + ' 分钟间隔匹配');
+    assert.equal(receipt.gateway_restart_required, false, interval + ' 不应要求重注册');
+  }
+  // 非 duration 文本不是合法间隔，按无周期触发处理
+  state.task.Triggers[1].Repetition.Interval = 'not-a-duration';
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const invalid = await f.run('Status');
+  assert.equal(invalid.keepalive_trigger_ok, false, '非法 duration 不被当作有效间隔');
 });
 
 test('旧形状任务（仅登录触发）在重跑 setup 时自动自愈为双触发器', { skip: process.platform !== 'win32' }, async t => {
