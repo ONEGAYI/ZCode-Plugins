@@ -20,9 +20,9 @@
 | 启动横幅自描述 | `gateway.mjs` |
 | 触发器、间隔参数、config 记录、自愈检测、回退路径 | `setup.ps1` |
 | 健康门、logs/ 布局、按启动命名、清理、旧文件迁移 | `gateway-launcher.ps1` |
-| jsonl 按天滚动、行内嵌版本、写入点清理 | `depcheck-hook.mjs`、`toast-action.mjs`、`toast-executor.mjs` |
-| 文档与引用联动 | `skills/debug/SKILL.md`、`README.md`、本目录证据文件按需 |
-| 测试联动 | `tests/setup.test.mjs`、`tests/stable-launcher.test.mjs`、`tests/cli.test.mjs`、`tests/depcheck-hook.test.mjs`、`tests/toast-executor.test.mjs`、`tests/gateway.test.mjs` |
+| jsonl 按天滚动、行内嵌版本、写入点清理 | `log-rotate.mjs`（新）、`depcheck-hook.mjs`、`toast-action.mjs`、`toast-executor.mjs`（内联）、`toast-runtime.mjs`（部署文本版本注入） |
+| 文档与引用联动 | `skills/debug/SKILL.md`、`skills/setup/SKILL.md`、`README.md`、本目录证据文件按需 |
+| 测试联动 | `tests/log-rotate.test.mjs`（新）、`tests/setup.test.mjs`、`tests/stable-launcher.test.mjs`、`tests/cli.test.mjs`、`tests/depcheck-hook.test.mjs`、`tests/toast-executor.test.mjs`、`tests/toast-runtime.test.mjs` |
 
 非目标：僵尸进程救援（见已知限制）、日志大小/条数上限、depcheck 检测任务形状并提醒。
 
@@ -32,7 +32,7 @@
 
 **任务形状**：现有单任务 `suian-zcode-gateway-<SID>` 保留 AtLogOn 触发器，新增第二个触发器——一次性起点 + 每 `KeepaliveIntervalMin` 分钟重复、无有效期内停止。Settings 维持现状（`MultipleInstances IgnoreNew`、`ExecutionTimeLimit Zero`、`RestartCount 3/1min` 保留不动，作为快速重试；30 分钟触发是不依赖上次运行结果的可靠兜底）。
 
-> 实现注意：Windows PowerShell 5.1 的 `New-ScheduledTaskTrigger -Once` 对无限重复的 `-RepetitionDuration` 支持有限（`[TimeSpan]::MaxValue` 不被接受），可用长周期（如 10 年）近似无限；以任务 XML 契约测试锁定形状（间隔 `PT{N}M`、无 `StopAtDurationEnd` 语义），不逐字依赖 API 行为。
+> 实现注意：Windows PowerShell 5.1 的 `New-ScheduledTaskTrigger -Once` 对无限重复的 `-RepetitionDuration` 支持有限（`[TimeSpan]::MaxValue` 不被接受），以 10 年近似无限。形状锁定不逐字依赖任务 XML（测试桩不触达真实任务计划程序）：桩属性断言（间隔分钟、重复时长天数）覆盖注册结果，另以真实 CIM 形态（`CimClass.CimClassName` 登录触发、`Repetition.Interval` `PT{N}M` 字符串）覆盖 `Get-TaskTriggerShape` 识别分支。
 
 **两层幂等**：
 
@@ -49,7 +49,7 @@
 
 **启动器改造顺序**（单次运行内）：计算时间戳 → 建 `logs/` → 清理窗口外文件（按文件名时间戳解析，解析不出该模式的文件一律不删，防误删）→ `Start-Process` 重定向到新文件对。
 
-**旧文件迁移**：根目录旧 `gateway.out.log` / `gateway.error.log` 在新启动器首次运行时删除（内容本就已被历次启动覆盖，无保留价值）。
+**旧文件迁移**：根目录旧 `gateway.out.log` / `gateway.error.log` 在新启动器首次运行时删除（内容本就已被历次启动覆盖，无保留价值）。健康门命中（网关已健康、幂等退出）时不动任何文件，清理与迁移顺延至下一次实际拉起。
 
 **自包含横幅**（gateway.mjs）：启动成功时的首行 stdout 由 `{ok, relay_url, health_url}` 增强为完整自描述记录：
 
@@ -65,15 +65,15 @@ error.log 是 stderr 直通、无横幅；与 out.log 同时间戳成对生成�
 
 **行级自包含**：每条事件行内嵌短版本字段（如 `"v":"0.8.0"`）。版本来源以单一数据源为原则（倾向读插件清单），实现时确定并避免与清单漂移。
 
-**写入点清理**：每次运行首条 append 前列同前缀文件，删除文件名日期早于「今天 − 7 天」的；列目录 + 前缀匹配，成本可忽略。旧单文件 `hook.log.jsonl` / `toast-action-log.jsonl` 首次以新命名写入前删除。
+**写入点清理**：每次 append 前列同前缀文件，删除文件名日期早于「今天 − 7 天」的；列目录 + 前缀匹配，成本可忽略。旧单文件 `hook.log.jsonl` / `toast-action-log.jsonl` 首次以新命名写入前删除。
 
 ### 4 测试计划（TDD 锚点）
 
-- `setup.test.mjs`：PS 桩 `New-ScheduledTaskTrigger` 扩展支持 `-Once` + 重复参数；断言注册结果含双触发器、间隔 `PT{N}M`；参数越界拒绝；`config.json` 记录；旧形状任务触发 `gateway_restart_required`；fallback 重建保持双触发器。
-- `stable-launcher.test.mjs`：断言 `logs/` 按启动命名文件对；首行横幅字段齐全；健康门（桩 health：健康时 exit 0、不产生第二进程；不健康时正常拉起）；预置 >7 天与 <7 天文件的清理集；旧根目录日志被迁移删除。
-- `depcheck-hook.test.mjs` / `toast-executor.test.mjs`：滚动命名、行内嵌 `v`、旧日文件清理、旧单文件删除。
-- `gateway.test.mjs`：横幅内容单测。
-- `cli.test.mjs`：`gateway.out.log` 引用改指新布局。
+- `setup.test.mjs`：PS 桩 `New-ScheduledTaskTrigger` 扩展支持 `-Once` + 重复参数；断言注册结果含双触发器与间隔；参数越界拒绝；`config.json` 记录与重跑恢复；旧形状任务触发 `gateway_restart_required`；CIM 形态识别（`Repetition.Interval` `PT{N}M`）参与自愈判定；fallback 重建保持双触发器。
+- `stable-launcher.test.mjs`：断言 `logs/` 按启动命名文件对；首行横幅字段齐全；健康门（真实固定端口：健康时 exit 0、不产生第二批次与第二进程；不健康时正常拉起）；预置 >7 天与 <7 天文件的清理集与不合规命名保留；旧根目录日志被迁移删除。
+- `depcheck-hook.test.mjs` / `toast-executor.test.mjs`：滚动命名、行内嵌 `v`；executor 另有内联清理专测（窗口外日文件与旧单文件删除、命名不合规保留，覆盖 PKG-06 快照的内联实现）。
+- `cli.test.mjs`：横幅内容断言（CLI stdout 首行与 config 模式两种入口）。其中 VBS 隐藏启动测试走仓库根 `run.ps1` 旧启动链（见已知限制），其 `gateway.out.log` 引用保留，不改指新布局。
+- `log-rotate.test.mjs`：日戳与截断日计算、过期清单筛选（家族前缀与旧单文件精确匹配）、滚动写入与清理行为、版本解析回退。
 
 ### 5 发布清单
 

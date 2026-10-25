@@ -1381,6 +1381,28 @@ test('看护间隔参数：自定义间隔写入 config 与触发器，重跑沿
   await assert.rejects(f.run('Status', { keepaliveIntervalMin: 1441 }), /KeepaliveIntervalMin/);
 });
 
+test('触发器形状识别真实 CIM 形态（Repetition.Interval PT{N}M）并参与自愈判定', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install', { keepaliveIntervalMin: 15 });
+  const state = await f.state();
+  // 模拟真实 Get-ScheduledTask 对象经 fixture JSON 往返后的 CIM 形态：
+  // 登录触发以 CimClass.CimClassName 标识，看护触发的间隔在 Repetition.Interval（PT{N}M 字符串）。
+  state.task.Triggers = [
+    { CimClass: { CimClassName: 'MSFT_TaskLogonTrigger' } },
+    { Repetition: { Interval: 'PT15M' } },
+  ];
+  state.task.Trigger = state.task.Triggers[0];
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const matched = await f.run('Status');
+  assert.equal(matched.keepalive_trigger_ok, true, 'PT15M 与已装 15 分钟间隔匹配');
+  assert.equal(matched.gateway_restart_required, false);
+  state.task.Triggers[1].Repetition.Interval = 'PT20M';
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const mismatched = await f.run('Status');
+  assert.equal(mismatched.keepalive_trigger_ok, false, '间隔漂移被识别');
+  assert.equal(mismatched.gateway_restart_required, true);
+});
+
 test('旧形状任务（仅登录触发）在重跑 setup 时自动自愈为双触发器', { skip: process.platform !== 'win32' }, async t => {
   const f = await fixture(t);
   await f.run('Install');

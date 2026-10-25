@@ -152,6 +152,12 @@ function Get-TaskTriggerShape {
     return $shape
 }
 
+# 触发器形状是否为期望形状：含登录触发且看护间隔与本次配置一致；$null 形状（无任务）视为不符。
+function Test-TriggerShapeOk {
+    param($Shape)
+    return $null -ne $Shape -and $Shape.logon -and $Shape.keepalive -eq $KeepaliveIntervalMin
+}
+
 function Invoke-DeployCli {
     param([string[]]$CliArguments)
     $output = & $script:gatewayNode $script:deployCli @CliArguments 2>&1
@@ -319,7 +325,7 @@ function Get-GatewayUpgradeStatus {
         $launcherUpdate = -not $vbsLauncher -or -not $taskRunning -or
             @($task.Actions)[0].Arguments -cne (Get-LauncherArguments) -or
             -not (Test-Path -LiteralPath $stableVbsFile) -or -not (Test-Path -LiteralPath $stablePsFile) -or
-            $null -eq $triggerShape -or -not $triggerShape.logon -or $triggerShape.keepalive -ne $KeepaliveIntervalMin
+            -not (Test-TriggerShapeOk $triggerShape)
     }
     $configuredProtocol = if ($null -ne $InstalledConfig -and $InstalledConfig.PSObject.Properties['relay_protocol_version']) { $InstalledConfig.relay_protocol_version } else { 1 }
     $protocolUpdate = $null -ne $InstalledConfig -and ($configuredProtocol -ne $RelayProtocolVersion -or ($null -ne $Health -and $Health.relay_protocol_version -ne $RelayProtocolVersion))
@@ -333,7 +339,7 @@ function Get-GatewayUpgradeStatus {
         candidate_pending_activation=$candidatePending
         running_build=$running; code_status=$codeStatus; gateway_path_matches=$pathMatches
         keepalive_interval_min=$KeepaliveIntervalMin
-        keepalive_trigger_ok=$(if ($null -ne $triggerShape) { $triggerShape.logon -and $triggerShape.keepalive -eq $KeepaliveIntervalMin } else { $false })
+        keepalive_trigger_ok=$(Test-TriggerShapeOk $triggerShape)
         relay_protocol_version=$RelayProtocolVersion; protocol_source=$protocolSource; running_relay_protocol_version=$(if ($null -ne $Health) { $Health.relay_protocol_version } else { $null })
         upstream_url=$UpstreamUrl; protocol_update_required=$protocolUpdate; upstream_update_required=$upstreamUpdate
         launcher_update_required=$launcherUpdate; gateway_restart_required=$gatewayRestart
@@ -645,7 +651,7 @@ if ($null -eq $health) {
     Invoke-DeployCli @('--activate', '--tools-root', $ToolsRoot, '--build-id', $buildId, '--node-path', $script:gatewayNode) | Out-Null
     # 触发器形状（登录 + 周期看护）不符也重注册——存量安装重跑 setup 时自动自愈为双触发器。
     $currentTriggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
-    if ($null -eq $task -or @($task.Actions)[0].Execute -cne $scriptHost -or @($task.Actions)[0].Arguments -cne (Get-LauncherArguments) -or $null -eq $currentTriggerShape -or -not $currentTriggerShape.logon -or $currentTriggerShape.keepalive -ne $KeepaliveIntervalMin) {
+    if ($null -eq $task -or @($task.Actions)[0].Execute -cne $scriptHost -or @($task.Actions)[0].Arguments -cne (Get-LauncherArguments) -or -not (Test-TriggerShapeOk $currentTriggerShape)) {
         $taskAction = New-ScheduledTaskAction -Execute $scriptHost -Argument (Get-LauncherArguments) -WorkingDirectory $DataDir
         $triggers = New-GatewayTriggers
         $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited

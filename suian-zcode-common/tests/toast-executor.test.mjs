@@ -1,6 +1,6 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, stat as fsStat, unlink, rename, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat as fsStat, unlink, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -11,6 +11,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { buildReleaseWorld } from './depcheck-fixture.mjs';
 import { deployToastRuntime, readExecutorText, registerToastIdentity, toastRootFor } from '../toast-runtime.mjs';
 import { runAction, parseActionUri, TITLE_PLUGIN_ID } from '../toast-executor.mjs';
+import { dayStamp } from '../log-rotate.mjs';
 
 const pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const executorSource = join(pluginRoot, 'toast-executor.mjs');
@@ -266,12 +267,39 @@ test('真实部署文件公开入口冒烟：子进程执行 URI 动作，系统
   assert.match(intercepted, /cmd\.exe.*zcode:\/\/workspace\/open/, '打开工作区经 cmd start 且被拦截');
   assert.ok(intercepted.includes(newTitleRoot), '无宿主环境的部署入口读取自定义清单中的新 title 根');
   const today = new Date();
-  const dayStamp = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
-  const log = await readFile(join(world.titleDataDir, `toast-action-${dayStamp}.log.jsonl`), 'utf8');
+  const log = await readFile(join(world.titleDataDir, `toast-action-${dayStamp()}.log.jsonl`), 'utf8');
   const entry = JSON.parse(log.trim().split('\n').at(-1));
   assert.equal(entry.uri, 'suian-zcode-title://fix');
   assert.equal(entry.ok, true);
   assert.equal(typeof entry.v, 'string', '执行器内联滚动的行内嵌版本字段（源码直跑回退读相邻清单）');
+});
+
+test('执行器内联滚动清理：窗口外日文件与旧单文件删除，命名不合规保留', async t => {
+  const world = await buildToastWorld(t);
+  // 预置：窗口外（早于今天-7 天）、旧单文件、今天文件、命名不合规文件
+  const oldStamp = dayStamp(new Date(Date.now() - 9 * 24 * 3600 * 1000));
+  await writeFile(join(world.titleDataDir, `toast-action-${oldStamp}.log.jsonl`), '{}\n');
+  await writeFile(join(world.titleDataDir, 'toast-action-log.jsonl'), '{}\n');
+  await writeFile(join(world.titleDataDir, `toast-action-${dayStamp()}.log.jsonl`), '{}\n');
+  await writeFile(join(world.titleDataDir, 'other-20200101.log.jsonl'), '{}\n');
+  // unknown 动作快速失败路径同样走内联 logAction（写入前清理），无任何系统副作用
+  const stopped = spawnSync(process.execPath, [join(world.toastRoot, 'executor.mjs'), 'suian-zcode-title://unknown'], { windowsHide: true, encoding: 'utf8', env: { ...process.env, SUIAN_TOAST_HOME: world.homeDir } });
+  assert.equal(stopped.status, 1);
+  const remaining = (await readdir(world.titleDataDir)).sort();
+  assert.deepEqual(remaining, [`toast-action-${dayStamp()}.log.jsonl`, 'other-20200101.log.jsonl', 'toast-prompt-template.md'].sort(), '窗口外与旧单文件删除，今天的文件与不合规命名保留');
+  const entries = (await readFile(join(world.titleDataDir, `toast-action-${dayStamp()}.log.jsonl`), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(entries.at(-1).reason, 'unknown_action');
+  assert.equal(typeof entries.at(-1).v, 'string', '部署快照版本经占位符注入');
+});
+
+test('源码直跑的版本回退：占位符未替换时读相邻插件清单，行内仍嵌版本', async t => {
+  const home = await mkdtemp(join(tmpdir(), 'exec-src-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const stopped = spawnSync(process.execPath, [join(pluginRoot, 'toast-executor.mjs'), 'suian-zcode-title://unknown'], { windowsHide: true, encoding: 'utf8', env: { ...process.env, SUIAN_TOAST_HOME: home } });
+  assert.equal(stopped.status, 1);
+  const entry = JSON.parse((await readFile(join(toastRootFor(home), `toast-action-${dayStamp()}.log.jsonl`), 'utf8')).trim().split('\n').at(-1));
+  assert.equal(entry.reason, 'unknown_action');
+  assert.equal(typeof entry.v, 'string', '回退分支读相邻插件清单，v 不因占位符未替换而缺失');
 });
 
 test('title 安装条目身份常量与插件 ID 一致', () => {

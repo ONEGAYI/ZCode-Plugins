@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const TOAST_PROTOCOLS = ['suian-zcode-common', 'suian-zcode-title'];
 export const COMMON_PACKAGE = 'suian-zcode-common';

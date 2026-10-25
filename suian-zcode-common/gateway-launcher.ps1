@@ -1,13 +1,12 @@
 ﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ToolsRoot,
-    [Parameter(Mandatory)][string]$DataDir,
-    # 健康门探测超时：命中健康实例即幂等退出，不启动第二实例
-    [ValidateRange(1, 60)][int]$HealthGateTimeoutSec = 2,
-    # 日志留存窗口（天）：按启动批次文件名时间戳判定，窗口外文件在拉起前清理
-    [ValidateRange(1, 365)][int]$LogRetentionDays = 7
+    [Parameter(Mandatory)][string]$DataDir
 )
 $ErrorActionPreference = 'Stop'
+# 健康门探测超时（秒）与日志留存窗口（天）：设计规格固定语义，无调用方传值需求
+$healthGateTimeoutSec = 2
+$logRetentionDays = 7
 $activeFile = Join-Path $ToolsRoot 'active-gateway.json'
 if (-not (Test-Path -LiteralPath $activeFile)) { [Console]::Error.WriteLine('No active gateway record; run setup.ps1 Install first'); exit 3 }
 $active = Get-Content -LiteralPath $activeFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -22,7 +21,7 @@ try {
     $gateConfig = Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json
     $gatePort = [int]$gateConfig.port
     if ($gatePort -gt 0) {
-        $gate = Invoke-RestMethod -Uri ("http://127.0.0.1:{0}/health" -f $gatePort) -TimeoutSec $HealthGateTimeoutSec -UseBasicParsing
+        $gate = Invoke-RestMethod -Uri ("http://127.0.0.1:{0}/health" -f $gatePort) -TimeoutSec $healthGateTimeoutSec -UseBasicParsing
         if ($gate -and $gate.service -eq 'suian-zcode-gateway') { exit 0 }
     }
 } catch {
@@ -35,7 +34,7 @@ $logDir = Join-Path $DataDir 'logs'
 [IO.Directory]::CreateDirectory($logDir) | Out-Null
 $startedAt = Get-Date
 $stamp = $startedAt.ToString('yyyyMMdd-HHmmss')
-$retentionCutoff = $startedAt.AddDays(-1 * $LogRetentionDays).ToString('yyyyMMdd-HHmmss')
+$retentionCutoff = $startedAt.AddDays(-1 * $logRetentionDays).ToString('yyyyMMdd-HHmmss')
 foreach ($oldLog in @(Get-ChildItem -LiteralPath $logDir -Filter 'gateway-*.log' -File -ErrorAction SilentlyContinue)) {
     if ($oldLog.Name -match '^gateway-(\d{8}-\d{6})\.(out|error)\.log$' -and $Matches[1] -lt $retentionCutoff) {
         Remove-Item -LiteralPath $oldLog.FullName -Force -ErrorAction SilentlyContinue

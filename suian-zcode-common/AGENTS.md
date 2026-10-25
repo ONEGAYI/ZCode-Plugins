@@ -37,7 +37,7 @@ local-only 按随包档案自动路由，历史记录兼容与新增档案流程
 | gateway.mjs | 唯一 relay V1/V2 网关、一次性 token 转发、同进程 bootstrap 分流及健康状态 |
 | gateway-build.mjs | 两栖指纹：部署布局按 deployment.json 清单校验摘要并输出 buildId（篡改即失败）；源码布局对固定执行依赖与启动链计算指纹；首次加载即固定，/health 不重读磁盘 |
 | gateway-deploy.mjs | 网关运行闭包部署（PKG-05）：deployments/<buildId> 真实副本与逐文件摘要、launchers 稳定启动器安装、active-gateway.json 原子切换（独立于 Toast 记录）、部署校验与 CLI（--deploy/--status/--activate 等） |
-| gateway-launcher.ps1 | 稳定启动器模板（复制到 launchers/run.ps1）：读活动网关记录启动部署目录的网关，等待子进程并传回退出码；缺失记录或部署时以退出码 3/4 明确失败 |
+| gateway-launcher.ps1 | 稳定启动器模板（复制到 launchers/run.ps1）：读活动网关记录启动部署目录的网关，等待子进程并传回退出码；缺失记录或部署时以退出码 3/4 明确失败；拉起前健康门探测（健康即幂等退出、fail-open），网关日志落 `logs/gateway-<yyyyMMdd-HHmmss>.{out,error}.log` 启动批次对，拉起前清理 7 天窗口外批次并迁移删除旧根目录单文件（0.8.0 起） |
 | terminal-gateway.mjs / terminal-relay.mjs | 3.16 实验性独立终端网关、V2 token 建连、心跳及本机 RPC；授权提供方由调用方注入，未接入 Windows 安装流程 |
 | .zcode-plugin/plugin.json | 原生公共插件元信息 |
 | link.mjs | 源码开发工具：稳定公共入口和业务端 Node 包链接；正式安装、技能与诊断不依赖它 |
@@ -45,7 +45,7 @@ local-only 按随包档案自动路由，历史记录兼容与新增档案流程
 | rpc-broker.mjs | 单一 Host 桥、RPC 编号与 v4 握手身份映射、手机虚拟桥与本地客户端分流；最后使用者退出后释放物理桥并消费退役通知 |
 | rpc-diagnostics.mjs | RPC 失败诊断白名单、跨网关／调用方诊断 ID、受控帧元数据；不记录正文、凭据或会话标识 |
 | gateway-client.mjs | 插件默认 connectHost/probeHost，本地配置与鉴权、RPC call／listen 附着、原事件参数与释放语义及明确失败；保留网关诊断和客户端失败阶段 |
-| setup.ps1 / run.ps1 / run.vbs | 用户任务、变量、公共 skill；按 Desktop 版本选择 V1/V2，保留协议与迁移官方地址；setup 按六步顺序部署候选、忙退避安全切换（升级事务锁互斥、空闲闪断或超时报 remote_busy）与失败回退；run.ps1/run.vbs 保留为源码开发直启链。LO-04 起 `-Mode local-only`（V2）按 `-ZcodeInstallDir` 补丁预检放行（仅受支持包，Invoke-PatchCli 守卫式定义供测试桩替换），准备候选后生成外部 apply/restore 命令（数据目录 `local-only/`）——setup 不执行 apply、不强退进程；local-only 默认端口 17331；切回 relay（Restart -Mode relay）删模式标志且不重写应用包 |
+| setup.ps1 / run.ps1 / run.vbs | 用户任务、变量、公共 skill；按 Desktop 版本选择 V1/V2，保留协议与迁移官方地址；任务注册登录 + 周期看护双触发器（`-KeepaliveIntervalMin` 默认 30、可配 5-1440、写入 config.json，重跑未传参沿用已装值；触发器形状不符自动重注册自愈，Status 报 keepalive_interval_min 与 keepalive_trigger_ok，0.8.0 起）；setup 按六步顺序部署候选、忙退避安全切换（升级事务锁互斥、空闲闪断或超时报 remote_busy）与失败回退；run.ps1/run.vbs 保留为源码开发直启链。LO-04 起 `-Mode local-only`（V2）按 `-ZcodeInstallDir` 补丁预检放行（仅受支持包，Invoke-PatchCli 守卫式定义供测试桩替换），准备候选后生成外部 apply/restore 命令（数据目录 `local-only/`）——setup 不执行 apply、不强退进程；local-only 默认端口 17331；切回 relay（Restart -Mode relay）删模式标志且不重写应用包 |
 | remote.mjs | 官方 relay 鉴权、workspace bridge、Channel RPC 与分层探活 |
 | auth-store.mjs | 调用方数据目录内的当前用户 DPAPI 授权存取 |
 | title-policy.mjs | 当前用户跨插件的会话锁定策略：MCP 写入，命名插件读取 |
@@ -55,11 +55,12 @@ local-only 按随包档案自动路由，历史记录兼容与新增档案流程
 | locate.mjs | 薄定位器（单一源码，构建时分发到业务包）：按完整插件身份从安装记录定位 common，锚点优先级与失败分类见 docs/client-contract.md；进程内首次加载固定 common 根 |
 | build-release.mjs | 发布目录构建（PKG-01）：客户端双入口及诊断/迁移/旧链接清理管理入口分别自包含打包（ws 与 vendor 内联）、许可组装、release.json 与 buildId、发布目录外的构建输入记录；npm run build:release -- --out <dir> |
 | depcheck.mjs | suian 系列插件发布契约扫描（PKG-08）：release.json 逐文件摘要、身份、common API 兼容与最低版本；遗留 runtime 链接只报告状态不判损坏 |
-| depcheck-hook.mjs / hooks/hooks.json | Stop 钩子入口与原生注册（async 不阻塞）；--scan-only 手动复查（只读不落盘） |
+| depcheck-hook.mjs / hooks/hooks.json | Stop 钩子入口与原生注册（async 不阻塞）；--scan-only 手动复查（只读不落盘）；hook 日志经 log-rotate.mjs 按天滚动并写入点自清理 |
 | depcheck-prompt.mjs | Toast 摘要与修复提示词模板（缺失清单、缓存根、原生重装/更新步骤） |
 | migration.mjs | PKG-08 迁移状态链：captureLegacyState 记录旧开关与路径（不含凭据），restoreLegacyState 只补缺失字段恢复开关；CLI --capture/--restore |
 | legacy-cleanup.mjs | PKG-08 旧链接清理：归属核对（runtime/业务端 junction 指向 common）后只删链接本身；--inspect 出计划、--apply 执行，真实目录与他人目标保留 |
-| toast-action.mjs | Toast 按钮协议入口：重扫后复制修复提示词并打开默认工作区 |
+| toast-action.mjs | Toast 按钮协议入口：重扫后复制修复提示词并打开默认工作区；动作日志经 log-rotate.mjs 按天滚动并写入点自清理 |
+| log-rotate.mjs | jsonl 事件日志按天滚动（`<族>-<yyyyMMdd>.log.jsonl`）、行内嵌版本字段与 7 天写入点自清理；toast-executor 单文件快照内联等价实现不导入本模块 |
 | notification-action.mjs | 复制调用方提示词、打开固定默认工作区 |
 | notification-install.mjs | 按调用方身份安装/移除协议桥、快捷方式与 AUMID |
 | windows.mjs | 公共 PowerShell 执行与安装用文件/系统边界 |
@@ -72,9 +73,10 @@ local-only 按随包档案自动路由，历史记录兼容与新增档案流程
 | CHANGELOG.md | common 插件发行记录，版本范围与 local-only 安装及兼容边界 |
 | tests/ | 回环网关、隔离 Windows 配置、远控、DPAPI、通知、依赖完整性判定、不自举契约、PKG-01 公共加载契约（定位器分类、入口导出面、导入纯净、构建确定性与自包含）及 PKG-05 稳定运行时（部署指纹与幂等、篡改校验、稳定启动器隔离场景、候选三态、拒绝切换、失败回退、首次撤销、旧任务迁移与 Toast 记录独立） |
 | tests/gateway-rpc.test.mjs / tests/plugin-link.test.mjs | 真实回环call／listen客户端隔离和释放、市场版本一致及独立缓存公共升级契约 |
-| tests/gateway-deploy.test.mjs / tests/stable-launcher.test.mjs | PKG-05 部署契约（内容指纹、自包含回环、运行中健康不冒充磁盘新代码）与稳定启动器（旧任务参数依赖已删除缓存的红色证明、缓存删除后仍可启动、活动记录切换部署、中文空格路径） |
+| tests/gateway-deploy.test.mjs / tests/stable-launcher.test.mjs | PKG-05 部署契约（内容指纹、自包含回环、运行中健康不冒充磁盘新代码）与稳定启动器（旧任务参数依赖已删除缓存的红色证明、缓存删除后仍可启动、活动记录切换部署、中文空格路径、健康门与启动批次日志） |
 | tests/terminal-gateway.test.mjs / tests/terminal-relay.test.mjs | 3.16 终端握手与心跳、单桥复用、Host 会话查询、KICKED 及回环访问控制 |
 | tests/depcheck.test.mjs / tests/depcheck-hook.test.mjs / tests/toast-executor.test.mjs | PKG-08 发布契约扫描：无 node_modules 发布产物不再误判（红色证明在案）、缺文件/错身份/API 不兼容检出、Hook 通知链与缓存外执行器快照对齐 |
+| tests/log-rotate.test.mjs / tests/setup.test.mjs | jsonl 滚动与留存窗口（含 executor 内联实现）、看护触发器形状（双触发器、CIM 识别、自愈与 fallback）（0.8.0 起） |
 | tests/migration.test.mjs / tests/legacy-cleanup.test.mjs | PKG-08 迁移链：开关与路径记录（不含令牌）、恢复不覆盖自定义字段、端到端记录→清理→部署→恢复；链接清理归属核对、只删链接、真实目录与他人目标保留 |
 | experiments/ | 仅发合成 auth_init 的研究探针，不自动执行 |
 | local-only/lab-env.mjs | LO-01 隔离环境单一数据源：目录树、进程级 env 集（ZCODE_DATA_BASE_DIR 指向 .zcode 父目录、清除官方 relay 覆盖变量、LO-03 增 ZCODE_LOCAL_ONLY_GATEWAY 与网关配置端口一致）、引用既有适配档案的包身份、启动器与 lab 网关配置渲染（LO-03 增 CDP 调试端口——自动附命令行 --user-data-dir——与 --open-workspace 直开工作区） |
