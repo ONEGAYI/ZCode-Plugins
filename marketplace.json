@@ -7,8 +7,8 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.23.2/suian-zcode-common-0.7.3.zip",
-        "sha256": "0ac8ebdd92d019f6e009b6fecd7460236ff9b557144b4c9d2fd104e80239ac5e",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.25/suian-zcode-common-0.8.0.zip",
+        "sha256": "af714482aa979f9b94789f4231301d6e97b9beaf21dcefd7616be3124e4d7565",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
@@ -19,7 +19,7 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.23.2/suian-zcode-title-0.2.1.zip",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.25/suian-zcode-title-0.2.1.zip",
         "sha256": "821060ca050a87ce678bf2642476f1c1d5ac95d9a65a0a4b61fa4c04882c42f0",
         "stripRoot": false
       },
@@ -34,7 +34,7 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.23.3/suian-zcode-app-mcp-0.11.2.zip",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.25/suian-zcode-app-mcp-0.11.2.zip",
         "sha256": "529ff8b672668223056656e72be58e16bd83887c2a1360a86407e353711b0c48",
         "stripRoot": false
       },
@@ -49,8 +49,8 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.21/suian-side-editor-0.4.0.zip",
-        "sha256": "bc5b84fcd28f908bdf9161ca021f5a2edf70ebd267d0a27683a3493114030734",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.25/suian-side-editor-0.4.0.zip",
+        "sha256": "b4bb1d0e64a1005bb4cbff252b029c9fb0b6f03714dbd2790e1c45571973293c",
         "stripRoot": false
       },
       "description": "本机 UTF-8 文本侧栏编辑、自动保存、会话恢复与选区评论；发送状态采用尽力保护",
