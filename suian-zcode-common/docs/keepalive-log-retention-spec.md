@@ -41,7 +41,7 @@
 
 **间隔参数**：`setup.ps1` 新增 `-KeepaliveIntervalMin`，默认 30，`ValidateRange(5, 1440)`；写入 `config.json`（`keepalive_interval_min`），任务重建时从已装配置恢复同值。`Status` 回执新增 `keepalive_interval_min` 与任务形状判定。
 
-**存量自愈**：`Get-GatewayUpgradeStatus` 的 `launcherUpdate` 扩展为同时比对触发器形状与间隔；不符 → `gateway_restart_required=true`，用户重跑 `setup.ps1 Install/Restart`（插件更新后的既有重配路径）时自动重注册为新形状。健康网关上的 Install 同样执行自愈：任务缺失，或启动动作与当前一致而形状/间隔不符时，原地重注册（只替换任务定义、不打断运行实例，新定义在当前实例结束后生效），且先重注册再写 config，回执与 config 记录的间隔就是任务实际间隔；启动动作不符（旧 PowerShell 启动链）保持既有边界，只报告待升级、动作切换交给安全重载。间隔识别按完整 ISO 8601 duration 换算总分钟，`PT1H`/`PT1H30M`/`P1D` 与等值分钟写法视为同一形状，不触发反复重注册。回退路径（候选失败 fallback 中重建任务那段）同样注册双触发器形状。本期不给 depcheck 加检测提醒。
+**存量自愈**：`Get-GatewayUpgradeStatus` 的 `launcherUpdate` 扩展为同时比对触发器形状与间隔；不符 → `gateway_restart_required=true`，用户重跑 `setup.ps1 Install/Restart`（插件更新后的既有重配路径）时自动重注册为新形状。健康网关上的 Install 同样执行自愈：任务缺失，或启动动作与当前一致而形状/间隔不符时，原地重注册（只替换任务定义、不打断运行实例，新定义在当前实例结束后生效），且先重注册再写 config，回执与 config 记录的间隔就是任务实际间隔；启动动作不符（旧 PowerShell 启动链）保持既有边界，只报告待升级、动作切换交给安全重载；该场景下显式改间隔会被拒绝并引导以同参 Restart 应用，不写入未生效的间隔。间隔识别按完整 ISO 8601 duration 换算总分钟，`PT1H`/`PT1H30M`/`P1D` 与等值分钟写法视为同一形状，不触发反复重注册。回退路径（候选失败 fallback 中重建任务那段）同样注册双触发器形状。本期不给 depcheck 加检测提醒。
 
 ### 2 启动批次日志
 

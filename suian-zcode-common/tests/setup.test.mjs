@@ -1500,3 +1500,22 @@ test('setup 调用任务计划程序 cmdlet 的参数名必须存在于真实 cm
     }
   }
 });
+
+test('健康网关上的 Install：旧启动链下改间隔被拒绝并引导 Restart，不写入未生效配置', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install');
+  const state = await f.state();
+  state.task.Actions.Execute = join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const before = await readFile(join(f.dataDir, 'config.json'), 'utf8');
+  await assert.rejects(f.run('Install', { keepaliveIntervalMin: 15 }), /Restart/);
+  assert.equal(await readFile(join(f.dataDir, 'config.json'), 'utf8'), before, '拒绝路径不写 config，间隔保持已装值');
+  assert.equal((await f.state()).registrations, 1, '健康路径不重注册旧启动链任务');
+  // 引导的 Restart 带同参完成安全重载并应用新间隔
+  const restarted = await f.run('Restart', { keepaliveIntervalMin: 15 });
+  assert.equal(restarted.keepalive_interval_min, 15);
+  assert.equal(restarted.keepalive_trigger_ok, true);
+  const after = await f.state();
+  assert.equal(after.task.Triggers[1].RepetitionIntervalMinutes, 15);
+  assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).keepalive_interval_min, 15);
+});

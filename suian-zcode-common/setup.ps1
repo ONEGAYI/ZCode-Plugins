@@ -746,11 +746,19 @@ if ($null -eq $health) {
     # 健康 Install：任务缺失，或启动动作与当前一致而触发器形状/间隔不符时，先原地重注册再写配置。
     # 重注册只替换任务定义、不打断运行实例（新定义在当前实例结束后生效）；先任务后配置的顺序保证
     # config 与回执记录的间隔就是任务实际间隔。启动动作不符（旧 PowerShell 启动链）保持既有边界：
-    # 只报告待升级，动作切换交给安全重载（Restart），健康路径不触碰任务。
+    # 只报告待升级、动作切换交给安全重载（Restart）；该场景下显式改间隔直接拒绝并引导以同参
+    # Restart 应用，不写入未生效的间隔。
     $currentTriggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
-    if ($null -eq $task -or (@($task.Actions)[0].Execute -ceq $scriptHost -and @($task.Actions)[0].Arguments -ceq (Get-LauncherArguments) -and -not (Test-TriggerShapeOk $currentTriggerShape))) {
+    $actionMatches = $null -ne $task -and @($task.Actions)[0].Execute -ceq $scriptHost -and @($task.Actions)[0].Arguments -ceq (Get-LauncherArguments)
+    if ($null -eq $task -or ($actionMatches -and -not (Test-TriggerShapeOk $currentTriggerShape))) {
         $task = Register-GatewayTask
         $vbsLauncher = $true
+    } elseif (-not $actionMatches) {
+        $recordedInterval = $KeepaliveIntervalMin
+        if ($null -ne $config -and $config.PSObject.Properties['keepalive_interval_min']) { $recordedInterval = [int]$config.keepalive_interval_min }
+        if ($KeepaliveIntervalMin -ne $recordedInterval) {
+            throw ('Keepalive interval change requires the safe reload path: the running task still uses the legacy launcher; re-run Restart with -KeepaliveIntervalMin ' + $KeepaliveIntervalMin + ' to apply it; nothing was changed')
+        }
     }
     [IO.File]::WriteAllText($configFile, ($nextConfig | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 }
