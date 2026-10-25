@@ -8,6 +8,8 @@ param(
     [ValidateRange(1, 30)][int]$HealthTimeoutSec = 5,
     [ValidateRange(0, 600)][int]$BusyTimeoutSec = 60,
     [ValidateRange(50, 60000)][int]$BusyRetryMs = 2000,
+    # 看护拉起：任务在登录触发之外每 N 分钟重复触发；IgnoreNew 与启动器健康门保证幂等
+    [ValidateRange(5, 1440)][int]$KeepaliveIntervalMin = 30,
     [string]$UpstreamUrl = 'wss://zcode.z.ai/ws',
     [string]$DataDir = (Join-Path $env:USERPROFILE '.zcode\tools\suian-zcode-gateway'),
     [string]$SkillsDir = (Join-Path $env:USERPROFILE '.zcode\skills'),
@@ -41,6 +43,11 @@ if ($null -ne $config) {
     if ($config.PSObject.Properties['mode']) { $installedMode = $config.mode }
     if ($installedMode -cnotin @('relay', 'local-only')) { throw 'Invalid installed gateway mode' }
     if (-not $PSBoundParameters.ContainsKey('Mode')) { $Mode = $installedMode }
+    # 已装配置恢复看护间隔：重跑不显式传参时沿用安装时的值；非法值忽略回落默认
+    if ($config.PSObject.Properties['keepalive_interval_min'] -and -not $PSBoundParameters.ContainsKey('KeepaliveIntervalMin')) {
+        $installedKeepalive = [int]$config.keepalive_interval_min
+        if ($installedKeepalive -ge 5 -and $installedKeepalive -le 1440) { $KeepaliveIntervalMin = $installedKeepalive }
+    }
     if ($config.PSObject.Properties['relay_protocol_version']) {
         if ($config.relay_protocol_version -notin @(1, 2)) { throw 'Unsupported installed relay protocol version' }
         $installedProtocol = [int]$config.relay_protocol_version
@@ -117,6 +124,32 @@ function Get-LauncherArguments {
     $launch = "& '$launcherPs' -ToolsRoot '$safeTools' -DataDir '$safeData'; exit `$LASTEXITCODE"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($launch))
     return '//B //NoLogo "' + $stableVbsFile + '" ' + $encoded
+}
+
+# 看护拉起触发器：登录触发保留，另加每 KeepaliveIntervalMin 分钟重复的时间触发。
+# PS 5.1 不接受无限重复时长，以 10 年近似；契约测试锁定间隔形状而非注册 API 细节。
+function New-GatewayTriggers {
+    $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
+    $keepaliveTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval ([TimeSpan]::FromMinutes($KeepaliveIntervalMin)) -RepetitionDuration ([TimeSpan]::FromDays(3650))
+    return @($logonTrigger, $keepaliveTrigger)
+}
+
+# 归一化任务触发器形状（真实 CIM 对象与契约测试桩对象都识别）：
+# 返回 @{ logon = 是否含登录触发; keepalive = 重复触发间隔分钟（无则 $null） }。
+function Get-TaskTriggerShape {
+    param($Triggers)
+    $shape = @{ logon = $false; keepalive = $null }
+    foreach ($trigger in @($Triggers)) {
+        if ($null -eq $trigger) { continue }
+        $isLogon = ($trigger.PSObject.Properties['AtLogOn'] -and $trigger.AtLogOn) -or ($trigger.PSObject.Properties['CimClass'] -and $trigger.CimClass -and $trigger.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger')
+        if ($isLogon) { $shape.logon = $true }
+        $intervalMinutes = $null
+        if ($trigger.PSObject.Properties['RepetitionIntervalMinutes'] -and $null -ne $trigger.RepetitionIntervalMinutes) { $intervalMinutes = [int]$trigger.RepetitionIntervalMinutes }
+        elseif ($trigger.PSObject.Properties['RepetitionInterval'] -and $trigger.RepetitionInterval -is [TimeSpan]) { $intervalMinutes = [int][Math]::Round($trigger.RepetitionInterval.TotalMinutes) }
+        elseif ($trigger.PSObject.Properties['Repetition'] -and $trigger.Repetition -and $trigger.Repetition.PSObject.Properties['Interval'] -and $trigger.Repetition.Interval -and $trigger.Repetition.Interval -match '^PT(\d+)M$') { $intervalMinutes = [int]$Matches[1] }
+        if ($null -ne $intervalMinutes) { $shape.keepalive = $intervalMinutes }
+    }
+    return $shape
 }
 
 function Invoke-DeployCli {
@@ -280,10 +313,13 @@ function Get-GatewayUpgradeStatus {
         }
     }
     $launcherUpdate = $false
+    $triggerShape = $null
     if ($null -ne $InstalledConfig) {
+        $triggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
         $launcherUpdate = -not $vbsLauncher -or -not $taskRunning -or
             @($task.Actions)[0].Arguments -cne (Get-LauncherArguments) -or
-            -not (Test-Path -LiteralPath $stableVbsFile) -or -not (Test-Path -LiteralPath $stablePsFile)
+            -not (Test-Path -LiteralPath $stableVbsFile) -or -not (Test-Path -LiteralPath $stablePsFile) -or
+            $null -eq $triggerShape -or -not $triggerShape.logon -or $triggerShape.keepalive -ne $KeepaliveIntervalMin
     }
     $configuredProtocol = if ($null -ne $InstalledConfig -and $InstalledConfig.PSObject.Properties['relay_protocol_version']) { $InstalledConfig.relay_protocol_version } else { 1 }
     $protocolUpdate = $null -ne $InstalledConfig -and ($configuredProtocol -ne $RelayProtocolVersion -or ($null -ne $Health -and $Health.relay_protocol_version -ne $RelayProtocolVersion))
@@ -296,6 +332,8 @@ function Get-GatewayUpgradeStatus {
         expected_build=$expected; candidate_build_id=$candidateBuildId; active_build_id=$activeBuildId
         candidate_pending_activation=$candidatePending
         running_build=$running; code_status=$codeStatus; gateway_path_matches=$pathMatches
+        keepalive_interval_min=$KeepaliveIntervalMin
+        keepalive_trigger_ok=$(if ($null -ne $triggerShape) { $triggerShape.logon -and $triggerShape.keepalive -eq $KeepaliveIntervalMin } else { $false })
         relay_protocol_version=$RelayProtocolVersion; protocol_source=$protocolSource; running_relay_protocol_version=$(if ($null -ne $Health) { $Health.relay_protocol_version } else { $null })
         upstream_url=$UpstreamUrl; protocol_update_required=$protocolUpdate; upstream_update_required=$upstreamUpdate
         launcher_update_required=$launcherUpdate; gateway_restart_required=$gatewayRestart
@@ -594,7 +632,7 @@ $controlToken = if ($null -ne $config) { $config.control_token } else { [Guid]::
 $previousConfigBytes = if ($null -ne $config) { [IO.File]::ReadAllBytes($configFile) } else { $null }
 $previousActiveBytes = if (Test-Path -LiteralPath $activeGatewayFile) { [IO.File]::ReadAllBytes($activeGatewayFile) } else { $null }
 $previousTaskAction = if ($null -ne $task) { @($task.Actions)[0] } else { $null }
-$nextConfig = [ordered]@{ version=1; gateway_root=$deploymentDir; tools_root=$ToolsRoot; active_build_id=$buildId; instance_id=$instanceId; port=$Port; upstream_url=$UpstreamUrl; mode=$Mode; relay_protocol_version=$RelayProtocolVersion; previous_user_relay=$previousRelay; control_token=$controlToken }
+$nextConfig = [ordered]@{ version=1; gateway_root=$deploymentDir; tools_root=$ToolsRoot; active_build_id=$buildId; instance_id=$instanceId; port=$Port; upstream_url=$UpstreamUrl; mode=$Mode; relay_protocol_version=$RelayProtocolVersion; keepalive_interval_min=$KeepaliveIntervalMin; previous_user_relay=$previousRelay; control_token=$controlToken }
 $healthUrl = "http://127.0.0.1:$Port/health"
 [IO.Directory]::CreateDirectory($DataDir) | Out-Null
 
@@ -605,12 +643,14 @@ if ($null -eq $health) {
     [IO.File]::WriteAllText($configFile, ($nextConfig | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     # 步骤 4：原子切换活动记录并复用原任务启动候选；任务参数与版本无关。
     Invoke-DeployCli @('--activate', '--tools-root', $ToolsRoot, '--build-id', $buildId, '--node-path', $script:gatewayNode) | Out-Null
-    if ($null -eq $task -or @($task.Actions)[0].Execute -cne $scriptHost -or @($task.Actions)[0].Arguments -cne (Get-LauncherArguments)) {
+    # 触发器形状（登录 + 周期看护）不符也重注册——存量安装重跑 setup 时自动自愈为双触发器。
+    $currentTriggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
+    if ($null -eq $task -or @($task.Actions)[0].Execute -cne $scriptHost -or @($task.Actions)[0].Arguments -cne (Get-LauncherArguments) -or $null -eq $currentTriggerShape -or -not $currentTriggerShape.logon -or $currentTriggerShape.keepalive -ne $KeepaliveIntervalMin) {
         $taskAction = New-ScheduledTaskAction -Execute $scriptHost -Argument (Get-LauncherArguments) -WorkingDirectory $DataDir
-        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
+        $triggers = New-GatewayTriggers
         $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
         $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+        Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
         $registeredThisRun = $true
         $task = Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName -and $_.TaskPath -eq '\' }
         $vbsLauncher = $true
@@ -648,10 +688,10 @@ if ($null -eq $health) {
                         $previousWorkingDirectory = $null
                         if ($previousTaskAction.PSObject.Properties['WorkingDirectory']) { $previousWorkingDirectory = $previousTaskAction.WorkingDirectory }
                         $restoreAction = New-ScheduledTaskAction -Execute $previousTaskAction.Execute -Argument $previousTaskAction.Arguments -WorkingDirectory $previousWorkingDirectory
-                        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
+                        $triggers = New-GatewayTriggers
                         $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
                         $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-                        Register-ScheduledTask -TaskName $taskName -Action $restoreAction -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+                        Register-ScheduledTask -TaskName $taskName -Action $restoreAction -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
                     } else {
                         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
                     }

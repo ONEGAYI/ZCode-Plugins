@@ -207,7 +207,12 @@ export async function checkToastRuntime({ homeDir, protocols = TOAST_PROTOCOLS, 
 export async function readExecutorText(entryUrl = import.meta.url) {
   const path = resolveExecutorSource(entryUrl);
   try {
-    return await readFile(path, 'utf8');
+    const text = await readFile(path, 'utf8');
+    // 部署前注入日志版本占位符：执行器单文件快照运行时读不到相邻插件清单。
+    // 版本读不到时保留占位符原样——执行器按"未替换"分支降级（v 字段省略）。
+    let version = null;
+    try { version = JSON.parse(await readFile(join(dirname(path), '.zcode-plugin', 'plugin.json'), 'utf8')).version ?? null; } catch { /* 无清单按降级 */ }
+    return version ? text.replaceAll('__SUIAN_COMMON_LOG_VERSION__', version) : text;
   } catch (error) {
     throw new Error(`读取 Toast 执行器源失败（${path}）：${error.message}`);
   }

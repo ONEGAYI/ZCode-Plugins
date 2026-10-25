@@ -9,7 +9,7 @@ import childProcess from 'node:child_process';
 import { promisify } from 'node:util';
 import { syncBuiltinESMExports } from 'node:module';
 import { buildReleaseWorld } from './depcheck-fixture.mjs';
-import { deployToastRuntime, registerToastIdentity, toastRootFor } from '../toast-runtime.mjs';
+import { deployToastRuntime, readExecutorText, registerToastIdentity, toastRootFor } from '../toast-runtime.mjs';
 import { runAction, parseActionUri, TITLE_PLUGIN_ID } from '../toast-executor.mjs';
 
 const pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -59,7 +59,7 @@ async function buildToastWorld(t, { customRegistry = false } = {}) {
     world.pluginsFile = pluginsFile;
   }
   const homeDir = world.homeDir;
-  const executorText = await readFile(executorSource, 'utf8');
+  const executorText = await readExecutorText(); // 与真实部署一致：经占位符注入版本
   await deployToastRuntime({ homeDir, nodeExe: process.execPath, executorText, shell: realIoShell });
   const commonDataDir = join(world.root, 'toast-common-data');
   const titleDataDir = join(world.root, 'toast-title-data');
@@ -265,10 +265,13 @@ test('真实部署文件公开入口冒烟：子进程执行 URI 动作，系统
   assert.match(intercepted, /powershell\.exe/, '剪贴板写入经 PowerShell 且被拦截');
   assert.match(intercepted, /cmd\.exe.*zcode:\/\/workspace\/open/, '打开工作区经 cmd start 且被拦截');
   assert.ok(intercepted.includes(newTitleRoot), '无宿主环境的部署入口读取自定义清单中的新 title 根');
-  const log = await readFile(join(world.titleDataDir, 'toast-action-log.jsonl'), 'utf8');
+  const today = new Date();
+  const dayStamp = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
+  const log = await readFile(join(world.titleDataDir, `toast-action-${dayStamp}.log.jsonl`), 'utf8');
   const entry = JSON.parse(log.trim().split('\n').at(-1));
   assert.equal(entry.uri, 'suian-zcode-title://fix');
   assert.equal(entry.ok, true);
+  assert.equal(typeof entry.v, 'string', '执行器内联滚动的行内嵌版本字段（源码直跑回退读相邻清单）');
 });
 
 test('title 安装条目身份常量与插件 ID 一致', () => {

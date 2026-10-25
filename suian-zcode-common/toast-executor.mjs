@@ -5,12 +5,12 @@
 // 旧通知点击仍能现场诊断并复制修复提示。更新仅经 common 的部署流程（toast-runtime.mjs）。
 // common://fix 的扫描与提示词判据同源维护于 depcheck.mjs / depcheck-prompt.mjs（契约测试对齐）；
 // title://fix 只读取 title 外置数据目录中的身份描述与模板，不导入 title 缓存代码。
-import { appendFile, lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, lstat, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const TOAST_PROTOCOLS = ['suian-zcode-common', 'suian-zcode-title'];
@@ -387,10 +387,32 @@ if (isMain) {
   const uri = process.argv[2];
   const resolvedHome = process.env.SUIAN_TOAST_HOME || homedir();
   const root = toastRootFor(resolvedHome);
+  // 自包含滚动（与 log-rotate.mjs 语义一致；本文件是单文件部署快照，不得相对导入共享模块）。
+  // 版本经部署占位符注入（readExecutorText 在部署文本上替换）；源码直跑时回退读相邻插件清单。
+  const LOG_VERSION_PLACEHOLDER = '__SUIAN_COMMON_LOG_VERSION__';
+  const RETENTION_DAYS = 7;
+  const dayStamp = (date = new Date()) => date.getFullYear() + String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0');
+  const cutoffStamp = (now = new Date()) => { const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - RETENTION_DAYS); return dayStamp(cutoff); };
+  const resolveLogVersion = async () => {
+    const substituted = !(LOG_VERSION_PLACEHOLDER.startsWith('__') && LOG_VERSION_PLACEHOLDER.endsWith('__'));
+    if (substituted) return LOG_VERSION_PLACEHOLDER;
+    try {
+      const manifest = JSON.parse(await readFile(join(dirname(fileURLToPath(import.meta.url)), '.zcode-plugin', 'plugin.json'), 'utf8'));
+      return typeof manifest.version === 'string' && manifest.version ? manifest.version : null;
+    } catch { return null; }
+  };
   const logAction = async (entry, dataDir) => {
     try {
       await mkdir(dataDir, { recursive: true });
-      await appendFile(join(dataDir, 'toast-action-log.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n', 'utf8');
+      const dated = /^toast-action-(\d{8})\.log\.jsonl$/;
+      const cutoff = cutoffStamp();
+      for (const name of await readdir(dataDir)) {
+        const match = dated.exec(name);
+        if (name === 'toast-action-log.jsonl' || (match !== null && match[1] < cutoff)) await unlink(join(dataDir, name)).catch(() => {});
+      }
+      const version = await resolveLogVersion();
+      const line = { at: new Date().toISOString(), ...(version ? { v: version } : {}), ...entry };
+      await appendFile(join(dataDir, `toast-action-${dayStamp()}.log.jsonl`), JSON.stringify(line) + '\n', 'utf8');
     } catch { /* 日志尽力而为 */ }
   };
   runAction({ uri, homeDir: resolvedHome, toastRoot: root })
