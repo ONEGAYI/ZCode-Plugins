@@ -291,7 +291,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const upstream = new URL(options.upstreamUrl);
   if ((upstream.protocol !== 'wss:' && !(upstream.protocol === 'ws:' && upstream.hostname === '127.0.0.1')) || upstream.username || upstream.password || upstream.search || upstream.hash) throw new Error('Upstream must be a credential-free wss URL (or loopback ws for testing)');
   const gateway = await startGateway(options);
-  console.log(JSON.stringify({ ok: true, relay_url: gateway.url, health_url: gateway.url.replace('ws:', 'http:').replace('/ws', '/health') }));
+  // 自包含横幅：stdout 首行进入每次启动的 gateway-<时间戳>.out.log，脱离其他文件仍可溯源
+  // 启动时刻、模式、端口、协议版本与构建；error.log 是 stderr 直通，上下文在配对 out.log。
+  console.log(JSON.stringify({
+    ok: true,
+    started_at: new Date().toISOString(),
+    mode: options.mode ?? 'relay',
+    port: Number(new URL(gateway.url).port),
+    relay_protocol_version: options.relayProtocolVersion,
+    build: { id: gatewayBuild.id, version: gatewayBuild.version, root: gatewayBuild.root },
+    node: process.version,
+    pid: process.pid,
+    config: values.config ?? null,
+    relay_url: gateway.url,
+    health_url: gateway.url.replace('ws:', 'http:').replace('/ws', '/health'),
+  }));
   process.once('SIGINT', () => gateway.close());
   process.once('SIGTERM', () => gateway.close());
 }

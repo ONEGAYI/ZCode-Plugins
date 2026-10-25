@@ -20,6 +20,7 @@
 - **版本范围**：正式集成前，对照 `dev` 与正式分支的差异，确定受影响的插件并更新其版本；未受影响的插件不联动升版。公共层有变化时，按实际影响核对依赖它的业务插件。
 - **版本清单**：同步受影响插件的 `.zcode-plugin/plugin.json`；已有版本字段的 `package.json`、锁文件根包与运行时自报版本也必须一致，已有 CHANGELOG 按发布范围更新。修改任一插件清单的 `version` 时，必须在同一变更中同步根 `marketplace.json` 对应条目的 `version`；提交前核对一致，避免原生市场漏检更新。
 - **完成条件**：版本更新必须随正式集成内容一并进入 `master`；核对版本一致性、完成受影响范围的验证，并在提交或 PR 正文说明插件版本与验证结果。未完成版本同步，不得宣称正式集成完成。
+- **发布命名**：仓库 Release 是四插件集总发布，标题与发布说明必须自明归属，不写裸版本号。标题固定 `ZCode Plugins · <短名> <版本>[ + <短名> <版本>…] · <主题>`，短名为 common / title / app-mcp / side-editor。发布说明的版本段标题写 `## [<短名> <版本>] - 日期`，底部变更链接键同步带短名（如 `[common 0.7.3]: <compare url>`）。各插件自身 CHANGELOG.md 保持 Keep a Changelog 原样，仅在拼入仓库级 Release 说明时补短名；标题与说明由发布执行方按此格式组装，发布脚本不内置模板。
 
 ## 文件树
 
@@ -32,13 +33,13 @@ ZCode-Plugins/
 ├── marketplace.json        # 四个原生插件的版本、市场清单与业务依赖（手工维护单一数据源；ZIP 切换候选由发布工具生成、人工核对采纳）
 ├── LICENSE                 # MIT（自有代码）；vendor 第三方代码保留原许可
 ├── .gitignore              # 仓库级通用忽略规则
-├── .agents/skills/         # 项目级技能（ZCode 兼容发现路径）：debug-isolated-zcode 隔离 ZCode 环境调试方法论（主文件速查+八层排查+症状索引，K1-K30 详录在 references/），逐票回填
+├── .agents/skills/         # 项目级技能（ZCode 兼容发现路径）：debug-isolated-zcode 隔离调试与 K1-K30 症状索引；zcode-local-patch-routing 新包补丁档案编写、路由接入及验证
 │
 ├── release-orchestrate.mjs # PKG-07 仓库级发布编排 CLI：四包构建、确定性 ZIP、门禁核对与市场候选；输出落 .scratch/
 ├── release-zip.mjs         # 确定性 ZIP 写入/读取/安全解压（Node 内置 zlib；排序与时间戳固定，同输入同字节）
 ├── release-verify.mjs      # 发布组装目录契约校验：身份/版本/必备资源/敏感内容/公共代码内联/文件摘要
 ├── release-marketplace.mjs # 市场条目形状校验、候选生成（只改受影响条目）、版本统一检查（只报告）与回退候选
-├── release-github.mjs      # Release 发布流水线编排（GitHub API 与下载依赖注入；真实写操作须另行发布授权）
+├── release-github.mjs      # Release 发布流水线编排（GitHub API 与下载依赖注入；先预发布公开，下载核验通过后自动转正式；真实写操作须另行发布授权）
 ├── tests/                  # 根级发布工具契约测试（release-*.test.mjs，含外部边界桩与 loopback HTTP fixture）
 │
 ├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 命名决策 + 通知文案；公共导入经客户端契约定位）
@@ -85,12 +86,14 @@ ZCode-Plugins/
 │   ├── rpc-broker.mjs / rpc-diagnostics.mjs # Host 桥生命周期与多客户端分流、跨网关和消费者的安全失败诊断
 │   ├── locate.mjs         # 薄定位器：安装记录定位 common，单一源码分发业务包
 │   ├── build-release.mjs  # 发布目录构建：esbuild 打包、release.json、buildId 与构建输入记录
-│   ├── gateway-deploy.mjs / gateway-launcher.ps1 # 缓存外网关部署与稳定启动器（PKG-05：deployments/<buildId> 真实副本、活动记录原子切换、六步升级与失败回退）
+│   ├── gateway-deploy.mjs / gateway-launcher.ps1 # 缓存外网关部署与稳定启动器（PKG-05：deployments/<buildId> 真实副本、活动记录原子切换、六步升级与失败回退）；启动器含健康门幂等与 logs/ 启动批次日志（7 天窗口清理）
 │   ├── docs/client-contract.md  # 公共加载契约（锚点、失败分类、导出清单、迁移指引）
+│   ├── docs/keepalive-log-retention-spec.md、docs/adr/ # 看护拉起与日志留存设计规格及决策记录（0.8.0）
 │   ├── depcheck.mjs        # suian 系列插件发布契约扫描（PKG-08：release.json 完整性、身份、API 兼容；不再检查 node_modules/junction）
 │   ├── depcheck-hook.mjs   # Stop 钩子入口：扫描→缺失时 Toast 提醒（--scan-only 手动复查）
 │   ├── migration.mjs / legacy-cleanup.mjs # 旧源码迁移链（PKG-08）：开关与路径记录/恢复；旧 junction 归属核对后只删链接
 │   ├── toast-action.mjs    # Toast 按钮协议入口：重扫→复制修复提示词→打开 ZCode
+│   ├── log-rotate.mjs      # jsonl 事件日志按天滚动、行内嵌版本与 7 天写入点自清理（Toast 执行器为单文件快照，内联等价实现）
 │   ├── toast-runtime.mjs / toast-executor.mjs # 缓存外共享 Toast 稳定运行时与自包含执行器（PKG-06）
 │   ├── local-only/         # LO 隔离 lab 与补丁 CLI；profiles.mjs / profiles/ 按包身份自动路由并保留旧档案，patch-env.mjs 管理通用约定，patch.mjs 提供 status/prepare/apply/restore；网关字节不改
 │   ├── vendor/             # 固定协议／投影及官方V4 decoder；保留来源和独立许可

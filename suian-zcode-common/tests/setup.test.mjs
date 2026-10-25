@@ -22,7 +22,7 @@ const nativeExec = promisify(execFile);
 
 // 只替换 Windows 系统边界，真实执行 setup.ps1 与临时目录内的文件读写。
 const systemFixture = String.raw`
-param([string]$Script, [string]$Action, [string]$DataDir, [string]$SkillsDir, [string]$ToolsRoot, [string]$StateFile, [int]$HealthTimeoutSec, [int]$Port, [string]$Mode, [int]$RelayProtocolVersion, [string]$ZcodeAppVersion, [string]$UpstreamUrl, [int]$BusyTimeoutSec, [int]$BusyRetryMs, [string]$ZcodeInstallDir, [string]$LocalOnlyWorkspace, [string]$LocalOnlyDataRoot, [switch]$NativePlugin)
+param([string]$Script, [string]$Action, [string]$DataDir, [string]$SkillsDir, [string]$ToolsRoot, [string]$StateFile, [int]$HealthTimeoutSec, [int]$Port, [string]$Mode, [int]$RelayProtocolVersion, [string]$ZcodeAppVersion, [string]$UpstreamUrl, [int]$BusyTimeoutSec, [int]$BusyRetryMs, [string]$ZcodeInstallDir, [string]$LocalOnlyWorkspace, [string]$LocalOnlyDataRoot, [int]$KeepaliveIntervalMin, [switch]$NativePlugin)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $global:fixture = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
@@ -88,14 +88,14 @@ function Invoke-PatchCli {
     }
     throw ('fixture: setup 不得直接调用补丁工具的 ' + $cmd)
 }
-function New-ScheduledTaskAction { param([string]$Execute, [string]$Argument, [string]$WorkingDirectory) return [pscustomobject]@{ Execute=$Execute; Arguments=$Argument; WorkingDirectory=$WorkingDirectory } }
-function New-ScheduledTaskTrigger { param([switch]$AtLogOn, [string]$User) return [pscustomobject]@{ AtLogOn=[bool]$AtLogOn; User=$User } }
-function New-ScheduledTaskPrincipal { param([string]$UserId, [string]$LogonType, [string]$RunLevel) return [pscustomobject]@{ UserId=$UserId; LogonType=$LogonType; RunLevel=$RunLevel } }
-function New-ScheduledTaskSettingsSet { param([TimeSpan]$ExecutionTimeLimit, [int]$RestartCount, [TimeSpan]$RestartInterval, [string]$MultipleInstances, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries) return [pscustomobject]@{ ExecutionTimeLimit=$ExecutionTimeLimit.TotalSeconds; RestartCount=$RestartCount; MultipleInstances=$MultipleInstances } }
-function Register-ScheduledTask { param([string]$TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) if ($global:fixture.fail_register_count -gt 0) { $global:fixture.fail_register_count--; Save-Fixture; throw 'fixture: register denied' }; $global:fixture.task = [pscustomobject]@{ TaskName=$TaskName; TaskPath='\'; Actions=$Action; Trigger=$Trigger; Principal=$Principal; Settings=$Settings; State='Ready' }; $global:fixture.registrations++; Save-Fixture }
-function Start-ScheduledTask { param([string]$TaskName) if ($global:fixture.fail_start_count -gt 0) { $global:fixture.fail_start_count--; Save-Fixture; throw 'fixture: start denied' }; if ($TaskName -ne $global:fixture.task.TaskName) { throw '启动了其他任务' }; $global:fixture.task.State='Running'; $global:fixture.health_available=$true; $global:fixture.starts++; Save-Fixture }
+function New-ScheduledTaskAction { [CmdletBinding()] param([string]$Execute, [string]$Argument, [string]$WorkingDirectory) return [pscustomobject]@{ Execute=$Execute; Arguments=$Argument; WorkingDirectory=$WorkingDirectory } }
+function New-ScheduledTaskTrigger { [CmdletBinding()] param([switch]$AtLogOn, [string]$User, [switch]$Once, [datetime]$At, [TimeSpan]$RepetitionInterval, [TimeSpan]$RepetitionDuration) if ($Once) { return [pscustomobject]@{ Once=$true; At=$At; RepetitionIntervalMinutes=[Math]::Round($RepetitionInterval.TotalMinutes); RepetitionDurationDays=[Math]::Round($RepetitionDuration.TotalDays) } }; return [pscustomobject]@{ AtLogOn=[bool]$AtLogOn; User=$User } }
+function New-ScheduledTaskPrincipal { [CmdletBinding()] param([string]$UserId, [string]$LogonType, [string]$RunLevel) return [pscustomobject]@{ UserId=$UserId; LogonType=$LogonType; RunLevel=$RunLevel } }
+function New-ScheduledTaskSettingsSet { [CmdletBinding()] param([TimeSpan]$ExecutionTimeLimit, [int]$RestartCount, [TimeSpan]$RestartInterval, [string]$MultipleInstances, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries) return [pscustomobject]@{ ExecutionTimeLimit=$ExecutionTimeLimit.TotalSeconds; RestartCount=$RestartCount; MultipleInstances=$MultipleInstances } }
+function Register-ScheduledTask { [CmdletBinding()] param([string]$TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) if ($global:fixture.fail_register_count -gt 0) { $global:fixture.fail_register_count--; Save-Fixture; throw 'fixture: register denied' }; $nextState = if ($null -ne $global:fixture.task -and $global:fixture.task.State -eq 'Running') { 'Running' } else { 'Ready' }; $global:fixture.task = [pscustomobject]@{ TaskName=$TaskName; TaskPath='\'; Actions=$Action; Trigger=(@($Trigger)[0]); Triggers=@($Trigger); Principal=$Principal; Settings=$Settings; State=$nextState }; $global:fixture.registrations++; Save-Fixture }
+function Start-ScheduledTask { [CmdletBinding()] param([string]$TaskName) if ($global:fixture.fail_start_count -gt 0) { $global:fixture.fail_start_count--; Save-Fixture; throw 'fixture: start denied' }; if ($TaskName -ne $global:fixture.task.TaskName) { throw '启动了其他任务' }; $global:fixture.task.State='Running'; $global:fixture.health_available=$true; $global:fixture.starts++; Save-Fixture }
 function Stop-ScheduledTask { throw 'Gateway already accepted self shutdown; do not terminate its exiting launcher' }
-function Unregister-ScheduledTask { param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; if ($global:fixture.unregister_fail) { throw 'fixture: task cleanup failed' }; $global:fixture.task=$null; Save-Fixture }
+function Unregister-ScheduledTask { [CmdletBinding()] param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; if ($global:fixture.unregister_fail) { throw 'fixture: task cleanup failed' }; $global:fixture.task=$null; Save-Fixture }
 function Invoke-RestMethod {
     param([string]$Uri, [int]$TimeoutSec, [switch]$UseBasicParsing, [string]$Method, $Headers)
     $global:fixture.http_attempts++; Save-Fixture
@@ -156,6 +156,7 @@ if ($PSBoundParameters.ContainsKey('BusyRetryMs')) { $params.BusyRetryMs=$BusyRe
 if ($PSBoundParameters.ContainsKey('ZcodeInstallDir')) { $params.ZcodeInstallDir=$ZcodeInstallDir }
 if ($PSBoundParameters.ContainsKey('LocalOnlyWorkspace')) { $params.LocalOnlyWorkspace=$LocalOnlyWorkspace }
 if ($PSBoundParameters.ContainsKey('LocalOnlyDataRoot')) { $params.LocalOnlyDataRoot=$LocalOnlyDataRoot }
+if ($PSBoundParameters.ContainsKey('KeepaliveIntervalMin')) { $params.KeepaliveIntervalMin=$KeepaliveIntervalMin }
 if ($NativePlugin) { $params.NativePlugin=$true }
 & $Script @params
 `;
@@ -171,8 +172,8 @@ async function fixture(t, overrides = {}, { setupScript = setup } = {}) {
   const initial = { relay: 'wss://previous.example/ws', app_version_env: null, task: null, registrations: 0, starts: 0, shutdowns: 0, health: 'ready', health_protocol: null, real_health: false, build: { id: deployBuildId, version: gatewayBuild.version }, reject_build: null, desktop: false, rpc_in_flight: null, busy_reads_left: 0, idle_shutdown_rejects: 0, legacy_health: false, health_min_timeout: 0, timeouts_left: 0, health_requests: 0, http_attempts: 0, health_available: false, draining: false, shutdown_health_reads: 0, broadcasts: [], broadcast_fail: false, broadcast_declaration: null, unregister_fail: false, fail_start_count: 0, fail_register_count: 0, patch_stub: 'original', patch_calls: [], ...overrides };
   await writeFile(stateFile, JSON.stringify(initial));
   await writeFile(script, '\uFEFF' + systemFixture);
-  const run = async (action, { healthTimeoutSec, port, mode, nativePlugin, relayProtocolVersion, zcodeAppVersion, upstreamUrl, busyTimeoutSec, busyRetryMs, zcodeInstallDir, localOnlyWorkspace, localOnlyDataRoot, setupScript: scriptOverride } = {}) => {
-    const { stdout } = await nativeExec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Script', scriptOverride ?? setupScript, '-Action', action, '-DataDir', dataDir, '-SkillsDir', skillsDir, '-ToolsRoot', toolsRoot, '-StateFile', stateFile, ...(healthTimeoutSec === undefined ? [] : ['-HealthTimeoutSec', String(healthTimeoutSec)]), ...(port === undefined ? [] : ['-Port', String(port)]), ...(mode === undefined ? [] : ['-Mode', mode]), ...(relayProtocolVersion === undefined ? [] : ['-RelayProtocolVersion', String(relayProtocolVersion)]), ...(zcodeAppVersion === undefined ? [] : ['-ZcodeAppVersion', zcodeAppVersion]), ...(upstreamUrl === undefined ? [] : ['-UpstreamUrl', upstreamUrl]), ...(busyTimeoutSec === undefined ? [] : ['-BusyTimeoutSec', String(busyTimeoutSec)]), ...(busyRetryMs === undefined ? [] : ['-BusyRetryMs', String(busyRetryMs)]), ...(zcodeInstallDir === undefined ? [] : ['-ZcodeInstallDir', zcodeInstallDir]), ...(localOnlyWorkspace === undefined ? [] : ['-LocalOnlyWorkspace', localOnlyWorkspace]), ...(localOnlyDataRoot === undefined ? [] : ['-LocalOnlyDataRoot', localOnlyDataRoot]), ...(nativePlugin ? ['-NativePlugin'] : [])], { windowsHide: true });
+  const run = async (action, { healthTimeoutSec, port, mode, nativePlugin, relayProtocolVersion, zcodeAppVersion, upstreamUrl, busyTimeoutSec, busyRetryMs, zcodeInstallDir, localOnlyWorkspace, localOnlyDataRoot, keepaliveIntervalMin, setupScript: scriptOverride } = {}) => {
+    const { stdout } = await nativeExec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Script', scriptOverride ?? setupScript, '-Action', action, '-DataDir', dataDir, '-SkillsDir', skillsDir, '-ToolsRoot', toolsRoot, '-StateFile', stateFile, ...(healthTimeoutSec === undefined ? [] : ['-HealthTimeoutSec', String(healthTimeoutSec)]), ...(port === undefined ? [] : ['-Port', String(port)]), ...(mode === undefined ? [] : ['-Mode', mode]), ...(relayProtocolVersion === undefined ? [] : ['-RelayProtocolVersion', String(relayProtocolVersion)]), ...(zcodeAppVersion === undefined ? [] : ['-ZcodeAppVersion', zcodeAppVersion]), ...(upstreamUrl === undefined ? [] : ['-UpstreamUrl', upstreamUrl]), ...(busyTimeoutSec === undefined ? [] : ['-BusyTimeoutSec', String(busyTimeoutSec)]), ...(busyRetryMs === undefined ? [] : ['-BusyRetryMs', String(busyRetryMs)]), ...(zcodeInstallDir === undefined ? [] : ['-ZcodeInstallDir', zcodeInstallDir]), ...(localOnlyWorkspace === undefined ? [] : ['-LocalOnlyWorkspace', localOnlyWorkspace]), ...(localOnlyDataRoot === undefined ? [] : ['-LocalOnlyDataRoot', localOnlyDataRoot]), ...(keepaliveIntervalMin === undefined ? [] : ['-KeepaliveIntervalMin', String(keepaliveIntervalMin)]), ...(nativePlugin ? ['-NativePlugin'] : [])], { windowsHide: true });
     return JSON.parse(stdout.trim());
   };
   const state = async () => JSON.parse(await readFile(stateFile, 'utf8'));
@@ -198,6 +199,8 @@ test('启动或注册任务异常进入回退，首次撤销安装，升级恢�
   });
   assert.equal(await readFile(join(f.dataDir,'config.json'),'utf8'),config);
   assert.equal(await readFile(join(f.toolsRoot,'active-gateway.json'),'utf8'),active);
+  const restored=await f.state();
+  assert.equal(restored.task.Triggers.length,2,'fallback 恢复的任务保持双触发器形状');
   assert.equal((await f.state()).task.State,'Running');
 });
 
@@ -449,7 +452,10 @@ test('公共安装部署缓存外运行文件与稳定任务，网关就绪后�
   assert.equal(state.task.State, 'Running');
   assert.equal(state.task.Principal.RunLevel, 'Limited');
   assert.equal(state.task.Principal.LogonType, 'Interactive');
-  assert.equal(state.task.Trigger.AtLogOn, true);
+  assert.equal(state.task.Triggers.length, 2, '任务注册登录触发 + 周期看护双触发器');
+  assert.equal(state.task.Triggers[0].AtLogOn, true);
+  assert.equal(state.task.Triggers[1].RepetitionIntervalMinutes, 30, '看护触发器默认每 30 分钟重复');
+  assert.equal(state.task.Triggers[1].RepetitionDurationDays, 3650, 'PS 5.1 以 10 年近似无限重复');
   assert.equal(state.task.Settings.ExecutionTimeLimit, 0);
   assert.equal(state.task.Actions.Execute, join(process.env.SystemRoot, 'System32', 'wscript.exe'));
   assert.equal(state.task.Actions.WorkingDirectory, f.dataDir, '任务工作目录是网关数据目录，不引用版本缓存');
@@ -478,6 +484,7 @@ test('公共安装部署缓存外运行文件与稳定任务，网关就绪后�
   assert.equal(config.gateway_root, deploymentDir, 'config 记录部署目录而非源码缓存');
   assert.equal(config.tools_root, f.toolsRoot);
   assert.equal(config.active_build_id, deployBuildId);
+  assert.equal(config.keepalive_interval_min, 30, 'config 记录看护间隔供 Status 报告与重建恢复');
   assert.match(config.control_token, /^[a-f0-9]{32}$/);
   assert.ok(!JSON.stringify(result).includes(config.control_token));
   const skill = await readFile(join(f.skillsDir, 'suian-zcode-common', 'SKILL.md'), 'utf8');
@@ -1358,4 +1365,179 @@ test('切回 relay 关闭本地开关、恢复网关模式与环境值，不重�
   assert.equal((await f.state()).patch_calls.length, callsBefore, '切回 relay 不触碰补丁工具，不重写应用包');
   const again = await f.run('Restart', { mode: 'relay', localOnlyDataRoot: f.root });
   assert.equal(again.local_only_switch, 'already_off', '开关已关时报告 already_off');
+});
+
+test('看护间隔参数：自定义间隔写入 config 与触发器，重跑沿用已装值，越界值拒绝', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  const installed = await f.run('Install', { keepaliveIntervalMin: 15 });
+  assert.equal(installed.keepalive_interval_min, 15);
+  let state = await f.state();
+  assert.equal(state.task.Triggers[1].RepetitionIntervalMinutes, 15);
+  assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).keepalive_interval_min, 15);
+  await f.run('Restart');
+  state = await f.state();
+  assert.equal(state.task.Triggers[1].RepetitionIntervalMinutes, 15, '未显式传参时沿用已装间隔');
+  await assert.rejects(f.run('Status', { keepaliveIntervalMin: 4 }), /KeepaliveIntervalMin/);
+  await assert.rejects(f.run('Status', { keepaliveIntervalMin: 1441 }), /KeepaliveIntervalMin/);
+});
+
+test('触发器形状识别真实 CIM 形态的完整 ISO 8601 间隔（PT{N}M/PT1H/PT1H30M/P1D）并参与自愈判定', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install', { keepaliveIntervalMin: 15 });
+  const state = await f.state();
+  const cimTriggers = interval => ([
+    { CimClass: { CimClassName: 'MSFT_TaskLogonTrigger' } },
+    { Repetition: { Interval: interval } },
+  ]);
+  // 模拟真实 Get-ScheduledTask 对象经 fixture JSON 往返后的 CIM 形态：
+  // 登录触发以 CimClass.CimClassName 标识，看护触发的间隔在 Repetition.Interval（ISO 8601 duration）。
+  state.task.Triggers = cimTriggers('PT15M');
+  state.task.Trigger = state.task.Triggers[0];
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const matched = await f.run('Status');
+  assert.equal(matched.keepalive_trigger_ok, true, 'PT15M 与已装 15 分钟间隔匹配');
+  assert.equal(matched.gateway_restart_required, false);
+  state.task.Triggers[1].Repetition.Interval = 'PT20M';
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const mismatched = await f.run('Status');
+  assert.equal(mismatched.keepalive_trigger_ok, false, '间隔漂移被识别');
+  assert.equal(mismatched.gateway_restart_required, true);
+  // 等价写法：任务计划程序对 60/90/1440 分钟可能登记为 PT1H/PT1H30M/P1D，语义与分钟写法等价，
+  // 不得误判形状不符并在 Restart 时反复重注册。
+  for (const [interval, minutes] of [['PT1H', 60], ['PT1H30M', 90], ['P1D', 1440]]) {
+    const eq = await fixture(t);
+    await eq.run('Install', { keepaliveIntervalMin: minutes });
+    const eqState = await eq.state();
+    eqState.task.Triggers = cimTriggers(interval);
+    eqState.task.Trigger = eqState.task.Triggers[0];
+    await writeFile(eq.stateFile, JSON.stringify(eqState));
+    const receipt = await eq.run('Status');
+    assert.equal(receipt.keepalive_trigger_ok, true, interval + ' 与已装 ' + minutes + ' 分钟间隔匹配');
+    assert.equal(receipt.gateway_restart_required, false, interval + ' 不应要求重注册');
+  }
+  // 非 duration 文本不是合法间隔，按无周期触发处理
+  state.task.Triggers[1].Repetition.Interval = 'not-a-duration';
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const invalid = await f.run('Status');
+  assert.equal(invalid.keepalive_trigger_ok, false, '非法 duration 不被当作有效间隔');
+});
+
+test('健康网关上的 Install 同样执行触发器自愈：旧形状重注册、改间隔即时生效且不打断实例', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install');
+  let state = await f.state();
+  assert.equal(state.task.State, 'Running');
+  assert.equal(state.health_available, true, '前提：网关健康');
+  // 健康状态下退回旧单触发器形状：Install 必须原地重注册，不能只写 config
+  state.task.Triggers = [state.task.Triggers[0]];
+  state.task.Trigger = state.task.Triggers[0];
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const healed = await f.run('Install');
+  assert.equal(healed.keepalive_trigger_ok, true, '健康 Install 后形状回执为 ok');
+  assert.equal(healed.keepalive_interval_min, 30);
+  assert.equal(healed.task_running, true, '运行中的任务实例未被停止');
+  state = await f.state();
+  assert.equal(state.task.Triggers.length, 2, '任务被重注册为双触发器');
+  assert.equal(state.task.Triggers[1].RepetitionIntervalMinutes, 30);
+  assert.equal(state.task.State, 'Running', '重注册只替换定义，不打断当前实例');
+  assert.equal(state.starts, 1, '未重新拉起网关（保持原实例）');
+  assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).keepalive_interval_min, 30);
+  // 健康状态下改间隔：任务与 config 同步更新，回执间隔即任务实际间隔
+  const reinterval = await f.run('Install', { keepaliveIntervalMin: 15 });
+  assert.equal(reinterval.keepalive_interval_min, 15);
+  assert.equal(reinterval.keepalive_trigger_ok, true, '新间隔同步写入触发器');
+  assert.equal(reinterval.gateway_restart_required, false, '间隔一致后不要求重注册');
+  state = await f.state();
+  assert.equal(state.task.Triggers[1].RepetitionIntervalMinutes, 15);
+  assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).keepalive_interval_min, 15);
+  // 形状与间隔都已一致时，再次健康 Install 不做多余重注册
+  const registrations = state.registrations;
+  const again = await f.run('Install');
+  assert.equal((await f.state()).registrations, registrations, '已一致时不重注册');
+  assert.equal(again.keepalive_trigger_ok, true);
+});
+
+test('旧形状任务（仅登录触发）在重跑 setup 时自动自愈为双触发器', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install');
+  let state = await f.state();
+  // 模拟 0.7.3 及更早安装的旧任务：只有 AtLogOn 触发器
+  state.task.Triggers = [state.task.Triggers[0]];
+  state.task.Trigger = state.task.Triggers[0];
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const status = await f.run('Status');
+  assert.equal(status.keepalive_trigger_ok, false, '旧形状被识别');
+  assert.equal(status.launcher_update_required, true);
+  assert.equal(status.gateway_restart_required, true);
+  await f.run('Restart');
+  state = await f.state();
+  assert.equal(state.task.Triggers.length, 2, '重跑后自愈为双触发器');
+  assert.equal(state.task.Triggers[1].RepetitionIntervalMinutes, 30);
+  const after = await f.run('Status');
+  assert.equal(after.keepalive_trigger_ok, true);
+  assert.equal(after.gateway_restart_required, false);
+});
+
+test('setup 调用任务计划程序 cmdlet 的参数名必须存在于真实 cmdlet 参数集合', { skip: process.platform !== 'win32' }, async t => {
+  const cmdlets = ['New-ScheduledTaskAction', 'New-ScheduledTaskTrigger', 'New-ScheduledTaskPrincipal', 'New-ScheduledTaskSettingsSet', 'Register-ScheduledTask'];
+  const source = await readFile(setup, 'utf8');
+  const usage = new Map(cmdlets.map(c => [c, new Set()]));
+  for (const line of source.split(/\r?\n/)) {
+    for (const c of cmdlets) {
+      if (new RegExp('(?<![A-Za-z])' + c + '\\b').test(line)) {
+        for (const token of line.match(/(?<![A-Za-z:])-(\w+)/g) ?? []) usage.get(c).add(token.slice(1));
+      }
+    }
+  }
+  const { stdout } = await nativeExec('powershell.exe', ['-NoProfile', '-Command', "$ErrorActionPreference='Stop'; $out=@{}; foreach ($c in @('" + cmdlets.join("','") + "')) { $cmd = Get-Command -Name $c -CommandType Function,Cmdlet -ErrorAction SilentlyContinue; $out[$c] = if ($cmd) { @($cmd.Parameters.Keys) } else { $null } }; $out | ConvertTo-Json -Compress"], { windowsHide: true });
+  const real = JSON.parse(stdout.trim());
+  for (const c of cmdlets) {
+    const realParams = real[c];
+    if (!realParams) { t.diagnostic(c + '：本机无真实 cmdlet，跳过该项核对'); continue; }
+    const allowed = new Set(realParams.map(p => p.toLowerCase()));
+    for (const used of usage.get(c)) {
+      assert.ok(allowed.has(used.toLowerCase()), c + ' 的参数 -' + used + ' 不在真实 cmdlet 参数集合中（疑似拼写错误）');
+    }
+  }
+});
+
+test('健康网关上的 Install：旧启动链下改间隔被拒绝并引导 Restart，不写入未生效配置', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install');
+  const state = await f.state();
+  state.task.Actions.Execute = join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const before = await readFile(join(f.dataDir, 'config.json'), 'utf8');
+  await assert.rejects(f.run('Install', { keepaliveIntervalMin: 15 }), /Restart/);
+  assert.equal(await readFile(join(f.dataDir, 'config.json'), 'utf8'), before, '拒绝路径不写 config，间隔保持已装值');
+  assert.equal((await f.state()).registrations, 1, '健康路径不重注册旧启动链任务');
+  // 引导的 Restart 带同参完成安全重载并应用新间隔
+  const restarted = await f.run('Restart', { keepaliveIntervalMin: 15 });
+  assert.equal(restarted.keepalive_interval_min, 15);
+  assert.equal(restarted.keepalive_trigger_ok, true);
+  const after = await f.state();
+  assert.equal(after.task.Triggers[1].RepetitionIntervalMinutes, 15);
+  assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).keepalive_interval_min, 15);
+});
+
+test('健康网关上的 Install：0.8 之前无间隔字段的旧配置在旧启动链下任何间隔写入均拒绝', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install');
+  const state = await f.state();
+  state.task.Actions.Execute = join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  await writeFile(f.stateFile, JSON.stringify(state));
+  // 构造真实 0.7.x 旧配置：无 keepalive_interval_min 字段（任务无看护触发，写入间隔即未生效）
+  const configPath = join(f.dataDir, 'config.json');
+  const oldConfig = JSON.parse(await readFile(configPath, 'utf8'));
+  delete oldConfig.keepalive_interval_min;
+  await writeFile(configPath, JSON.stringify(oldConfig));
+  const before = await readFile(configPath, 'utf8');
+  await assert.rejects(f.run('Install'), /Restart/, '未传参的默认间隔同样拒绝：基准是已装记录而非请求值');
+  await assert.rejects(f.run('Install', { keepaliveIntervalMin: 60 }), /Restart/);
+  assert.equal(await readFile(configPath, 'utf8'), before, '拒绝路径不写 config');
+  assert.equal((await f.state()).registrations, 1, '不重注册旧启动链任务');
+  const restarted = await f.run('Restart');
+  assert.equal(restarted.keepalive_interval_min, 30, 'Restart 以默认间隔完成安全重载并写入字段');
+  assert.equal(JSON.parse(await readFile(configPath, 'utf8')).keepalive_interval_min, 30);
+  assert.equal((await f.state()).task.Triggers[1].RepetitionIntervalMinutes, 30);
 });

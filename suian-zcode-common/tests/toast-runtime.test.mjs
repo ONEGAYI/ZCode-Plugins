@@ -5,7 +5,7 @@ import { mkdtemp,readFile,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import {
   toastRootFor, activeToastRecordFor, deployToastRuntime, registerToastIdentity, removeToastIdentity,
-  checkToastRuntime, buildForwardVbs, buildStableLauncherVbs,
+  checkToastRuntime, buildForwardVbs, buildStableLauncherVbs, readExecutorText,
 } from '../toast-runtime.mjs';
 
 // 全注入 shell：文件用 Map 模拟，注册表键与命令调用全部拦截，不触达真实系统。
@@ -192,4 +192,11 @@ test('安装检查报告部署、身份、模板与实际协议目标；仅凭 A
   assert.ok(healthy.deployed.active, '活动记录必须可读');
   assert.match(healthy.protocols['suian-zcode-common'].command, /wscript\.exe/);
   assert.equal(healthy.identities['suian-zcode-common'].templatePresent, null, 'common 身份无模板文件属正常');
+});
+
+test('readExecutorText 部署文本注入日志版本占位符', async () => {
+  const text = await readExecutorText();
+  const manifest = JSON.parse(await readFile(new URL('../.zcode-plugin/plugin.json', import.meta.url), 'utf8'));
+  assert.ok(text.includes(`const LOG_VERSION_PLACEHOLDER = '${manifest.version}';`), '占位符替换为插件清单版本');
+  assert.ok(!text.includes("'__SUIAN_COMMON_LOG_VERSION__'"), '部署文本不得残留未替换占位符');
 });

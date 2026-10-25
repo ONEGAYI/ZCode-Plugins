@@ -2,7 +2,7 @@
 // 测试使用内存桩，不触真实网络写操作；真实 REST 适配器由 createGithubRestApi 提供，
 // 仅在另行授权的正式发布中由人显式调用。
 // 顺序强制（规格 9.3）：草稿资产齐全 -> 授权公开（先预发布）-> 匿名公开下载核验 ->
-// 市场就绪报告；下载核验失败不得切换市场。已发布资产不删除重传；
+// 核验全部通过按授权转正式版 -> 市场就绪报告；下载核验失败不得转正，也不得切换市场。已发布资产不删除重传；
 // 上传结果未知时先读取远端现状再续作，不盲重传；不能覆盖现有未知内容。
 import { readFile } from 'node:fs/promises';
 import { validateMarketplaceEntry } from './release-marketplace.mjs';
@@ -20,7 +20,7 @@ const reached = stage => stageOrder.get(stage) ?? -1;
  * download(url)：匿名下载，成功返回 Buffer，失败抛错
  * authorize：{ publish: boolean }——publish 为 false 时停留在核验完成态
  * marketCandidate：候选市场清单（可选）；publish 后核对其 URL/摘要与资产一致
- * state：跨调用持久化（{stage, releaseId, assets, downloads, publishPending, marketSwitchPending}）
+ * state：跨调用持久化（{stage, releaseId, assets, downloads, publishPending, finalizePending, marketSwitchPending}）
  */
 export async function runReleasePipeline({ state, githubApi, download, zips, releaseTag, candidateCommit, authorize = {}, marketCandidate }) {
   const run = state ?? {};
@@ -106,6 +106,21 @@ export async function runReleasePipeline({ state, githubApi, download, zips, rel
   }
   if (reached(run.stage) < reached('verify-download')) run.stage = 'verify-download';
   if (zips.some(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok && record.sha256 === zip.sha256))) return fail('download_failed');
+
+  // 下载核验全部通过：预发布转正式版。转正与草稿公开共用 publish 授权——
+  // 未授权（含省略）时保持预发布、保留核验结果并标记待转正，不替调用方改变正式发布状态；
+  // 幂等——已正式（含人工先行转正）不再发补丁并清理残留标记；转正不等待市场清单切换授权。
+  if (release.prerelease) {
+    if (authorize.publish) {
+      release = await githubApi.updateRelease(release, { prerelease: false });
+      delete run.finalizePending;
+    } else {
+      run.finalizePending = true;
+      report.pending = '下载核验通过/待授权转正式：Release 保持预发布，市场清单保持原正式版本';
+    }
+  } else {
+    delete run.finalizePending;
+  }
 
   // 阶段五：市场就绪——核对候选条目 URL/摘要与已公开资产一致；切换须另行授权。
   if (marketCandidate?.plugins) {

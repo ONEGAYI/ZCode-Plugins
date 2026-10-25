@@ -23,6 +23,23 @@ _Avoid_: 新建独立运行时、共享目录即共享运行中会话
 
 **补丁适配档案（patch profile）**：一个已验证原始发行包的身份、asar 入口与精确注入实现。稳定档案 ID 对应平台、exe FileVersion 和原版 asar SHA-256；各档案独立维护补丁修订号。新增档案保留旧档案，未知包不按最新档案兜底。见[自动路由规格](suian-zcode-app-mcp/docs/local-only-routing-spec.md)。
 
+## 公共网关看护与日志
+
+**看护拉起（keepalive pull-up）**：
+公共网关计划任务在登录触发之外的周期性重复触发（默认 30 分钟，setup 可配）。运行中的实例被任务 MultipleInstances IgnoreNew 与启动器健康门双重抑制，只有网关已退出时才会拉起新实例；进程存活但不监听的僵尸场景不在覆盖范围。
+_Avoid_: 看门狗进程、自动重启（与任务失败重试 RestartCount 混淆）
+
+**启动批次日志（per-start log pair）**：
+网关每次启动在 `DataDir/logs/` 生成的一对按启动时间命名的重定向文件 `gateway-<yyyyMMdd-HHmmss>.out.log` 与 `.error.log`；文件名时间戳即启动时间，也是留存判定的唯一依据。
+_Avoid_: gateway.out.log 旧单文件命名（每次启动被截断覆盖）
+
+**日志留存窗口（log retention window）**：
+7×24 小时滚动窗口。启动批次日志由启动器在拉起网关前清理窗口外文件；按天滚动的 jsonl 事件日志由写入方在追加前清理。判定一律依据文件名中的时间戳，不依赖文件 mtime。
+
+**自包含日志（self-describing log）**：
+每个日志文件（或事件行）不依赖其他文件的存续即可回答"何时、哪个版本/构建"。网关启动批次日志以启动横幅（首行自描述 JSON）承载，jsonl 事件日志在行内嵌短版本字段。
+_Avoid_: 依赖已清理文件的上下文、仅文件名含时间不含版本
+
 ## 标题策略
 
 **固定（lock）**:

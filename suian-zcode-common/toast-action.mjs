@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 // Toast 按钮协议入口：suian-zcode-common://fix → 现场重扫依赖 → 复制修复提示词并打开 ZCode。
 // 注意相对导入 notification-action.mjs——本入口不得经 node_modules 解析（依赖缺失场景仍需可用）。
-import { appendFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { copyPromptAndOpenWorkspace } from './notification-action.mjs';
 import { resolveDataDir } from './depcheck-hook.mjs';
 import { scanSuianPlugins } from './depcheck.mjs';
 import { buildFixPrompt } from './depcheck-prompt.mjs';
+import { appendFamilyLog, resolvePluginVersion } from './log-rotate.mjs';
 
 export function parseActionUri(uri) {
   const match = /^suian-zcode-common:\/\/([a-z-]+)$/i.exec(String(uri ?? ''));
@@ -32,8 +31,7 @@ if (isMain) {
   const dataDir = process.argv[3] ?? resolveDataDir();
   const logAction = async entry => {
     try {
-      await mkdir(dataDir, { recursive: true });
-      await appendFile(join(dataDir, 'toast-action-log.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n', 'utf8');
+      await appendFamilyLog({ dataDir, family: 'toast-action', legacyName: 'toast-action-log.jsonl', version: await resolvePluginVersion(), entry });
     } catch {}
   };
   runAction({ uri: process.argv[2], dataDir })

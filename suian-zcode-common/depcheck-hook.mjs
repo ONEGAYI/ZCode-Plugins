@@ -4,7 +4,7 @@
 // stop_hook_active=true 表示本轮由 Stop 续跑产生，跳过；stdout 不得以 { 开头；恒 exit 0，异常吞掉记日志。
 // 本钩子及其导入链（depcheck/notifications/notification-install/cooldown/windows）只用 Node 内置模块，
 // 且全部为 common 包内相对导入——不经 node_modules 解析，依赖全丢时仍可运行并报警。
-import { readFile, writeFile, rename, mkdir, appendFile } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +15,7 @@ import { notifyOnce } from './notifications.mjs';
 import { installToastAssets, buildVbsContent, resolveToastPluginsFile } from './notification-install.mjs';
 import { toastRootFor } from './toast-runtime.mjs';
 import { fileShell } from './windows.mjs';
+import { appendFamilyLog, resolvePluginVersion } from './log-rotate.mjs';
 
 export const TOAST_IDENTITY = {
   protocol: 'suian-zcode-common',
@@ -104,8 +105,7 @@ if (isMain) {
   const scan = () => scanSuianPlugins({ pluginsFile, homeDir: process.env.SUIAN_DEPCHECK_HOME || undefined });
   const logHook = async entry => {
     try {
-      await mkdir(dataDir, { recursive: true });
-      await appendFile(join(dataDir, 'hook.log.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n', 'utf8');
+      await appendFamilyLog({ dataDir, family: 'hook', legacyName: 'hook.log.jsonl', version: await resolvePluginVersion(), entry });
     } catch {}
   };
   try {

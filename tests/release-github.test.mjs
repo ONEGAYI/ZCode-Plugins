@@ -77,7 +77,7 @@ test('新建：草稿传齐资产后按授权公开，再从匿名 URL 核验', 
   assert.equal(result.state.stage, 'verify-download', JSON.stringify(result.error ?? result.state));
   assert.equal(api.releasesCreated, 1);
   assert.equal(api.assets.length, 2, '两个 ZIP 都已上传');
-  assert.deepEqual(api.metadataUpdates.at(-1), { draft: false, prerelease: true }, '公开阶段先标预发布');
+  assert.deepEqual(api.metadataUpdates, [{ draft: false, prerelease: true }, { prerelease: false }], '先预发布公开，下载核验通过后转正式');
   assert.equal(result.state.downloads.every(item => item.ok), true);
 });
 
@@ -91,6 +91,7 @@ test('匿名下载失败保留已公开资产，但不得报告市场就绪', as
   assert.equal(result.error.code, 'download_failed');
   assert.equal(result.state.stage, 'verify-download');
   assert.equal(api.release.draft, false, '匿名核验只能发生在公开之后');
+  assert.equal(api.release.prerelease, true, '下载核验未通过不得转正式');
   assert.equal(result.state.marketSwitchPending, undefined);
 });
 
@@ -124,7 +125,7 @@ test('同名已发布资产：摘要匹配即复用不重传；不匹配报冲�
   const download = defaultDownload;
   const reuse = await runReleasePipeline({ state: {}, githubApi: matching, download, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize: { publish: true } });
   assert.equal(reuse.state.stage, 'verify-download');
-  assert.deepEqual(matching.metadataUpdates, [], '续作不修改已有公开 Release 的预发布状态');
+  assert.deepEqual(matching.metadataUpdates, [{ prerelease: false }], '续作在核验通过后补转正式，不改其他元数据');
   assert.deepEqual(matching.calls.filter(call => call[0] === 'uploadAsset'), [], '不得重传已发布资产');
 
   const conflicting = new RecordingApi({
@@ -135,6 +136,45 @@ test('同名已发布资产：摘要匹配即复用不重传；不匹配报冲�
   const conflict = await runReleasePipeline({ state: {}, githubApi: conflicting, download, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize: { publish: true } });
   assert.equal(conflict.error.code, 'asset_conflict', JSON.stringify(conflict.error));
   assert.deepEqual(conflicting.calls.filter(call => call[0] === 'uploadAsset'), [], '冲突时不得删除重传');
+});
+
+test('已正式 Release 续作幂等跳过，不重复发转正补丁', async () => {
+  const published = new RecordingApi({
+    release: { id: 7, draft: false, prerelease: false, tag: 't-1' },
+    assets: [{ id: 1, name: 'p.zip', size: 10 }, { id: 2, name: 'q.zip', size: 10 }],
+  });
+  const done = await runReleasePipeline({ state: {}, githubApi: published, download: defaultDownload, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize: { publish: true } });
+  assert.equal(done.error, undefined);
+  assert.deepEqual(published.metadataUpdates, [], '已正式版不重发元数据补丁');
+});
+
+test('未授权续作不得转正式：省略或 false 均保持预发布并保留核验结果', async () => {
+  for (const authorize of [undefined, { publish: false }]) {
+    const api = new RecordingApi({
+      release: { id: 7, draft: false, prerelease: true, tag: 't-1' },
+      assets: [{ id: 1, name: 'p.zip', size: 10 }, { id: 2, name: 'q.zip', size: 10 }],
+    });
+    const state = {};
+    const result = await runReleasePipeline({ state, githubApi: api, download: defaultDownload, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize });
+    assert.equal(result.error, undefined, String(authorize));
+    assert.deepEqual(api.metadataUpdates, [], '不得发任何元数据补丁');
+    assert.equal(api.release.prerelease, true, '保持预发布');
+    assert.equal(state.finalizePending, true, '标记待授权转正');
+    assert.equal(state.downloads.every(item => item.ok), true, '只读核验照常完成并保留');
+    assert.match(JSON.stringify(result.report), /待授权转正式/);
+  }
+});
+
+test('未授权续作遇已正式版：零补丁且清理残留待转正标记', async () => {
+  const api = new RecordingApi({
+    release: { id: 7, draft: false, prerelease: false, tag: 't-1' },
+    assets: [{ id: 1, name: 'p.zip', size: 10 }, { id: 2, name: 'q.zip', size: 10 }],
+  });
+  const state = { finalizePending: true };
+  const result = await runReleasePipeline({ state, githubApi: api, download: defaultDownload, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize: { publish: false } });
+  assert.equal(result.error, undefined);
+  assert.deepEqual(api.metadataUpdates, []);
+  assert.equal(state.finalizePending, undefined, '已正式版清理残留待转正标记');
 });
 
 test('不能覆盖现有未知内容：同名资产无可用摘要时拒绝，不得盲传', async () => {
@@ -210,7 +250,7 @@ test('市场就绪：发布完成后核对候选条目 URL/摘要与资产一致
   });
   assert.equal(result.state.stage, 'market-ready', JSON.stringify(result.error ?? result.state));
   assert.equal(result.state.marketSwitchPending, true, '市场切换须另行授权，只报告就绪');
-  assert.deepEqual(api.metadataUpdates.at(-1), { draft: false, prerelease: true });
+  assert.deepEqual(api.metadataUpdates, [{ draft: false, prerelease: true }, { prerelease: false }], '市场就绪前已转正式');
 });
 
 test('阶段常量暴露完整顺序，供编排器与文档引用', () => {

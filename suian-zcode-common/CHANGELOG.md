@@ -1,5 +1,30 @@
 # 更新日志
 
+## [0.8.0] - 2026-10-25
+
+为网关增加周期看护拉起与受限日志留存：网关非正常退出后自动恢复，运行日志按启动批次留存 7 天并自包含版本溯源。设计与决策见 [看护拉起与日志留存规格](docs/keepalive-log-retention-spec.md) 与 [ADR 0001](docs/adr/0001-keepalive-trigger-and-log-retention.md)。
+
+### 新增
+
+**看护拉起（keepalive pull-up）**
+
+- 计划任务在登录触发之外新增每 30 分钟重复的时间触发器（`setup.ps1 -KeepaliveIntervalMin` 可配 5-1440，写入 config.json，重跑未传参时沿用已装值）。
+- 幂等两层：任务 `MultipleInstances IgnoreNew` 之上，启动器拉起前探测 `/health`，健康即退出（fail-open，探测异常不阻断拉起）。
+- 存量安装重跑 setup Install/Restart 时按触发器形状比对自动重注册（Status 新增 `keepalive_interval_min` 与 `keepalive_trigger_ok`）；健康网关上的 Install 同样自愈触发器形状与间隔（任务缺失或启动动作一致而不符时原地重注册，不打断运行实例，先改任务再写配置，回执间隔即任务实际间隔）；旧启动链动作切换仍只报告待升级、交给安全重载，该场景下显式改间隔被拒绝并引导以同参 Restart 应用（0.8 之前无间隔字段的旧配置视为无已装间隔，任何间隔写入均拒绝），不写入未生效配置。
+- 触发器间隔识别按完整 ISO 8601 duration 换算总分钟：任务计划程序登记的 `PT1H`/`PT1H30M`/`P1D` 与等值分钟写法视为同一形状，不误报、不反复重注册。
+- 候选失败回退路径同样保持双触发器形状。
+
+**日志留存与自包含**
+
+- 网关 stdout/stderr 改为 `DataDir/logs/gateway-<yyyyMMdd-HHmmss>.{out,error}.log` 按启动批次命名成对文件，拉起前清理 7 天窗口外批次并迁移删除旧根目录单文件日志。
+- 网关启动横幅升级为自描述 JSON（启动时刻、模式、端口、协议版本、build id 与部署路径、插件版本、Node 版本、pid、config 路径），作为每个批次 out.log 的首行。
+- `hook` 与 `toast-action` 两族 jsonl 事件日志按天滚动（`<族>-<yyyyMMdd>.log.jsonl`），每行内嵌插件版本字段（`v`），写入点自清理 7 天窗口外日文件并删除旧单文件；Toast 执行器部署文本经占位符注入版本。
+
+### 已知限制
+
+- 进程存活但不监听的僵尸场景不在自动看护范围，需手动 Restart；注销后任务不运行（Interactive 会话语义不变）。
+- PS 5.1 不接受无限重复时长，看护触发器以 10 年近似无限；最坏自愈延迟等于看护间隔。
+
 ## [0.7.3] - 2026-10-23
 
 修复空闲后重新连接 Host 的一条间歇性协议错误路径，并补齐网关与调用方可关联的安全诊断。

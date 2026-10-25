@@ -35,7 +35,7 @@ depcheck 自身的 issue code 语义见[setup 的依赖完整性检查](../setup
 
 更新后必须从新公共根执行 Status。网关运行文件部署在缓存外（`~/.zcode/tools/suian-zcode-common/deployments/<buildId>`），任务经稳定启动器读取活动记录（`active-gateway.json`）启动部署目录；Toast 活动记录独立，网关切换不影响它。gateway_restart_required 表示网关代码、候选待激活、目录或启动链需要更新；code_status 为 unknown 表示旧进程未提供指纹，不能报告已加载最新代码；candidate_pending_activation 为 true 表示新候选已部署但活动记录未切换，按[setup](../setup/SKILL.md)安全重载。desktop_restart_required 只报告用户环境与目标地址不匹配；desktop_connection_required 单独报告未连接。restart_required 是汇总，不能一律解释为退出 Desktop；false 也不能替代业务验收。
 
-网关可达但任务未运行时修复启动链，不另开实例。任务运行而健康不可达时先读数据目录中的 gateway.error.log 等启动日志；Restart/Remove 会拒绝在未知状态下修改配置。缺少 rpc_available 可能是旧进程，按[setup](../setup/SKILL.md)安全重载，不回退官方独立 terminal。
+网关可达但任务未运行时修复启动链，不另开实例。任务运行而健康不可达时先读数据目录 `logs/` 中最新启动批次的 `gateway-<yyyyMMdd-HHmmss>.error.log` 等启动日志（按启动时间命名成对文件，7 天窗口自动清理，启动横幅在同批 `.out.log` 首行）；Restart/Remove 会拒绝在未知状态下修改配置。缺少 rpc_available 可能是旧进程，按[setup](../setup/SKILL.md)安全重载，不回退官方独立 terminal。任务带登录触发与周期看护（默认 30 分钟，`keepalive_interval_min` 可配）双触发器，网关退出后最坏一个间隔内被自动拉起；看护靠 IgnoreNew 与启动器健康门保持幂等。进程存活但不监听的僵尸场景不在自动看护范围，按 setup 手动 Restart。
 
 Desktop 未连接时，先检查远控面板的状态与错误，再结合日志核对登录、模式、网络和启动环境。3.16 还需区分官方 HTTP 鉴权与 WebSocket 连接是否成功。面板停在“启动中”不能直接证明网络不可达，desktop_connected 为 false 也不能直接证明环境继承错误。首次环境修改按[configuration](../configuration/SKILL.md)在配置完成后安排重开。
 
@@ -45,7 +45,7 @@ Desktop 未连接时，先检查远控面板的状态与错误，再结合日志
 
 ## 间歇 RPC 故障日志
 
-新诊断代码启用后，`gateway.error.log` 的每条失败记录为 JSON，`at` 是 UTC 时间；`event` 为 `gateway_error`。历史纯文本行保留，不据其文件修改时间推断每次失败时间。
+新诊断代码启用后，最新启动批次 `gateway-<yyyyMMdd-HHmmss>.error.log` 的每条失败记录为 JSON，`at` 是 UTC 时间；`event` 为 `gateway_error`。历史纯文本行（含 0.8.0 前旧命名的单文件日志）保留语义，不据其文件修改时间推断每次失败时间。
 
 - 用 `id` 关联网关记录与调用方的 `diagnostic.id`。命名插件在 `runner.log.jsonl` 中保留 `stage` 和 `diagnostic`；MCP 在结构化错误、会话工件详情错误及 GLM 部分查询错误中保留诊断，并向宿主收集的 MCP stderr 写 `tool_error` 记录。MCP stdout 仍只承载协议。
 - `phase` 标识网关或解析边界；`clientPhase` 区分健康检查、连接、附着、Channel 初始化和 RPC 调用。`elapsedMs` 从本次 `connectHost` 开始计时，非单次业务 RPC 耗时。`bridgeReady`／`bridgeInitialized` 在已知时区分桥就绪与协议初始化；`closeCode` 和 `source` 定位异常关闭来自 Desktop、上游或本地 RPC。
