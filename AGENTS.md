@@ -86,12 +86,14 @@ ZCode-Plugins/
 │   ├── rpc-broker.mjs / rpc-diagnostics.mjs # Host 桥生命周期与多客户端分流、跨网关和消费者的安全失败诊断
 │   ├── locate.mjs         # 薄定位器：安装记录定位 common，单一源码分发业务包
 │   ├── build-release.mjs  # 发布目录构建：esbuild 打包、release.json、buildId 与构建输入记录
-│   ├── gateway-deploy.mjs / gateway-launcher.ps1 # 缓存外网关部署与稳定启动器（PKG-05：deployments/<buildId> 真实副本、活动记录原子切换、六步升级与失败回退）
+│   ├── gateway-deploy.mjs / gateway-launcher.ps1 # 缓存外网关部署与稳定启动器（PKG-05：deployments/<buildId> 真实副本、活动记录原子切换、六步升级与失败回退）；启动器含健康门幂等与 logs/ 启动批次日志（7 天窗口清理）
 │   ├── docs/client-contract.md  # 公共加载契约（锚点、失败分类、导出清单、迁移指引）
+│   ├── docs/keepalive-log-retention-spec.md、docs/adr/ # 看护拉起与日志留存设计规格及决策记录（0.8.0）
 │   ├── depcheck.mjs        # suian 系列插件发布契约扫描（PKG-08：release.json 完整性、身份、API 兼容；不再检查 node_modules/junction）
 │   ├── depcheck-hook.mjs   # Stop 钩子入口：扫描→缺失时 Toast 提醒（--scan-only 手动复查）
 │   ├── migration.mjs / legacy-cleanup.mjs # 旧源码迁移链（PKG-08）：开关与路径记录/恢复；旧 junction 归属核对后只删链接
 │   ├── toast-action.mjs    # Toast 按钮协议入口：重扫→复制修复提示词→打开 ZCode
+│   ├── log-rotate.mjs      # jsonl 事件日志按天滚动、行内嵌版本与 7 天写入点自清理（Toast 执行器为单文件快照，内联等价实现）
 │   ├── toast-runtime.mjs / toast-executor.mjs # 缓存外共享 Toast 稳定运行时与自包含执行器（PKG-06）
 │   ├── local-only/         # LO 隔离 lab 与补丁 CLI；profiles.mjs / profiles/ 按包身份自动路由并保留旧档案，patch-env.mjs 管理通用约定，patch.mjs 提供 status/prepare/apply/restore；网关字节不改
 │   ├── vendor/             # 固定协议／投影及官方V4 decoder；保留来源和独立许可

@@ -21,6 +21,17 @@ test('独立入口接收公共启动配置，报告健康地址并可正常停�
   ]);
   assert.equal(ready.ok, true);
   assert.match(ready.relay_url, /^ws:\/\/127\.0\.0\.1:\d+\/ws$/);
+  // 自包含横幅：首行脱离文件后仍可独立溯源启动时间、模式、端口、协议与构建。
+  assert.match(ready.started_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  assert.equal(ready.mode, 'relay');
+  assert.equal(Number(ready.port), Number(new URL(ready.relay_url).port));
+  assert.equal(ready.relay_protocol_version, 1);
+  assert.equal(ready.build.version, JSON.parse(await readFile(fileURLToPath(new URL('../.zcode-plugin/plugin.json', import.meta.url)), 'utf8')).version);
+  assert.match(ready.build.id, /^[0-9a-f]{64}$/);
+  assert.match(ready.build.root, /suian-zcode-common/);
+  assert.match(ready.node, /^v\d+\./);
+  assert.match(String(ready.pid), /^\d+$/);
+  assert.equal(ready.config, null, 'CLI 模式无 config 时横幅 config 为 null');
   const health = await (await fetch(ready.health_url)).json();
   assert.equal(health.instance_id, 'fixture-cli');
   assert.equal(health.upstream_url, 'ws://127.0.0.1:1/ws');
@@ -89,6 +100,7 @@ test('配置文件启动的网关只接受本工具令牌停止，拒绝网页�
     once(child, 'exit').then(([code]) => { throw new Error(`启动前退出 ${code}: ${errors}`); }),
   ]);
   const shutdown = ready.health_url.replace('/health', '/shutdown');
+  assert.equal(ready.config, configFile, 'config 模式横幅记录配置文件路径');
   const status = await (await fetch(ready.health_url)).json();
   assert.equal(status.instance_id, 'fixture-control');
   assert.ok(!JSON.stringify(status).includes('fixture-private-token'));

@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { runDepcheckHook, resolveDataDir, ensureToastIdentity } from '../depcheck-hook.mjs';
+import { dayStamp } from '../log-rotate.mjs';
 import { runAction, parseActionUri } from '../toast-action.mjs';
 import { scanSuianPlugins } from '../depcheck.mjs';
 import { buildFixPrompt, summarizeIssues } from '../depcheck-prompt.mjs';
@@ -189,8 +190,10 @@ test('宿主冒烟：齐全世界 Stop 载荷正常退出且落盘检查结果',
   assert.match(stopped.stdout, /"action":"clean"/);
   const persisted = JSON.parse(await readFile(join(dataDir, 'state', 'depcheck-last.json'), 'utf8'));
   assert.equal(persisted.ok, true);
-  const log = (await readFile(join(dataDir, 'state', 'hook.log.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  const today = new Date();
+  const log = (await readFile(join(dataDir, 'state', `hook-${dayStamp()}.log.jsonl`), 'utf8')).trim().split('\n').map(JSON.parse);
   assert.equal(log.at(-1).action, 'clean');
+  assert.equal(typeof log.at(-1).v, 'string', '按天滚动的事件行内嵌版本字段');
 });
 
 test('宿主冒烟：非法 stdin 与续跑轮不崩且不扫真实缓存', async t => {
@@ -384,7 +387,8 @@ test('toast-action 环境变量回退与 hook 一致（ZCODE_PLUGIN_DATA 挂 sta
     env: { ...process.env, ZCODE_PLUGIN_DATA: pluginData },
   });
   assert.equal(stopped.status, 1);
-  const log = await readFile(join(pluginData, 'state', 'toast-action-log.jsonl'), 'utf8');
+  const today = new Date();
+  const log = await readFile(join(pluginData, 'state', `toast-action-${dayStamp()}.log.jsonl`), 'utf8');
   const entry = JSON.parse(log.trim());
   assert.equal(entry.reason, 'unknown_action');
 });

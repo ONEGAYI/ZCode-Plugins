@@ -1,6 +1,6 @@
 {
   "name": "suian-zcode-common",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "公共网关、远控监听、官方 V4 协议、授权、通知、消息投影与依赖完整性检查；供业务插件共享",
   "license": "MIT"
 }

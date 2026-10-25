@@ -8,6 +8,8 @@ param(
     [ValidateRange(1, 30)][int]$HealthTimeoutSec = 5,
     [ValidateRange(0, 600)][int]$BusyTimeoutSec = 60,
     [ValidateRange(50, 60000)][int]$BusyRetryMs = 2000,
+    # 看护拉起：任务在登录触发之外每 N 分钟重复触发；IgnoreNew 与启动器健康门保证幂等
+    [ValidateRange(5, 1440)][int]$KeepaliveIntervalMin = 30,
     [string]$UpstreamUrl = 'wss://zcode.z.ai/ws',
     [string]$DataDir = (Join-Path $env:USERPROFILE '.zcode\tools\suian-zcode-gateway'),
     [string]$SkillsDir = (Join-Path $env:USERPROFILE '.zcode\skills'),
@@ -41,6 +43,11 @@ if ($null -ne $config) {
     if ($config.PSObject.Properties['mode']) { $installedMode = $config.mode }
     if ($installedMode -cnotin @('relay', 'local-only')) { throw 'Invalid installed gateway mode' }
     if (-not $PSBoundParameters.ContainsKey('Mode')) { $Mode = $installedMode }
+    # 已装配置恢复看护间隔：重跑不显式传参时沿用安装时的值；非法值忽略回落默认
+    if ($config.PSObject.Properties['keepalive_interval_min'] -and -not $PSBoundParameters.ContainsKey('KeepaliveIntervalMin')) {
+        $installedKeepalive = [int]$config.keepalive_interval_min
+        if ($installedKeepalive -ge 5 -and $installedKeepalive -le 1440) { $KeepaliveIntervalMin = $installedKeepalive }
+    }
     if ($config.PSObject.Properties['relay_protocol_version']) {
         if ($config.relay_protocol_version -notin @(1, 2)) { throw 'Unsupported installed relay protocol version' }
         $installedProtocol = [int]$config.relay_protocol_version
@@ -117,6 +124,53 @@ function Get-LauncherArguments {
     $launch = "& '$launcherPs' -ToolsRoot '$safeTools' -DataDir '$safeData'; exit `$LASTEXITCODE"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($launch))
     return '//B //NoLogo "' + $stableVbsFile + '" ' + $encoded
+}
+
+# 看护拉起触发器：登录触发保留，另加每 KeepaliveIntervalMin 分钟重复的时间触发。
+# PS 5.1 不接受无限重复时长，以 10 年近似；契约测试锁定间隔形状而非注册 API 细节。
+function New-GatewayTriggers {
+    $logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
+    $keepaliveTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval ([TimeSpan]::FromMinutes($KeepaliveIntervalMin)) -RepetitionDuration ([TimeSpan]::FromDays(3650))
+    return @($logonTrigger, $keepaliveTrigger)
+}
+
+# 归一化任务触发器形状（真实 CIM 对象与契约测试桩对象都识别）：
+# 返回 @{ logon = 是否含登录触发; keepalive = 重复触发间隔分钟（无则 $null） }。
+function Get-TaskTriggerShape {
+    param($Triggers)
+    $shape = @{ logon = $false; keepalive = $null }
+    foreach ($trigger in @($Triggers)) {
+        if ($null -eq $trigger) { continue }
+        $isLogon = ($trigger.PSObject.Properties['AtLogOn'] -and $trigger.AtLogOn) -or ($trigger.PSObject.Properties['CimClass'] -and $trigger.CimClass -and $trigger.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger')
+        if ($isLogon) { $shape.logon = $true }
+        $intervalMinutes = $null
+        if ($trigger.PSObject.Properties['RepetitionIntervalMinutes'] -and $null -ne $trigger.RepetitionIntervalMinutes) { $intervalMinutes = [int]$trigger.RepetitionIntervalMinutes }
+        elseif ($trigger.PSObject.Properties['RepetitionInterval'] -and $trigger.RepetitionInterval -is [TimeSpan]) { $intervalMinutes = [int][Math]::Round($trigger.RepetitionInterval.TotalMinutes) }
+        # 真实 CIM 的 Interval 是完整 ISO 8601 duration（PT15M/PT1H/PT1H30M/P1D…），统一换算总分钟比较；
+        # 非 duration 文本按无周期触发处理（XmlConvert.FormatException → catch）。
+        elseif ($trigger.PSObject.Properties['Repetition'] -and $trigger.Repetition -and $trigger.Repetition.PSObject.Properties['Interval'] -and $trigger.Repetition.Interval) {
+            try { $intervalMinutes = [int][Math]::Round([Xml.XmlConvert]::ToTimeSpan([string]$trigger.Repetition.Interval).TotalMinutes) } catch {}
+        }
+        if ($null -ne $intervalMinutes) { $shape.keepalive = $intervalMinutes }
+    }
+    return $shape
+}
+
+# 触发器形状是否为期望形状：含登录触发且看护间隔与本次配置一致；$null 形状（无任务）视为不符。
+function Test-TriggerShapeOk {
+    param($Shape)
+    return $null -ne $Shape -and $Shape.logon -and $Shape.keepalive -eq $KeepaliveIntervalMin
+}
+
+# 注册/重注册网关任务为登录+看护双触发器形状，返回刷新后的任务对象。
+# 任务实例运行中重注册只替换定义、不打断当前实例，新定义在当前实例结束后生效（健康 Install 自愈依赖该语义）。
+function Register-GatewayTask {
+    param($Action = (New-ScheduledTaskAction -Execute $scriptHost -Argument (Get-LauncherArguments) -WorkingDirectory $DataDir))
+    $triggers = New-GatewayTriggers
+    $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $taskName -Action $Action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
+    return (Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName -and $_.TaskPath -eq '\' })
 }
 
 function Invoke-DeployCli {
@@ -280,10 +334,13 @@ function Get-GatewayUpgradeStatus {
         }
     }
     $launcherUpdate = $false
+    $triggerShape = $null
     if ($null -ne $InstalledConfig) {
+        $triggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
         $launcherUpdate = -not $vbsLauncher -or -not $taskRunning -or
             @($task.Actions)[0].Arguments -cne (Get-LauncherArguments) -or
-            -not (Test-Path -LiteralPath $stableVbsFile) -or -not (Test-Path -LiteralPath $stablePsFile)
+            -not (Test-Path -LiteralPath $stableVbsFile) -or -not (Test-Path -LiteralPath $stablePsFile) -or
+            -not (Test-TriggerShapeOk $triggerShape)
     }
     $configuredProtocol = if ($null -ne $InstalledConfig -and $InstalledConfig.PSObject.Properties['relay_protocol_version']) { $InstalledConfig.relay_protocol_version } else { 1 }
     $protocolUpdate = $null -ne $InstalledConfig -and ($configuredProtocol -ne $RelayProtocolVersion -or ($null -ne $Health -and $Health.relay_protocol_version -ne $RelayProtocolVersion))
@@ -296,6 +353,8 @@ function Get-GatewayUpgradeStatus {
         expected_build=$expected; candidate_build_id=$candidateBuildId; active_build_id=$activeBuildId
         candidate_pending_activation=$candidatePending
         running_build=$running; code_status=$codeStatus; gateway_path_matches=$pathMatches
+        keepalive_interval_min=$KeepaliveIntervalMin
+        keepalive_trigger_ok=$(Test-TriggerShapeOk $triggerShape)
         relay_protocol_version=$RelayProtocolVersion; protocol_source=$protocolSource; running_relay_protocol_version=$(if ($null -ne $Health) { $Health.relay_protocol_version } else { $null })
         upstream_url=$UpstreamUrl; protocol_update_required=$protocolUpdate; upstream_update_required=$upstreamUpdate
         launcher_update_required=$launcherUpdate; gateway_restart_required=$gatewayRestart
@@ -594,7 +653,7 @@ $controlToken = if ($null -ne $config) { $config.control_token } else { [Guid]::
 $previousConfigBytes = if ($null -ne $config) { [IO.File]::ReadAllBytes($configFile) } else { $null }
 $previousActiveBytes = if (Test-Path -LiteralPath $activeGatewayFile) { [IO.File]::ReadAllBytes($activeGatewayFile) } else { $null }
 $previousTaskAction = if ($null -ne $task) { @($task.Actions)[0] } else { $null }
-$nextConfig = [ordered]@{ version=1; gateway_root=$deploymentDir; tools_root=$ToolsRoot; active_build_id=$buildId; instance_id=$instanceId; port=$Port; upstream_url=$UpstreamUrl; mode=$Mode; relay_protocol_version=$RelayProtocolVersion; previous_user_relay=$previousRelay; control_token=$controlToken }
+$nextConfig = [ordered]@{ version=1; gateway_root=$deploymentDir; tools_root=$ToolsRoot; active_build_id=$buildId; instance_id=$instanceId; port=$Port; upstream_url=$UpstreamUrl; mode=$Mode; relay_protocol_version=$RelayProtocolVersion; keepalive_interval_min=$KeepaliveIntervalMin; previous_user_relay=$previousRelay; control_token=$controlToken }
 $healthUrl = "http://127.0.0.1:$Port/health"
 [IO.Directory]::CreateDirectory($DataDir) | Out-Null
 
@@ -605,14 +664,11 @@ if ($null -eq $health) {
     [IO.File]::WriteAllText($configFile, ($nextConfig | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     # 步骤 4：原子切换活动记录并复用原任务启动候选；任务参数与版本无关。
     Invoke-DeployCli @('--activate', '--tools-root', $ToolsRoot, '--build-id', $buildId, '--node-path', $script:gatewayNode) | Out-Null
-    if ($null -eq $task -or @($task.Actions)[0].Execute -cne $scriptHost -or @($task.Actions)[0].Arguments -cne (Get-LauncherArguments)) {
-        $taskAction = New-ScheduledTaskAction -Execute $scriptHost -Argument (Get-LauncherArguments) -WorkingDirectory $DataDir
-        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
-        $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
-        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    # 触发器形状（登录 + 周期看护）不符也重注册——存量安装重跑 setup 时自动自愈为双触发器。
+    $currentTriggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
+    if ($null -eq $task -or @($task.Actions)[0].Execute -cne $scriptHost -or @($task.Actions)[0].Arguments -cne (Get-LauncherArguments) -or -not (Test-TriggerShapeOk $currentTriggerShape)) {
+        $task = Register-GatewayTask
         $registeredThisRun = $true
-        $task = Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName -and $_.TaskPath -eq '\' }
         $vbsLauncher = $true
     }
     Start-ScheduledTask -TaskName $taskName
@@ -648,10 +704,7 @@ if ($null -eq $health) {
                         $previousWorkingDirectory = $null
                         if ($previousTaskAction.PSObject.Properties['WorkingDirectory']) { $previousWorkingDirectory = $previousTaskAction.WorkingDirectory }
                         $restoreAction = New-ScheduledTaskAction -Execute $previousTaskAction.Execute -Argument $previousTaskAction.Arguments -WorkingDirectory $previousWorkingDirectory
-                        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
-                        $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
-                        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-                        Register-ScheduledTask -TaskName $taskName -Action $restoreAction -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+                        Register-GatewayTask $restoreAction | Out-Null
                     } else {
                         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
                     }
@@ -690,6 +743,25 @@ if ($null -eq $health) {
     # 旧安装的数据目录启动文件在切换成功后移除；归属为 config 记录的 DataDir。
     if (Test-Path -LiteralPath $legacyLauncherFile) { Remove-Item -LiteralPath $legacyLauncherFile }
 } else {
+    # 健康 Install：任务缺失，或启动动作与当前一致而触发器形状/间隔不符时，先原地重注册再写配置。
+    # 重注册只替换任务定义、不打断运行实例（新定义在当前实例结束后生效）；先任务后配置的顺序保证
+    # config 与回执记录的间隔就是任务实际间隔。启动动作不符（旧 PowerShell 启动链）保持既有边界：
+    # 只报告待升级、动作切换交给安全重载（Restart）；该场景下显式改间隔直接拒绝并引导以同参
+    # Restart 应用，不写入未生效的间隔。
+    $currentTriggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
+    $actionMatches = $null -ne $task -and @($task.Actions)[0].Execute -ceq $scriptHost -and @($task.Actions)[0].Arguments -ceq (Get-LauncherArguments)
+    if ($null -eq $task -or ($actionMatches -and -not (Test-TriggerShapeOk $currentTriggerShape))) {
+        $task = Register-GatewayTask
+        $vbsLauncher = $true
+    } elseif (-not $actionMatches) {
+        # 比较基准是已装记录而非请求值：0.8 之前的旧配置没有该字段（任务无看护触发），
+        # 视为无已装间隔，任何间隔写入（含未传参默认值）都会制造未生效记录，一律拒绝。
+        $recordedInterval = $null
+        if ($null -ne $config -and $config.PSObject.Properties['keepalive_interval_min']) { $recordedInterval = [int]$config.keepalive_interval_min }
+        if ($null -eq $recordedInterval -or $KeepaliveIntervalMin -ne $recordedInterval) {
+            throw ('Keepalive interval change requires the safe reload path: the running task still uses the legacy launcher; re-run Restart with -KeepaliveIntervalMin ' + $KeepaliveIntervalMin + ' to apply it; nothing was changed')
+        }
+    }
     [IO.File]::WriteAllText($configFile, ($nextConfig | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 }
 $skillDir = Join-Path $SkillsDir 'suian-zcode-common'
