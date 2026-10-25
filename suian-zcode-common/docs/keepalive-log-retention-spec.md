@@ -32,7 +32,7 @@
 
 **任务形状**：现有单任务 `suian-zcode-gateway-<SID>` 保留 AtLogOn 触发器，新增第二个触发器——一次性起点 + 每 `KeepaliveIntervalMin` 分钟重复、无有效期内停止。Settings 维持现状（`MultipleInstances IgnoreNew`、`ExecutionTimeLimit Zero`、`RestartCount 3/1min` 保留不动，作为快速重试；30 分钟触发是不依赖上次运行结果的可靠兜底）。
 
-> 实现注意：Windows PowerShell 5.1 的 `New-ScheduledTaskTrigger -Once` 对无限重复的 `-RepetitionDuration` 支持有限（`[TimeSpan]::MaxValue` 不被接受），以 10 年近似无限。形状锁定不逐字依赖任务 XML（测试桩不触达真实任务计划程序）：桩属性断言（间隔分钟、重复时长天数）覆盖注册结果，另以真实 CIM 形态（`CimClass.CimClassName` 登录触发、`Repetition.Interval` `PT{N}M` 字符串）覆盖 `Get-TaskTriggerShape` 识别分支。
+> 实现注意：Windows PowerShell 5.1 的 `New-ScheduledTaskTrigger -Once` 对无限重复的 `-RepetitionDuration` 支持有限（`[TimeSpan]::MaxValue` 不被接受），以 10 年近似无限。形状锁定不逐字依赖任务 XML（测试桩不触达真实任务计划程序）：桩属性断言（间隔分钟、重复时长天数）覆盖注册结果，另以真实 CIM 形态（`CimClass.CimClassName` 登录触发、`Repetition.Interval` ISO 8601 duration 字符串）覆盖 `Get-TaskTriggerShape` 识别分支。
 
 **两层幂等**：
 
@@ -41,7 +41,7 @@
 
 **间隔参数**：`setup.ps1` 新增 `-KeepaliveIntervalMin`，默认 30，`ValidateRange(5, 1440)`；写入 `config.json`（`keepalive_interval_min`），任务重建时从已装配置恢复同值。`Status` 回执新增 `keepalive_interval_min` 与任务形状判定。
 
-**存量自愈**：`Get-GatewayUpgradeStatus` 的 `launcherUpdate` 扩展为同时比对触发器形状与间隔；不符 → `gateway_restart_required=true`，用户重跑 `setup.ps1 Install/Restart`（插件更新后的既有重配路径）时自动重注册为新形状。回退路径（候选失败 fallback 中重建任务那段）同样注册双触发器形状。本期不给 depcheck 加检测提醒。
+**存量自愈**：`Get-GatewayUpgradeStatus` 的 `launcherUpdate` 扩展为同时比对触发器形状与间隔；不符 → `gateway_restart_required=true`，用户重跑 `setup.ps1 Install/Restart`（插件更新后的既有重配路径）时自动重注册为新形状。健康网关上的 Install 同样执行自愈：任务缺失，或启动动作与当前一致而形状/间隔不符时，原地重注册（只替换任务定义、不打断运行实例，新定义在当前实例结束后生效），且先重注册再写 config，回执与 config 记录的间隔就是任务实际间隔；启动动作不符（旧 PowerShell 启动链）保持既有边界，只报告待升级、动作切换交给安全重载。间隔识别按完整 ISO 8601 duration 换算总分钟，`PT1H`/`PT1H30M`/`P1D` 与等值分钟写法视为同一形状，不触发反复重注册。回退路径（候选失败 fallback 中重建任务那段）同样注册双触发器形状。本期不给 depcheck 加检测提醒。
 
 ### 2 启动批次日志
 
@@ -69,7 +69,7 @@ error.log 是 stderr 直通、无横幅；与 out.log 同时间戳成对生成�
 
 ### 4 测试计划（TDD 锚点）
 
-- `setup.test.mjs`：PS 桩 `New-ScheduledTaskTrigger` 扩展支持 `-Once` + 重复参数；断言注册结果含双触发器与间隔；参数越界拒绝；`config.json` 记录与重跑恢复；旧形状任务触发 `gateway_restart_required`；CIM 形态识别（`Repetition.Interval` `PT{N}M`）参与自愈判定；fallback 重建保持双触发器。
+- `setup.test.mjs`：PS 桩 `New-ScheduledTaskTrigger` 扩展支持 `-Once` + 重复参数；断言注册结果含双触发器与间隔；参数越界拒绝；`config.json` 记录与重跑恢复；旧形状任务触发 `gateway_restart_required`；CIM 形态识别（`Repetition.Interval` 完整 ISO 8601 duration，含 `PT1H`/`PT1H30M`/`P1D` 等价写法）参与自愈判定；健康网关上的 Install 自愈（旧形状重注册、改间隔即时生效、不打断实例、已一致不重注册）；fallback 重建保持双触发器。
 - `stable-launcher.test.mjs`：断言 `logs/` 按启动命名文件对；首行横幅字段齐全；健康门（真实固定端口：健康时 exit 0、不产生第二批次与第二进程；不健康时正常拉起）；预置 >7 天与 <7 天文件的清理集与不合规命名保留；旧根目录日志被迁移删除。
 - `depcheck-hook.test.mjs` / `toast-executor.test.mjs`：滚动命名、行内嵌 `v`；executor 另有内联清理专测（窗口外日文件与旧单文件删除、命名不合规保留，覆盖 PKG-06 快照的内联实现）。
 - `cli.test.mjs`：横幅内容断言（CLI stdout 首行与 config 模式两种入口）。其中 VBS 隐藏启动测试走仓库根 `run.ps1` 旧启动链（见已知限制），其 `gateway.out.log` 引用保留，不改指新布局。

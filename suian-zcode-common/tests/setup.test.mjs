@@ -92,7 +92,7 @@ function New-ScheduledTaskAction { param([string]$Execute, [string]$Argument, [s
 function New-ScheduledTaskTrigger { param([switch]$AtLogOn, [string]$User, [switch]$Once, [datetime]$At, [TimeSpan]$RepetitionInterval, [TimeSpan]$RepetitionDuration) if ($Once) { return [pscustomobject]@{ Once=$true; At=$At; RepetitionIntervalMinutes=[Math]::Round($RepetitionInterval.TotalMinutes); RepetitionDurationDays=[Math]::Round($RepetitionDuration.TotalDays) } }; return [pscustomobject]@{ AtLogOn=[bool]$AtLogOn; User=$User } }
 function New-ScheduledTaskPrincipal { param([string]$UserId, [string]$LogonType, [string]$RunLevel) return [pscustomobject]@{ UserId=$UserId; LogonType=$LogonType; RunLevel=$RunLevel } }
 function New-ScheduledTaskSettingsSet { param([TimeSpan]$ExecutionTimeLimit, [int]$RestartCount, [TimeSpan]$RestartInterval, [string]$MultipleInstances, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries) return [pscustomobject]@{ ExecutionTimeLimit=$ExecutionTimeLimit.TotalSeconds; RestartCount=$RestartCount; MultipleInstances=$MultipleInstances } }
-function Register-ScheduledTask { param([string]$TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) if ($global:fixture.fail_register_count -gt 0) { $global:fixture.fail_register_count--; Save-Fixture; throw 'fixture: register denied' }; $global:fixture.task = [pscustomobject]@{ TaskName=$TaskName; TaskPath='\'; Actions=$Action; Trigger=(@($Trigger)[0]); Triggers=@($Trigger); Principal=$Principal; Settings=$Settings; State='Ready' }; $global:fixture.registrations++; Save-Fixture }
+function Register-ScheduledTask { param([string]$TaskName, $Action, $Trigger, $Principal, $Settings, [switch]$Force) if ($global:fixture.fail_register_count -gt 0) { $global:fixture.fail_register_count--; Save-Fixture; throw 'fixture: register denied' }; $nextState = if ($null -ne $global:fixture.task -and $global:fixture.task.State -eq 'Running') { 'Running' } else { 'Ready' }; $global:fixture.task = [pscustomobject]@{ TaskName=$TaskName; TaskPath='\'; Actions=$Action; Trigger=(@($Trigger)[0]); Triggers=@($Trigger); Principal=$Principal; Settings=$Settings; State=$nextState }; $global:fixture.registrations++; Save-Fixture }
 function Start-ScheduledTask { param([string]$TaskName) if ($global:fixture.fail_start_count -gt 0) { $global:fixture.fail_start_count--; Save-Fixture; throw 'fixture: start denied' }; if ($TaskName -ne $global:fixture.task.TaskName) { throw '启动了其他任务' }; $global:fixture.task.State='Running'; $global:fixture.health_available=$true; $global:fixture.starts++; Save-Fixture }
 function Stop-ScheduledTask { throw 'Gateway already accepted self shutdown; do not terminate its exiting launcher' }
 function Unregister-ScheduledTask { param([string]$TaskName, [bool]$Confirm) if ($TaskName -ne $global:fixture.task.TaskName -or $Confirm) { throw '删除了其他任务' }; if ($global:fixture.unregister_fail) { throw 'fixture: task cleanup failed' }; $global:fixture.task=$null; Save-Fixture }
@@ -1420,6 +1420,41 @@ test('触发器形状识别真实 CIM 形态的完整 ISO 8601 间隔（PT{N}M/P
   await writeFile(f.stateFile, JSON.stringify(state));
   const invalid = await f.run('Status');
   assert.equal(invalid.keepalive_trigger_ok, false, '非法 duration 不被当作有效间隔');
+});
+
+test('健康网关上的 Install 同样执行触发器自愈：旧形状重注册、改间隔即时生效且不打断实例', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.run('Install');
+  let state = await f.state();
+  assert.equal(state.task.State, 'Running');
+  assert.equal(state.health_available, true, '前提：网关健康');
+  // 健康状态下退回旧单触发器形状：Install 必须原地重注册，不能只写 config
+  state.task.Triggers = [state.task.Triggers[0]];
+  state.task.Trigger = state.task.Triggers[0];
+  await writeFile(f.stateFile, JSON.stringify(state));
+  const healed = await f.run('Install');
+  assert.equal(healed.keepalive_trigger_ok, true, '健康 Install 后形状回执为 ok');
+  assert.equal(healed.keepalive_interval_min, 30);
+  assert.equal(healed.task_running, true, '运行中的任务实例未被停止');
+  state = await f.state();
+  assert.equal(state.task.Triggers.length, 2, '任务被重注册为双触发器');
+  assert.equal(state.task.Triggers[1].RepetitionIntervalMinutes, 30);
+  assert.equal(state.task.State, 'Running', '重注册只替换定义，不打断当前实例');
+  assert.equal(state.starts, 1, '未重新拉起网关（保持原实例）');
+  assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).keepalive_interval_min, 30);
+  // 健康状态下改间隔：任务与 config 同步更新，回执间隔即任务实际间隔
+  const reinterval = await f.run('Install', { keepaliveIntervalMin: 15 });
+  assert.equal(reinterval.keepalive_interval_min, 15);
+  assert.equal(reinterval.keepalive_trigger_ok, true, '新间隔同步写入触发器');
+  assert.equal(reinterval.gateway_restart_required, false, '间隔一致后不要求重注册');
+  state = await f.state();
+  assert.equal(state.task.Triggers[1].RepetitionIntervalMinutes, 15);
+  assert.equal(JSON.parse(await readFile(join(f.dataDir, 'config.json'), 'utf8')).keepalive_interval_min, 15);
+  // 形状与间隔都已一致时，再次健康 Install 不做多余重注册
+  const registrations = state.registrations;
+  const again = await f.run('Install');
+  assert.equal((await f.state()).registrations, registrations, '已一致时不重注册');
+  assert.equal(again.keepalive_trigger_ok, true);
 });
 
 test('旧形状任务（仅登录触发）在重跑 setup 时自动自愈为双触发器', { skip: process.platform !== 'win32' }, async t => {

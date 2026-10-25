@@ -10,7 +10,9 @@
 
 - 计划任务在登录触发之外新增每 30 分钟重复的时间触发器（`setup.ps1 -KeepaliveIntervalMin` 可配 5-1440，写入 config.json，重跑未传参时沿用已装值）。
 - 幂等两层：任务 `MultipleInstances IgnoreNew` 之上，启动器拉起前探测 `/health`，健康即退出（fail-open，探测异常不阻断拉起）。
-- 存量安装重跑 setup Install/Restart 时按触发器形状比对自动重注册（Status 新增 `keepalive_interval_min` 与 `keepalive_trigger_ok`）；候选失败回退路径同样保持双触发器形状。
+- 存量安装重跑 setup Install/Restart 时按触发器形状比对自动重注册（Status 新增 `keepalive_interval_min` 与 `keepalive_trigger_ok`）；健康网关上的 Install 同样自愈触发器形状与间隔（任务缺失或启动动作一致而不符时原地重注册，不打断运行实例，先改任务再写配置，回执间隔即任务实际间隔）；旧启动链动作切换仍只报告待升级、交给安全重载。
+- 触发器间隔识别按完整 ISO 8601 duration 换算总分钟：任务计划程序登记的 `PT1H`/`PT1H30M`/`P1D` 与等值分钟写法视为同一形状，不误报、不反复重注册。
+- 候选失败回退路径同样保持双触发器形状。
 
 **日志留存与自包含**
 

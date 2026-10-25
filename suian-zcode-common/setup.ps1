@@ -162,6 +162,17 @@ function Test-TriggerShapeOk {
     return $null -ne $Shape -and $Shape.logon -and $Shape.keepalive -eq $KeepaliveIntervalMin
 }
 
+# 注册/重注册网关任务为登录+看护双触发器形状，返回刷新后的任务对象。
+# 任务实例运行中重注册只替换定义、不打断当前实例，新定义在当前实例结束后生效（健康 Install 自愈依赖该语义）。
+function Register-GatewayTask {
+    param($Action = (New-ScheduledTaskAction -Execute $scriptHost -Argument (Get-LauncherArguments) -WorkingDirectory $DataDir))
+    $triggers = New-GatewayTriggers
+    $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -MultipleInstances IgnoreNew -AllowStartIfGoingOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $taskName -Action $Action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
+    return (Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName -and $_.TaskPath -eq '\' })
+}
+
 function Invoke-DeployCli {
     param([string[]]$CliArguments)
     $output = & $script:gatewayNode $script:deployCli @CliArguments 2>&1
@@ -656,13 +667,8 @@ if ($null -eq $health) {
     # 触发器形状（登录 + 周期看护）不符也重注册——存量安装重跑 setup 时自动自愈为双触发器。
     $currentTriggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
     if ($null -eq $task -or @($task.Actions)[0].Execute -cne $scriptHost -or @($task.Actions)[0].Arguments -cne (Get-LauncherArguments) -or -not (Test-TriggerShapeOk $currentTriggerShape)) {
-        $taskAction = New-ScheduledTaskAction -Execute $scriptHost -Argument (Get-LauncherArguments) -WorkingDirectory $DataDir
-        $triggers = New-GatewayTriggers
-        $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
-        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
+        $task = Register-GatewayTask
         $registeredThisRun = $true
-        $task = Get-ScheduledTask | Where-Object { $_.TaskName -eq $taskName -and $_.TaskPath -eq '\' }
         $vbsLauncher = $true
     }
     Start-ScheduledTask -TaskName $taskName
@@ -698,10 +704,7 @@ if ($null -eq $health) {
                         $previousWorkingDirectory = $null
                         if ($previousTaskAction.PSObject.Properties['WorkingDirectory']) { $previousWorkingDirectory = $previousTaskAction.WorkingDirectory }
                         $restoreAction = New-ScheduledTaskAction -Execute $previousTaskAction.Execute -Argument $previousTaskAction.Arguments -WorkingDirectory $previousWorkingDirectory
-                        $triggers = New-GatewayTriggers
-                        $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
-                        $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1)) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-                        Register-ScheduledTask -TaskName $taskName -Action $restoreAction -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
+                        Register-GatewayTask $restoreAction | Out-Null
                     } else {
                         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
                     }
@@ -740,6 +743,15 @@ if ($null -eq $health) {
     # 旧安装的数据目录启动文件在切换成功后移除；归属为 config 记录的 DataDir。
     if (Test-Path -LiteralPath $legacyLauncherFile) { Remove-Item -LiteralPath $legacyLauncherFile }
 } else {
+    # 健康 Install：任务缺失，或启动动作与当前一致而触发器形状/间隔不符时，先原地重注册再写配置。
+    # 重注册只替换任务定义、不打断运行实例（新定义在当前实例结束后生效）；先任务后配置的顺序保证
+    # config 与回执记录的间隔就是任务实际间隔。启动动作不符（旧 PowerShell 启动链）保持既有边界：
+    # 只报告待升级，动作切换交给安全重载（Restart），健康路径不触碰任务。
+    $currentTriggerShape = if ($null -ne $task) { Get-TaskTriggerShape @($task.Triggers) } else { $null }
+    if ($null -eq $task -or (@($task.Actions)[0].Execute -ceq $scriptHost -and @($task.Actions)[0].Arguments -ceq (Get-LauncherArguments) -and -not (Test-TriggerShapeOk $currentTriggerShape))) {
+        $task = Register-GatewayTask
+        $vbsLauncher = $true
+    }
     [IO.File]::WriteAllText($configFile, ($nextConfig | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 }
 $skillDir = Join-Path $SkillsDir 'suian-zcode-common'
