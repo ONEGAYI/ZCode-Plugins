@@ -2,6 +2,8 @@
 
 日期：2026-10-29 提取、2026-10-30 核对登记。状态：仓库已追加自动路由档案，原生运行验收待完成。
 
+基线：master `e5af562`；变更在分支 `feat/lo-profile-3.17.1`（登记提交 `80d3c6d` 及审查修复提交）。
+
 交付为公共插件 `local-only/profiles/windows-3.17.1.9553.mjs` 及 `profiles.mjs` 注册项，不分发完整宿主包或独立补丁 ZIP。沿用 setup 的 status → prepare 流程，按本机 exe 版本和原版 asar 摘要自动选择档案、现场生成候选；退出宿主后执行 setup 生成的外部应用命令。发布构建自动收集 profiles 目录，无须在 setup 增加版本分支。
 
 ## 包身份
@@ -19,7 +21,7 @@
 
 结构变化两处：`getToken`/`resolveDeviceSid` 注册从 manager 顶层 options 移至每会话 V2 relay 连接 options（编译产物字面量仍唯一，短路守卫语义不变）；`getToken` 内部新增单飞包装 `m(Gn,Rt,()=>...)`，短路后不执行。旧档案及其字节保持不变。
 
-新增正式包路由、运行体与真实锚点切片全链注入测试（含 node --check）先因未登记包失败。追加档案后，local-only 核心测试（routing、patch、lifecycle、lab、3.16.3、3.17.1）共 69 项通过；补齐工作树依赖后 setup 与 release-build 共 65 项通过。候选两次 prepare 字节一致；实际包副本完成 apply → status(patched) → restore，恢复摘要与原版相同，unpacked 资源原样；公共插件发布目录构建通过，其中 CLI 独立路由命中新档案并携带全部三份档案。
+新增正式包路由、运行体与真实锚点切片全链注入测试（含 node --check）先因未登记包失败（红阶段断言：档案 `ERR_MODULE_NOT_FOUND` 与路由 `unsupported_package`/`digest_mismatch`，输出于登记会话记录，未单独落盘日志）。追加档案后，local-only 核心测试（routing、patch、lifecycle、lab、3.16.3、3.17.1）共 69 项通过；补齐工作树依赖后 setup 与 release-build 共 65 项通过。候选两次 prepare 字节一致；实际包副本完成 apply → status(patched) → restore，恢复摘要与原版相同，unpacked 资源原样；公共插件发布目录构建通过，其中 CLI 独立路由命中新档案并携带全部三份档案。
 
 本轮未应用到用户日常宿主。尚未完成新版无登录冷启动、官方远控不可达、网关重启恢复和 MCP 原生闭环，不能据以上静态及副本验证宣称新版已完成正式兼容验收。
 

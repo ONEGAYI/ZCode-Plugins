@@ -89,6 +89,7 @@ local-only 按随包档案自动路由，历史记录兼容与新增档案流程
 | tests/local-only-fixture.mjs | LO-03 提取的契约共享 fixture：真实产物锚点切片（含 v2 注入点）与合成 asar 构造；顶层预置压缩名占位（let b2）防注入体向模块顶层引入裸 var 的回归 |
 | tests/local-only-patch.test.mjs | LO-02 契约测试：真实锚点切片注入与 ESM 语法检查、asar 往返/确定性/unpacked 保留、fuse wire 解析、status 三态、身份/锚点失配拒绝、apply 全链与重复识别、运行实例拒绝、restore 摘要核对与目标变化拒绝 |
 | tests/local-only-lifecycle.test.mjs | LO-03 生命周期契约：v2 注入点输出与原版失败契约（官方路径零改写、开关关闭零行为变化）、P1 门控 vm 三态与回环约束、P6 自动启动 vm 行为（幂等/重试/零启动）、v1→v2 升级三路径 |
+| tests/local-only-3.16.3.test.mjs / tests/local-only-3.17.1.test.mjs | 新发行包档案契约：精确身份路由、摘要不符拒绝、旧档案保留、P1/P6 运行体 vm 行为；3.17.1 增真实锚点切片全链注入与 node --check 语法验证 |
 | package.json / package-lock.json | 固定 Node/ws 版本与测试入口 |
 | docs/ | [共享运行时与 Release 规格](docs/shared-runtime-release-spec.md)、[开票索引](docs/shared-runtime-release-tickets.md)及脱敏验证证据；历史与本次验证分开 |
 | docs/client-contract.md | PKG-01 公共加载契约：锚点事实、定位规则、失败分类、导出清单、release.json 与构建输入说明及业务迁移指引 |
