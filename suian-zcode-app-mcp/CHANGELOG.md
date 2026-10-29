@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### 变更
+
+- 定时任务启停工具更名为 `set_cron_paused_and_resumed`，旧名 `set_cron_enabled` 不再提供；参数（`automation_id`、布尔 `enabled`、`workspace_path`、可选 `workspace_key`）、行为与返回结构不变，调用方只需更新工具名。
+- 名称改为直述两态语义（`enabled:false` 暂停 lifecycle paused、`true` 恢复 active）；底层官方 RPC `setAutomationEnabled` 协议名不变。
+
 ## [0.11.2] - 2026-10-23
 
 修复 GLM 查询单路失败时，诊断处理覆盖另一项成功结果的回归。

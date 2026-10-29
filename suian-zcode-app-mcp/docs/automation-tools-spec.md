@@ -1,6 +1,6 @@
 # app-mcp 定时任务管理工具规格（automation tools）
 
-> 注（2026-10-20）：本文是设计期规格，保留当时的命名。文中 `set_automation_enabled` / `list_automations` 已更名 `set_cron_enabled` / `list_crons`（见 CHANGELOG「Unreleased」）；`setAutomationEnabled` 为官方 RPC 协议名，保持不变。
+> 注（2026-10-20）：本文是设计期规格，保留当时的命名。文中 `set_automation_enabled` / `list_automations` 已先后更名 `set_cron_enabled` / `list_crons`、`set_cron_paused_and_resumed` / `list_crons`（见 CHANGELOG「Unreleased」）；`setAutomationEnabled` 为官方 RPC 协议名，保持不变。
 >
 > 状态：ready-for-agent（待实施）
 > 分支：`appmcp-cron-tools`（基于 dev @ b2f32da）

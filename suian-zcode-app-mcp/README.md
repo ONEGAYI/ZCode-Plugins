@@ -121,7 +121,7 @@ https://github.com/ONEGAYI/ZCode-Plugins.git
 | `unpin_session` | 取消置顶会话 |
 | `list_pinned_sessions` | 列出置顶会话，可含归档项；只读本机索引，无需 Desktop 在线 |
 | `list_crons` | 查询本机已保存的定时任务及启用状态 |
-| `set_cron_enabled` | 暂停或恢复指定定时任务，写后读回确认结果 |
+| `set_cron_paused_and_resumed` | 暂停或恢复指定定时任务，写后读回确认结果 |
 | `reset_cron_tools_visibility` | 在定时任务触发的会话中请求结束当前轮，以便下一轮恢复官方定时任务工具 |
 | `get_glm_balance` | 查询 GLM 个人套餐的模型、工具额度和可用重置卡 |
 | `reset_glm_quota` | 经本次用户许可和客户端确认表单，消耗一张对应卡重置 5h 或周模型额度 |

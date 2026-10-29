@@ -17,7 +17,7 @@ const summaries = {
   unpin_session: () => '已取消会话置顶。',
   get_glm_balance: data => data.errors?.length ? 'GLM 额度查询完成，部分数据不可用。' : '已读取 GLM 套餐额度与重置卡。',
   reset_glm_quota: data => data.used ? '额度已重置，已消耗一张重置卡。' : '额度重置已取消，未消耗卡片。',
-  set_cron_enabled: data => data.enabled ? '定时任务已恢复，按原计划继续调度（写后读回确认）。' : '定时任务已暂停，调度器不再认领派发（写后读回确认）。',
+  set_cron_paused_and_resumed: data => data.enabled ? '定时任务已恢复，按原计划继续调度（写后读回确认）。' : '定时任务已暂停，调度器不再认领派发（写后读回确认）。',
   get_artifacts: data => data.item
     ? `已读取工件详情${data.session?.error ? '，会话状态查询失败' : ''}。`
     : `工件：共 ${data.stats.total} 条；版本 ${data.revision}。`,
