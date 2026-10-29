@@ -1,5 +1,17 @@
 # 更新日志
 
+## [0.8.1] - 2026-10-30
+
+登记 Windows 3.17.1.9553 原版运行包的 local-only 适配档案：升级到该版本的 ZCode 仍可经统一补丁 CLI 自动路由识别，setup 现场生成候选。
+
+### 新增
+
+**3.17.1 发行包适配（#172）**
+
+- 新增档案 `windows-3.17.1.9553-9a09f6ef`（修订号 1）：七处注入（P0-P6）逐锚点重建，原版 app.asar 摘要精确匹配路由；旧档案（3.16.2/3.16.3）字节与状态契约不变。
+- 适配 3.16.x → 3.17.1 编译产物变化：注入注册处移至每会话连接 options、getToken 新增单飞包装，短路语义不变。
+- 静态锚点核对、候选确定性与实际包副本 apply/restore 往返已验证；新版原生运行验收待隔离 lab 补做。
+
 ## [0.8.0] - 2026-10-25
 
 为网关增加周期看护拉起与受限日志留存：网关非正常退出后自动恢复，运行日志按启动批次留存 7 天并自包含版本溯源。设计与决策见 [看护拉起与日志留存规格](docs/keepalive-log-retention-spec.md) 与 [ADR 0001](docs/adr/0001-keepalive-trigger-and-log-retention.md)。
@@ -96,6 +108,8 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.8.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.25...plugins-2026.10.30
+[0.8.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.3...plugins-2026.10.25
 [0.7.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.1...plugins-2026.10.23.2
 [0.7.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23...plugins-2026.10.23.1
 [0.7.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.22...plugins-2026.10.23

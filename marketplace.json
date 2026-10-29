@@ -3,7 +3,7 @@
   "plugins": [
     {
       "name": "suian-zcode-common",
-      "version": "0.8.0",
+      "version": "0.8.1",
       "source": {
         "source": "url",
         "type": "zip",
@@ -30,7 +30,7 @@
     },
     {
       "name": "suian-zcode-app-mcp",
-      "version": "0.11.2",
+      "version": "0.11.3",
       "source": {
         "source": "url",
         "type": "zip",
