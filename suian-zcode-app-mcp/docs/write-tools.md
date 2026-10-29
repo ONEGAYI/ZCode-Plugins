@@ -1,6 +1,6 @@
 # 会话写工具
 
-十个写工具通过公共远控客户端附着原 ZCode Desktop Host。任务操作调用 `zcode-task`，`send_message`、`reset_cron_tools_visibility` 与 `compact_session` 通过 `zcode-agent` 的 v4 命令分别提交消息、定时任务唤醒消息和上下文压缩请求，`set_cron_enabled` 经 `zcode-agent` 桥通道直达定时任务服务；不启动独立 CLI app-server、不直接写会话数据库。读取与分页仍按 [读取契约](./readonly-tools.md)。
+十个写工具通过公共远控客户端附着原 ZCode Desktop Host。任务操作调用 `zcode-task`，`send_message`、`reset_cron_tools_visibility` 与 `compact_session` 通过 `zcode-agent` 的 v4 命令分别提交消息、定时任务唤醒消息和上下文压缩请求，`set_cron_paused_and_resumed` 经 `zcode-agent` 桥通道直达定时任务服务；不启动独立 CLI app-server、不直接写会话数据库。读取与分页仍按 [读取契约](./readonly-tools.md)。
 
 ## 连接与授权
 
@@ -187,10 +187,10 @@ compact 尚在排队时，guide 仍可能先被当前轮消费；未消费而改
 
 ## 定时任务启停
 
-`set_cron_enabled` 暂停或恢复定时任务：必填 `automation_id`、布尔 `enabled`、`workspace_path`；可选 `workspace_key` 作为 RPC 层归属标识（`workspaceIdentity`）透传，用于同 ID 跨工作区消歧。
+`set_cron_paused_and_resumed` 暂停或恢复定时任务：必填 `automation_id`、布尔 `enabled`、`workspace_path`；可选 `workspace_key` 作为 RPC 层归属标识（`workspaceIdentity`）透传，用于同 ID 跨工作区消歧。
 
 ```json
-{"name":"set_cron_enabled","arguments":{"automation_id":"automation_example","enabled":false,"workspace_path":"D:/work/example"}}
+{"name":"set_cron_paused_and_resumed","arguments":{"automation_id":"automation_example","enabled":false,"workspace_path":"D:/work/example"}}
 ```
 
 语义与桌面管理页的启停一致：`enabled:false` 将 lifecycle 置为 paused，调度器不再认领派发；`true` 恢复 active，按原计划继续；任务 id、历史与会话绑定不变。操作可逆，不设 reset_glm_quota 级授权语义。

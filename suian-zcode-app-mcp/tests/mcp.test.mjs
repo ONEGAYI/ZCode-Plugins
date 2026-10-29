@@ -146,7 +146,7 @@ test('MCP 握手版本与插件元信息一致，公布十九个工具并保持�
   assert.equal(lockMetadata.packages[''].version, packageMetadata.version);
   assert.equal(client.getServerVersion().version, packageMetadata.version);
   const listed = await client.listTools();
-  assert.deepEqual(listed.tools.map(tool => tool.name), ['list_sessions', 'read_session', 'get_current_session', 'rename_session', 'start_session', 'send_message', 'reset_cron_tools_visibility', 'compact_session', 'archive_session', 'restore_session', 'pin_session', 'unpin_session', 'list_pinned_sessions', 'list_crons', 'get_glm_balance', 'reset_glm_quota', 'set_cron_enabled', 'get_artifacts', 'set_artifacts']);
+  assert.deepEqual(listed.tools.map(tool => tool.name), ['list_sessions', 'read_session', 'get_current_session', 'rename_session', 'start_session', 'send_message', 'reset_cron_tools_visibility', 'compact_session', 'archive_session', 'restore_session', 'pin_session', 'unpin_session', 'list_pinned_sessions', 'list_crons', 'get_glm_balance', 'reset_glm_quota', 'set_cron_paused_and_resumed', 'get_artifacts', 'set_artifacts']);
   for (const tool of listed.tools) assert.equal(tool.annotations.readOnlyHint, ['list_sessions', 'read_session', 'get_current_session', 'list_pinned_sessions', 'list_crons', 'get_glm_balance'].includes(tool.name));
   assert.equal(listed.tools.find(tool => tool.name === 'reset_glm_quota').annotations.destructiveHint, true);
   assert.equal(listed.tools.find(tool => tool.name === 'reset_glm_quota').annotations.idempotentHint, false);
@@ -793,7 +793,7 @@ test('置顶工具转交已验证参数，置顶列表走本地索引且拒绝�
   assert.equal(calls.length, 2);
 });
 
-test('set_cron_enabled 公布暂停/恢复语义，严格校验参数并转交控制器，错误结构化返回', async t => {
+test('set_cron_paused_and_resumed 公布暂停/恢复语义，严格校验参数并转交控制器，错误结构化返回', async t => {
   const f = fixture(t), calls = [];
   const { createMcpServer } = await import('../server.mjs');
   const receipt = { source: 'original_host', automation_id: 'automation-1', workspace_path: 'D:/fixture', enabled: false };
@@ -807,7 +807,7 @@ test('set_cron_enabled 公布暂停/恢复语义，严格校验参数并转交�
   const [ct, st] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await client.close(); await server.close(); });
   await server.connect(st); await client.connect(ct);
-  const tool = (await client.listTools()).tools.find(tool => tool.name === 'set_cron_enabled');
+  const tool = (await client.listTools()).tools.find(tool => tool.name === 'set_cron_paused_and_resumed');
   assert.ok(tool);
   assert.deepEqual(Object.keys(tool.inputSchema.properties), ['automation_id', 'enabled', 'workspace_path', 'workspace_key']);
   assert.equal(tool.inputSchema.properties.enabled.type, 'boolean');
@@ -817,7 +817,7 @@ test('set_cron_enabled 公布暂停/恢复语义，严格校验参数并转交�
   assert.equal(tool.annotations.idempotentHint, true);
   assert.match(tool.description, /暂停|恢复/);
   const args = { automation_id: 'automation-1', enabled: false, workspace_path: 'D:/fixture', workspace_key: 'fixture-key' };
-  const accepted = await client.callTool({ name: 'set_cron_enabled', arguments: args });
+  const accepted = await client.callTool({ name: 'set_cron_paused_and_resumed', arguments: args });
   assert.equal(accepted.isError, undefined);
   assert.deepEqual(accepted.structuredContent, receipt);
   assert.deepEqual(calls, [args]);
@@ -827,10 +827,10 @@ test('set_cron_enabled 公布暂停/恢复语义，严格校验参数并转交�
     { automation_id: ' ', enabled: false, workspace_path: 'D:/fixture' },
     { automation_id: 'automation-1', enabled: false, workspace_path: ' ' },
     { automation_id: 'automation-1', enabled: false, force: true }]) {
-    assert.equal((await client.callTool({ name: 'set_cron_enabled', arguments: invalid })).isError, true, JSON.stringify(invalid));
+    assert.equal((await client.callTool({ name: 'set_cron_paused_and_resumed', arguments: invalid })).isError, true, JSON.stringify(invalid));
   }
   assert.equal(calls.length, 1);
-  const rejected = await client.callTool({ name: 'set_cron_enabled', arguments: { automation_id: 'automation_rejected', enabled: true, workspace_path: 'D:/fixture' } });
+  const rejected = await client.callTool({ name: 'set_cron_paused_and_resumed', arguments: { automation_id: 'automation_rejected', enabled: true, workspace_path: 'D:/fixture' } });
   assert.equal(rejected.isError, true);
   assert.equal(rejected.structuredContent.automation_id, 'automation_rejected');
   assert.match(rejected.structuredContent.error, /automation_write_failed/);

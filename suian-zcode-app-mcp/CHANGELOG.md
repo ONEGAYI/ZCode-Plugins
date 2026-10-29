@@ -2,7 +2,16 @@
 
 本文件记录 suian-zcode-app-mcp 的用户可感知变化，版本独立于 common 和自动命名插件。
 
-## [Unreleased]
+## [0.11.3] - 2026-10-30
+
+定时任务启停工具更名，参数与行为保持不变，调用方仅需换名。
+
+### 变更
+
+**定时任务启停工具更名（#173）**
+
+- `set_cron_enabled` 更名为 `set_cron_paused_and_resumed`，旧名不再提供；参数（`automation_id`、布尔 `enabled`、`workspace_path`、可选 `workspace_key`）、行为与返回结构不变，调用方只需更新工具名。
+- 名称直述两态语义（`enabled:false` 暂停 lifecycle paused、`true` 恢复 active）；底层官方 RPC `setAutomationEnabled` 协议名不变。
 
 ## [0.11.2] - 2026-10-23
 
@@ -339,6 +348,7 @@
 较早版本链接保留对应源码提交；采用 Release 分发后的新版本链接指向实际发布标签。
 
 <!-- 变更链接 -->
+[0.11.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.3...plugins-2026.10.30
 [0.11.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.2...plugins-2026.10.23.3
 [0.11.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.1...plugins-2026.10.23.2
 [0.11.0]: https://github.com/ONEGAYI/ZCode-Plugins/pull/124
