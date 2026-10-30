@@ -1,5 +1,25 @@
 # 更新日志
 
+## [0.9.0] - 2026-10-30
+
+共享通知新增免打扰，并修复手机远控与本地插件共用网关时的终端身份问题。
+
+### 新增
+
+**通知免打扰（#178）**
+
+- 公共依赖和自动命名提醒提供 24 小时免打扰按钮，各插件分别保存状态。
+- 到期后恢复通知，并继续遵守原有两小时冷却。
+
+### Bug 修复
+
+**手机远控与共享桥共存（#176、#177）**
+
+- 内部握手与共享桥继承当前已配对手机的终端身份，避免建立本地调用时结束手机的终端归属。
+- 身份失配、终端更换或 relay 错误后清除旧身份；虚拟配对与迟到消息不恢复旧身份。
+
+> **验证范围**：Windows Desktop 3.17.1.9553 隔离副本、relay V2 与真实手机普通会话已验证命名成功；真实手机回退后继续输入的完整场景仍待验收。Toast 按钮尚未在真实 Windows 桌面验收。
+
 ## [0.8.1] - 2026-10-30
 
 登记 Windows 3.17.1.9553 原版运行包的 local-only 适配档案：升级到该版本的 ZCode 仍可经统一补丁 CLI 自动路由识别，setup 现场生成候选。
@@ -108,6 +128,7 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.9.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.10.30.1
 [0.8.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.25...plugins-2026.10.30
 [0.8.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.3...plugins-2026.10.25
 [0.7.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.1...plugins-2026.10.23.2

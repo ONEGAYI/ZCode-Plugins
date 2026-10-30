@@ -84,6 +84,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 | skills/ | setup / configuration / control / debug，paths.md 统一路径与数据说明 |
 | doctor.mjs | 只读双库/模型与实际用户级 Stop Hook 配置检查；明确区分配置就绪和执行待验证 |
 | prompt.md | 命名规则（沿用自 oil-codex-title 的 prompts/naming.md，只调整编辑器名称）；发布时从发布根定位 |
+| CHANGELOG.md | 用户可感知变更与版本验证边界 |
 | SKILL.md | 源码兼容路由，按请求读取拆分技能；公共配置委托 common 技能 |
 | ../suian-zcode-common/vendor/ | 两个插件共用的固定投影库与远控协议库，见公共 NOTICE.md |
 | tests/ | 命名、Hook、授权与通知契约、CLI 集成与发布目录契约；`npm test` 经 tests/common-fixture.mjs 预载合成宿主存储根 |
