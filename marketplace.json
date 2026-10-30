@@ -8,8 +8,8 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30/suian-zcode-common-0.8.1.zip",
-        "sha256": "441741a154cc12aea760e0bdd94ba1f76f32a9f892c624a6a6663a184cdb5a24",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30.1/suian-zcode-common-0.9.0.zip",
+        "sha256": "fa20d1844f7a018803bbf2a4c7975252db7a9ed498f47fb76e084f6db627a0d3",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
@@ -21,8 +21,8 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30/suian-zcode-title-0.2.1.zip",
-        "sha256": "821060ca050a87ce678bf2642476f1c1d5ac95d9a65a0a4b61fa4c04882c42f0",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30.1/suian-zcode-title-0.3.0.zip",
+        "sha256": "c2f05e4aa2401e95097bf6d264898f7fae2e846aaa9c493c58fccf850c80b801",
         "stripRoot": false
       },
       "description": "会话 Stop 后自动命名、模型配置与标题保护",
