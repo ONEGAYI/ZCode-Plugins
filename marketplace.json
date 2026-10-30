@@ -4,7 +4,7 @@
     {
       "name": "suian-zcode-common",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-common.png",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "source": {
         "source": "url",
         "type": "zip",
