@@ -49,7 +49,8 @@ for (const sessionId of ['sess_fixture', 'session_316_fixture']) test(`命名后
     await backend.rename("新名称");
     assert.equal(calls.find(c=>c.method==="renameTask").args[0].workspacePath,workspacePath);
     assert.equal((await backend.read()).title,"新名称");
-    await assert.rejects(backend.generate(before.context,{...selection,options:{reasoningLevel:"invalid"}}),/档位/);
+    await assert.rejects(backend.generate(before.context,{...selection,modelId:"missing"}),{stage:"model_selection",reasonCode:"naming_model_unavailable"});
+    await assert.rejects(backend.generate(before.context,{...selection,options:{reasoningLevel:"invalid"}}),{stage:"model_selection",reasonCode:"naming_model_unavailable"});
     backend.close();
   } finally {rmSync(root,{recursive:true});}
 });

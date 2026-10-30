@@ -3,6 +3,7 @@
   "plugins": [
     {
       "name": "suian-zcode-common",
+      "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-common.png",
       "version": "0.8.1",
       "source": {
         "source": "url",
@@ -15,6 +16,7 @@
     },
     {
       "name": "suian-zcode-title",
+      "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-title.png",
       "version": "0.2.1",
       "source": {
         "source": "url",
@@ -30,6 +32,7 @@
     },
     {
       "name": "suian-zcode-app-mcp",
+      "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-app-mcp.png",
       "version": "0.11.3",
       "source": {
         "source": "url",
@@ -45,6 +48,7 @@
     },
     {
       "name": "suian-side-editor",
+      "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-side-editor.png",
       "version": "0.4.0",
       "source": {
         "source": "url",
