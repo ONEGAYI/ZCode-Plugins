@@ -129,7 +129,10 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
       ...(mode === 'local-only'
         ? { server_ts: unixNow() }
         : relayProtocolVersion === 2 ? { [socket === desktop ? 'server_ts' : 'client_ts']: Math.floor(Date.now() / 1000) } : { client_ts: Date.now() }) }));
-    connection.sendDesktop = payload => sendData(desktop, payload);
+    // 3.17.1 把缺少终端身份的 bootstrap 视为结束手机归属；内部握手/建桥继承手机原身份。
+    connection.sendDesktop = payload => sendData(desktop,
+      connection.terminalClientSessionId && ['bootstrap-request', 'workspace-bridge-open'].includes(payload.zcode_type)
+        ? { ...payload, terminalClientSessionId: connection.terminalClientSessionId } : payload);
     connection.broker = createRpcBroker({ bootstrap: () => requestBootstrap(connection), bridgeTimeoutMs, onError: reportError,
       sendDesktop: connection.sendDesktop, sendPhone: payload => { if (upstream?.readyState === WebSocket.OPEN) sendData(upstream, payload); } });
     active = connection;
@@ -229,6 +232,11 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
       onTraffic({ from: 'upstream', type: message?.type ?? null, zcodeType: message?.payload?.zcode_type ?? null, pairStatus: message?.pair_status ?? null, local: false });
       if (message?.type === 'auth_ack' || message?.type === 'pair_status_ack') {
         if (message.type === 'auth_ack') connection.authenticated = true;
+        // relay 的 terminal_sid 只用于识别终端更换，不是 bootstrap 的 terminalClientSessionId。
+        if (message.pair_status !== 'matched' || (message.terminal_sid !== undefined && connection.phoneTerminalSid !== undefined && message.terminal_sid !== connection.phoneTerminalSid)) {
+          connection.terminalClientSessionId = undefined;
+        }
+        connection.phoneTerminalSid = message.pair_status === 'matched' ? message.terminal_sid ?? connection.phoneTerminalSid : undefined;
         connection.lastPairAck = message;
         connection.phonePaired = message.pair_status === 'matched';
         if (!connection.phonePaired) connection.broker.phoneDisconnected();
@@ -240,6 +248,8 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
       if (message?.type === 'error' && !(connection.authenticated && message.code === 'WRONG_PARAM')) {
         connection.authenticated = connection.authenticated && message.code === 'INTERNAL';
         connection.phonePaired = false;
+        connection.terminalClientSessionId = undefined;
+        connection.phoneTerminalSid = undefined;
         connection.broker.phoneDisconnected();
         connection.paired = connection.authenticated && connection.localClients.size > 0;
         if (connection.authenticated) connection.lastPairAck = { ...connection.lastPairAck, pair_status: 'waiting' };
@@ -249,6 +259,11 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
         const failed = new Error(`relay error: ${message.code}`);
         reportError(failed, { phase: 'socket', source: 'upstream' });
         connection.broker.close(failed);
+      }
+      if (relayProtocolVersion === 2 && connection.phonePaired && message?.type === 'data' && ['bootstrap-request', 'workspace-bridge-open'].includes(message.payload?.zcode_type)) {
+        const id = message.payload.terminalClientSessionId;
+        if (typeof id === 'string' && id) connection.terminalClientSessionId = id;
+        else if (message.payload.zcode_type === 'bootstrap-request') connection.terminalClientSessionId = undefined;
       }
       if (message?.type === 'data' && message.payload?.zcode_type === 'workspace-bridge-open') { void connection.broker.phoneOpen(message.payload); return; }
       if (message?.type === 'data' && ['rpc-frame', 'rpc-frame-ack'].includes(message.payload?.zcode_type)) { connection.broker.phoneFrame(message.payload); return; }

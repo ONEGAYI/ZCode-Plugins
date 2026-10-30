@@ -1,0 +1,27 @@
+{
+  "issue": "https://github.com/ONEGAYI/ZCode-Plugins/issues/176#issuecomment-6521896898",
+  "date": "2026-10-30",
+  "cause": "conversation_rewind 使用 branchCutAfterMessageID 标识旧历史尾部；命名摘要只查找 createdMessageID，漏掉切点后的全部新分支消息",
+  "sourceReference": {
+    "repository": "zai-org/ZCode",
+    "revision": "3c5b227649371507ddc4eb46ac5133afe6db1cab",
+    "path": "apps/zcode-cli/packages/contracts/src/rewind/index.ts",
+    "symbol": "selectActiveConversationBranch"
+  },
+  "behavior": [
+    "优先使用保留前缀加 branchCutAfterMessageID 之后的新消息",
+    "旧 createdMessageID 路径继续兼容",
+    "切点缺失时仅使用保留前缀，不重新纳入废弃分支",
+    "不放宽 synthetic 投影规则"
+  ],
+  "validation": {
+    "red": { "tests": 3, "failed": 3, "exitCode": 1 },
+    "titleSuite": { "tests": 107, "passed": 107, "exitCode": 0 },
+    "logs": ".scratch/rewind-remote-lab/{red-history,full-title}.log 与同名 .exit"
+  },
+  "boundaries": {
+    "realSessionDatabase": "仅只读核实，不写会话库或真实标题",
+    "host": "Windows Desktop 3.17.1.9553 原版副本，relay V2，独立会话库与插件配置",
+    "phoneAcceptance": "待用户远控验收；契约测试不代表真实手机已验收"
+  }
+}

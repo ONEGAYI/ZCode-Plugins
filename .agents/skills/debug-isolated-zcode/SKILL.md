@@ -1,6 +1,6 @@
 ---
 name: debug-isolated-zcode
-description: 隔离 ZCode lab 的搭建、启动与故障诊断：lab/patch 工具用法、八层排查法与 K1-K30 踩坑索引。触发于 lab 搭建或启动异常、补丁 apply/restore/升级、插件不加载或 Stop 不触发、开关不生效、网关握手与 probeHost、MCP start_session 拒绝、侧栏面板与评论链路。
+description: 隔离 ZCode lab 的搭建、启动与故障诊断：lab/patch 工具用法、八层排查法与 K1-K31 踩坑索引。触发于 lab 搭建或启动异常、补丁 apply/restore/升级、插件不加载或 Stop 不触发、开关不生效、网关握手与 probeHost、MCP start_session 拒绝、侧栏面板与评论链路。
 ---
 
 # 调试隔离 ZCode 环境
@@ -51,6 +51,7 @@ Windows 副本仍会自动注册当前用户的 `zcode:` 协议和右键菜单�
 | 症状 | 坑 |
 | --- | --- |
 | 停在欢迎页 / 登录门禁 | K1、K28 |
+| 复用凭据后解密失败 / 副本登录缓存被清除 | K31 |
 | 进程启动即退出 | K10、K12 |
 | 进程存活但无主窗口 | K13 |
 | 远控不启动、`desktop_connected:false` | K5、K9 |
