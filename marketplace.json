@@ -7,8 +7,8 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.25/suian-zcode-common-0.8.0.zip",
-        "sha256": "af714482aa979f9b94789f4231301d6e97b9beaf21dcefd7616be3124e4d7565",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30/suian-zcode-common-0.8.1.zip",
+        "sha256": "441741a154cc12aea760e0bdd94ba1f76f32a9f892c624a6a6663a184cdb5a24",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
@@ -19,7 +19,7 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.25/suian-zcode-title-0.2.1.zip",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30/suian-zcode-title-0.2.1.zip",
         "sha256": "821060ca050a87ce678bf2642476f1c1d5ac95d9a65a0a4b61fa4c04882c42f0",
         "stripRoot": false
       },
@@ -34,8 +34,8 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.25/suian-zcode-app-mcp-0.11.2.zip",
-        "sha256": "529ff8b672668223056656e72be58e16bd83887c2a1360a86407e353711b0c48",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30/suian-zcode-app-mcp-0.11.3.zip",
+        "sha256": "e6bedb662a40b6dda3ebb47f23903131d536647760ae6e1445a891f176c0d44d",
         "stripRoot": false
       },
       "description": "会话检索、历史读取、原 Host 操作与 GLM 额度 MCP",
@@ -49,8 +49,8 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.25/suian-side-editor-0.4.0.zip",
-        "sha256": "b4bb1d0e64a1005bb4cbff252b029c9fb0b6f03714dbd2790e1c45571973293c",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30/suian-side-editor-0.4.0.zip",
+        "sha256": "c0d24aaf0d10acdc49cb338932e37859f5bbb40a64b846ceea08843ec3e04579",
         "stripRoot": false
       },
       "description": "本机 UTF-8 文本侧栏编辑、自动保存、会话恢复与选区评论；发送状态采用尽力保护",
