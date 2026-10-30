@@ -47,7 +47,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   const requests = [], bridgeOpens = [], desktopMessages = [], phoneMessages = [];
   phone?.on('message', data => phoneMessages.push(JSON.parse(data)));
   let identity, assembler, physical = 1, message = 1, helloIssued = false, boundClientId;
-  let desktopPaired = pairStatus === 'matched', retiredBridge;
+  let desktopPaired = pairStatus === 'matched', retiredBridge, terminalClientSessionId;
   const respond = (header, body) => {
     for (const f of encode(pack(header, body), { ...identity, firstPhysicalSeq: physical, messageSeq: message++ })) {
       physical++; desktop.send(JSON.stringify({ type: 'data', payload: f }));
@@ -70,6 +70,14 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
     if (options.gateway?.relayProtocolVersion === 2 && incoming.type === 'data' && !desktopPaired) return;
     const p = incoming.payload;
     if (p?.zcode_type === 'bootstrap-request') {
+      // 3.17.1 的 bootstrap 会更新终端归属；缺失或更换身份时销毁当前桥。
+      if (options.terminalOwnerHost && terminalClientSessionId !== p.terminalClientSessionId) {
+        terminalClientSessionId = p.terminalClientSessionId;
+        if (identity) {
+          desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bridge-degraded', ...identity, reason: 'terminal-owner-ended' } }));
+          identity = undefined; assembler = undefined;
+        }
+      }
       desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-response', requestId: p.requestId, success: true,
         result: { workspaces: [{ kind: 'local', workspacePath: workspace }, { kind: 'local', workspacePath: 'D:\\other' },
           { kind: 'remote', workspacePath: '/remote', workspaceIdentity: 'remote:fixture', remoteSessionId: 'remote-session-fixture' }],
@@ -127,6 +135,100 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   });
   return { gateway, desktop, phone, relay, requests, bridgeOpens, respond, faults, diagnostics, desktopMessages, phoneMessages };
 }
+
+test('V2 自动继承手机终端身份，本地命名调用与手机刷新不结束共享桥', { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const f = await fixture(t, 'matched', { terminalOwnerHost: true, gateway: { relayProtocolVersion: 2 } });
+  const terminalClientSessionId = 'phone-owner-fixture';
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId: 'phone-bootstrap', terminalClientSessionId } }));
+  await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'phone-bootstrap'));
+  const phoneIdentity = { bridgeSessionId: 'phone-owner-bridge', bridgeGeneration: 1 };
+  const phoneAssembler = new Assembler({ identity: phoneIdentity });
+  let phoneReply;
+  f.phone.on('message', data => {
+    const p = JSON.parse(data).payload;
+    if (p?.zcode_type !== 'rpc-frame') return;
+    const result = phoneAssembler.accept(parse(p));
+    if (result.kind === 'complete') {
+      const reply = unpack(result.bytes);
+      if (reply[0][0] === 201) phoneReply = reply;
+    }
+  });
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'phone-open',
+    ...phoneIdentity, workspaceKey: workspace, terminalClientSessionId } }));
+  await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'phone-open'));
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId: 'phone-refresh', terminalClientSessionId } }));
+  await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'phone-refresh'));
+  assert.deepEqual(f.faults, [], '手机刷新相同身份时，共享桥不能因内部 bootstrap 丢失归属');
+
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-terminal-owner-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  const host = await connectHost({ workspacePath: workspace, gatewayConfigPath });
+  t.after(() => host.close());
+  for (const [channel, method, reply] of [['zcode-agent', 'generateWorkspaceText', { text: 'fixture title' }], ['zcode-task', 'renameTask', { title: 'fixture title' }]]) {
+    const pending = host.call(channel, method, []);
+    await until(() => f.requests.some(([header]) => header[3] === method));
+    f.respond([201, f.requests.find(([header]) => header[3] === method)[0][1]], reply);
+    assert.deepEqual(await pending, reply);
+  }
+  for (const frame of encode(pack([100, 0, 'fixture', 'phone-after-naming'], []), { ...phoneIdentity, firstPhysicalSeq: 1, messageSeq: 1 })) {
+    f.phone.send(JSON.stringify({ type: 'data', payload: frame }));
+  }
+  await until(() => f.requests.some(([header]) => header[3] === 'phone-after-naming'));
+  f.respond([201, f.requests.find(([header]) => header[3] === 'phone-after-naming')[0][1]], 'phone-ok');
+  await until(() => phoneReply !== undefined);
+  assert.deepEqual(phoneReply, [[201, 0], 'phone-ok']);
+  assert.equal(f.bridgeOpens.length, 1);
+  assert.equal(f.bridgeOpens[0].terminalClientSessionId, terminalClientSessionId);
+  assert.deepEqual(f.faults, []);
+});
+
+test('V2 手机直接建桥时也能识别并继承终端身份', { timeout: 3000 }, async t => {
+  const f = await fixture(t, 'matched', { terminalOwnerHost: true, gateway: { relayProtocolVersion: 2 } });
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'workspace-bridge-open', requestId: 'phone-direct-open',
+    bridgeSessionId: 'phone-direct-bridge', bridgeGeneration: 1, workspaceKey: workspace, terminalClientSessionId: 'phone-direct-owner' } }));
+  await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'phone-direct-open'));
+  assert.equal(f.desktopMessages.find(m => m.payload?.zcode_type === 'bootstrap-request').payload.terminalClientSessionId, 'phone-direct-owner');
+  assert.equal(f.bridgeOpens[0].terminalClientSessionId, 'phone-direct-owner');
+  f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId: 'phone-direct-refresh', terminalClientSessionId: 'phone-direct-owner' } }));
+  await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'phone-direct-refresh'));
+  assert.deepEqual(f.faults, []);
+});
+
+test('V2 终端身份随真实配对更新，虚拟配对不能复活旧手机身份', async t => {
+  for (const event of ['waiting', 'waiting-stale-bootstrap', 'replacement', 'relay-error', 'anonymous-bootstrap', 'same-terminal-heartbeat', 'nonfatal-error']) {
+    await t.test(event, { timeout: 3000 }, async t => {
+      const f = await fixture(t, 'matched', { gateway: { relayProtocolVersion: 2 } });
+      const local = new WebSocket(f.gateway.url.replace('/ws', '/rpc'), { headers: { Authorization: 'Bearer fixture-rpc-token' } });
+      t.after(() => local.terminate());
+      await once(local, 'open');
+      f.phone.send(JSON.stringify({ type: 'pair_status_ack', pair_status: 'matched', terminal_sid: 'relay-phone-a', server_ts: Math.floor(Date.now() / 1000) }));
+      f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId: 'owner-before-event', terminalClientSessionId: 'phone-owner-a' } }));
+      await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'owner-before-event'));
+      const count = f.desktopMessages.length;
+      if (event.startsWith('waiting') || event === 'replacement' || event === 'same-terminal-heartbeat') {
+        f.phone.send(JSON.stringify({ type: 'pair_status_ack', pair_status: event.startsWith('waiting') ? 'waiting' : 'matched',
+          ...(event === 'same-terminal-heartbeat' ? {} : { terminal_sid: event === 'replacement' ? 'relay-phone-b' : '' }), server_ts: Math.floor(Date.now() / 1000) }));
+      } else if (event === 'anonymous-bootstrap') {
+        f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId: 'anonymous-event' } }));
+      } else {
+        f.phone.send(JSON.stringify({ type: 'error', code: event === 'relay-error' ? 'INTERNAL' : 'WRONG_PARAM' }));
+      }
+      await until(() => f.desktopMessages.length > count);
+      if (event === 'waiting-stale-bootstrap') {
+        f.phone.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bootstrap-request', requestId: 'stale-owner-event', terminalClientSessionId: 'phone-owner-a' } }));
+        await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'stale-owner-event'));
+      }
+      await f.gateway.bootstrap();
+      const payload = f.desktopMessages.filter(m => m.payload?.zcode_type === 'bootstrap-request').at(-1).payload;
+      const retained = event === 'same-terminal-heartbeat' || event === 'nonfatal-error';
+      assert.equal(payload.terminalClientSessionId, retained ? 'phone-owner-a' : undefined);
+      assert.deepEqual(f.faults, []);
+    });
+  }
+});
 
 test('V2 首次心跳前本地插件即可附着，配对通知不能重复使用 auth_ack', { timeout: 2500 }, async t => {
   const { connectHost } = await import('../gateway-client.mjs');
