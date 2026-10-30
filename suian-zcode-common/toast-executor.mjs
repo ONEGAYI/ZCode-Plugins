@@ -5,11 +5,11 @@
 // 旧通知点击仍能现场诊断并复制修复提示。更新仅经 common 的部署流程（toast-runtime.mjs）。
 // common://fix 的扫描与提示词判据同源维护于 depcheck.mjs / depcheck-prompt.mjs（契约测试对齐）；
 // title://fix 只读取 title 外置数据目录中的身份描述与模板，不导入 title 缓存代码。
-import { appendFile, lstat, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, lstat, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { homedir } from 'node:os';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -21,7 +21,7 @@ export const TITLE_PLUGIN_ID = 'suian-zcode-title';
 const toastRootFor = homeDir => join(homeDir, '.zcode', 'tools', COMMON_PACKAGE, 'toast');
 const samePath = (a, b) => toNamespacedPath(resolve(a)) === toNamespacedPath(resolve(b));
 
-// —— URI 契约：只支持 common 依赖修复与 title 网关排障两种身份，动作只接受 fix ——
+// —— URI 契约：只支持 common 与 title 身份，动作接受 fix 和 mute ——
 
 export function parseActionUri(uri) {
   const match = /^(suian-zcode-common|suian-zcode-title):\/\/([a-z]+)$/i.exec(String(uri ?? ''));
@@ -338,16 +338,25 @@ async function openWorkspaceViaShell(uri) {
 
 // —— 公开动作入口 ——
 
-export async function runAction({ uri, homeDir, toastRoot, pluginsFile, setClipboard = setClipboardViaTempFile, openWorkspace = openWorkspaceViaShell }) {
+export async function runAction({ uri, homeDir, toastRoot, pluginsFile, now = Date.now, setClipboard = setClipboardViaTempFile, openWorkspace = openWorkspaceViaShell }) {
   const parsed = parseActionUri(uri);
   if (!parsed) return { ok: false, reason: 'invalid_uri' };
-  if (parsed.action !== 'fix') return { ok: false, reason: 'unknown_action' };
+  if (parsed.action !== 'fix' && parsed.action !== 'mute') return { ok: false, reason: 'unknown_action' };
   const resolvedHome = homeDir ?? process.env.SUIAN_TOAST_HOME ?? homedir();
   const root = toastRoot ?? toastRootFor(resolvedHome);
   const loaded = await loadIdentity(root, parsed.protocol);
   if (loaded.status === 'absent' || !loaded.identity) return { ok: false, reason: 'identity_missing' };
   const identity = loaded.identity;
   if (identity.protocol !== parsed.protocol) return { ok: false, reason: 'identity_mismatch' };
+
+  if (parsed.action === 'mute') {
+    const until = new Date(now() + 24 * 60 * 60 * 1000).toISOString();
+    await mkdir(identity.dataDir, { recursive: true });
+    const temporary = join(identity.dataDir, 'toast-mute.tmp-' + randomUUID());
+    await writeFile(temporary, JSON.stringify({ until }) + '\n', 'utf8');
+    await rename(temporary, join(identity.dataDir, 'toast-mute.json'));
+    return { ok: true, action: 'mute', identity: parsed.protocol, until };
+  }
 
   let prompt;
   let issues = null;

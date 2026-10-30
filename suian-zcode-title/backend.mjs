@@ -87,8 +87,10 @@ export function createBackend({event,config,saveState,prompt,connect=defaultConn
       const connection=await attach();
       const view=await connection.call("model-selection","getView",[]);
       const model=view.providers.find(p=>p.providerId===selection?.providerId)?.models.find(m=>m.modelId===selection?.modelId);
-      if(!model)throw new Error("指定模型不在原 Host 的可用目录中");
-      if(!model.config.optionSpecs.reasoningLevel.values.includes(selection.options?.reasoningLevel))throw new Error("指定思考档位不可用");
+      if(!model||!model.config.optionSpecs.reasoningLevel.values.includes(selection.options?.reasoningLevel)) {
+        const error=new Error(!model?"指定模型不在原 Host 的可用目录中":"指定思考档位不可用");
+        error.stage="model_selection";error.reasonCode="naming_model_unavailable";throw error;
+      }
       const ws=await workspacePath();
       const meta=await connection.call("zcode-task","getTaskMeta",[{taskId:sessionId,workspacePath:ws}]);
       // 冻结分裂下宿主任务元（索引/overlay）仍是旧标题属预期状态；非冻结场景维持漂移护栏

@@ -52,7 +52,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 4. 经公共网关附着原 Host（握手短超时 8s，失败按 stage/reasonCode 分类），model-selection.getView 校验模型档位后调 zcode-agent.generateWorkspaceText；不创建普通 Agent 任务，不切换主会话模型。旧网关明确要求重载，不回退官方 terminal。
 5. 校验严格 JSON、类别 emoji、「对象｜目标」结构与 48 字符上限；写前复读，仅宿主 `generated` 标题变化且候选为 `rename` 时允许继续，是否写入以最新标题比较；`keep`、非 generated 标题变化、运行或内容变化仍返回 `stale_result`（附 `staleReason`：running/fingerprint/title）。
 6. `zcode-task.renameTask` 写回后三处核验（原 Host 与双库），保存指纹与用量。
-7. 远控类失败不改标题、不调模型，按 7200 秒跨进程冷却弹原生 Toast（复制排障提示词按钮经协议激活由 Shell 独立进程处理）；`OIL_ZCODE_TITLE_DISABLE_TOAST=1` 静音。
+7. 远控类失败或所选命名模型／思考档位不在原 Host 可用目录时不改标题，按 7200 秒跨进程冷却弹原生 Toast；按钮可复制排障提示词或对命名插件免打扰 24 小时，协议激活由独立进程处理。`OIL_ZCODE_TITLE_DISABLE_TOAST=1` 静音。
 
 ### run 返回状态
 

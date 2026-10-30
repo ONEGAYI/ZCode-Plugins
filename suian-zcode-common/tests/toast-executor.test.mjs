@@ -11,6 +11,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { buildReleaseWorld } from './depcheck-fixture.mjs';
 import { deployToastRuntime, readExecutorText, registerToastIdentity, toastRootFor } from '../toast-runtime.mjs';
 import { runAction, parseActionUri, TITLE_PLUGIN_ID } from '../toast-executor.mjs';
+import { shouldNotify } from '../cooldown.mjs';
 import { dayStamp } from '../log-rotate.mjs';
 
 const pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -71,6 +72,16 @@ async function buildToastWorld(t, { customRegistry = false } = {}) {
   await writeFile(join(titleDataDir, 'toast-prompt-template.md'), TITLE_TEMPLATE, 'utf8');
   return { ...world, homeDir, toastRoot: toastRootFor(homeDir), commonDataDir, titleDataDir };
 }
+
+test('免打扰按钮只静音对应插件 24 小时，不复制或打开工作区', async t => {
+  const world = await buildToastWorld(t);
+  const now = Date.parse('2026-10-06T12:00:00Z');
+  const result = await runAction({ uri: 'suian-zcode-title://mute', homeDir: world.homeDir, now: () => now, setClipboard: () => { throw Error('unexpected clipboard'); }, openWorkspace: () => { throw Error('unexpected open'); } });
+  assert.equal(result.ok, true);
+  assert.equal((await shouldNotify({ dataDir: world.titleDataDir, now: () => now + 86399999 })).reason, 'muted');
+  assert.equal((await shouldNotify({ dataDir: world.titleDataDir, now: () => now + 86400000 })).allowed, true);
+  assert.equal((await shouldNotify({ dataDir: world.commonDataDir, now: () => now })).allowed, true);
+});
 
 const inject = () => {
   const clipboard = [], opened = [];

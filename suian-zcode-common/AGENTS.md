@@ -11,7 +11,7 @@
 - relay 的 `relayProtocolVersion`／配置 `relay_protocol_version` 缺省为 1；3.16 显式选择 2，转发 Desktop 一次性 token 与 MID，不另占 terminal。V2 消息严格区分 server_ts／client_ts，使用 Unix 秒；将 auth_ack 转成配对通知时不得带 device_sid。3.16 local-only 自 LO-04 起进入产品 setup：LO-02 交付完全短路补丁（登录/HTTP 注册/取令牌短路 + 回环 WS，网关字节不改，[补丁证据](../suian-zcode-app-mcp/docs/local-only/02-patch-evidence.md)）；LO-03 升级补丁 v2 补齐无登录冷启动自动触发、重连恢复与 signed-out 事件隔离（[生命周期证据](../suian-zcode-app-mcp/docs/local-only/03-lifecycle-evidence.md)）；LO-04 把预检、准备与外部应用命令接入 setup 产品流程并在真实构建包上完成 lab 端到端验证（[setup 集成证据](../suian-zcode-app-mcp/docs/local-only/04-setup-integration-evidence.md)）。放行以补丁工具字节身份判定为准，不泛化支持其它 3.16 包；在线 relay 与用户日常安装验收仍为未验项，旧模式测试不构成 3.16 离线证据。
 - Windows 安装器按显式 ZcodeAppVersion 或宿主 ZCODE_APP_VERSION 自动选择协议与官方地址；没有新版本信息时保留已配置协议。升级时只迁移旧官方地址，自定义上游、端口、令牌和原环境备份保留；旧配置缺少协议字段按 V1 兼容，不能把无版本依据的默认值当作 3.16 就绪证据。
 - 公共远控模块使用调用方提供的授权。DPAPI 明文只在进程内，保存位置由调用方的 `dataDir` 决定；不回显或复制凭据到公共配置。
-- Toast 的两小时冷却与互斥实现共用，状态范围由调用方的 `dataDir` 决定。协议、快捷方式和 AUMID 属于调用方，卸载一个插件不删除另一个身份。
+- Toast 的两小时冷却、24 小时免打扰与互斥实现共用，状态范围由调用方的 `dataDir` 决定。协议、快捷方式和 AUMID 属于调用方，卸载一个插件不删除另一个身份。
 - 自动化测试必须注入通知显示、剪贴板及打开工作区的系统边界，不激活真实协议或打开 ZCode 确认框。
 - 登录任务用 `wscript.exe` 与数据目录内的 VBS 桥隐藏启动 PowerShell → Node，启动链必须等待子进程并传递退出码，保持异常重试有效。不要把常驻 WScript 指向 Git 工作树内的模板。
 - 健康检查默认每次 5 秒、仅超时重试一次；连续超时报未知，不能掩盖为网关已停止。

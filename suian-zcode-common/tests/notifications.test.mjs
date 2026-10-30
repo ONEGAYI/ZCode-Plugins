@@ -7,6 +7,19 @@ import {shouldNotify,markShown,acquireDisplayLock,TOAST_COOLDOWN_SECONDS} from "
 import {buildToastXml,notifyOnce} from "../notifications.mjs";
 
 const freshDir=()=>{const root=mkdtempSync(join(tmpdir(),"z-title-toast-"));return root;};
+test("免打扰期限内不显示，期限届满后恢复",async()=>{
+  const dataDir=freshDir(),t0=Date.parse("2026-10-06T12:00:00Z");
+  try {
+    writeFileSync(join(dataDir,"toast-mute.json"),JSON.stringify({until:new Date(t0+86400000).toISOString()}));
+    assert.equal((await shouldNotify({dataDir,now:()=>t0+86399999})).reason,"muted");
+    assert.deepEqual(await shouldNotify({dataDir,now:()=>t0+86400000}),{allowed:true});
+  } finally {rmSync(dataDir,{recursive:true});}
+});
+test("Toast 同时提供修复与免打扰按钮",()=>{
+  const xml=buildToastXml({title:"t",message:"m",actionLabel:"复制提示词",actionUri:"suian-zcode-title://fix"});
+  assert.match(xml,/suian-zcode-title:\/\/mute/);
+  assert.match(xml,/免打扰 24 小时/);
+});
 test("冷却 7199 秒内抑制、7200 秒整点恢复，且跨进程持久",async()=>{
   const dataDir=freshDir();const t0=Date.parse("2026-10-06T12:00:00Z");
   const clock={value:t0};const now=()=>clock.value;
