@@ -1,4 +1,4 @@
-# 隔离 ZCode 环境踩坑详录（K1-K30）
+# 隔离 ZCode 环境踩坑详录（K1-K31）
 
 每条按 症状 / 根因 / 解法 / 来源 记录。来源指向 `suian-zcode-app-mcp/docs/local-only/` 的脱敏证据文档；编号在合并或删除时保持连续。
 未定位的事项如实标注"根因未定位"，与已证实事实分开。
@@ -222,3 +222,10 @@
 - **根因**：Desktop 失配宽限期约 3 秒，之后结束旧桥并暂存失效通知。网关在无人使用后仍保留物理桥，下一次配对收到迟到通知，旧桥复用使新附着失败。
 - **解法**：最后使用者退出后先取消请求再释放桥；下一次附着建立新身份，消费退役通知。验证必须加入跨宽限期的多轮空闲重连，不能只跑连续连接；不自动重试业务写入。
 - **来源与边界**：[隔离重复验证](../../../../suian-zcode-app-mcp/docs/issue-162-idle-bridge-verification.md)。真实 Desktop 副本、受控 relay 夹具；未验证官方在线 relay 或真实手机，也不把这条复现归因到全部同码故障。
+
+## K31 复用凭据时隔离 HOME 改变加密密钥，首次失败还会清除登录缓存
+
+- **症状**：复制日常 `v2/credentials.json` 后，隔离 Desktop 报“凭据解密失败”，远控面板仍要求登录；仅重加密副本剩余字段后仍未登录。
+- **根因**：凭据默认使用 AES-256-GCM，密钥由平台、`homedir()` 与系统用户名派生，或由显式 `ZCODE_CREDENTIAL_SECRET` 提供。隔离 HOME 改变默认密钥；第一次解密失败后，宿主会清除副本中的 OAuth 登录字段，剩余缓存已不完整。
+- **解法**：先停止自己的隔离副本，再从原目录重新取得完整的登录字段，按已核实的加密算法在内存中解密并用隔离目录的密钥重新加密，最后启动副本。原凭据不修改，明文不落盘、不进日志；不要从首次失败后已清理的副本继续重加密。手机远控验收不复制 `webRemoteControlRelayV2Device`，由副本登记独立设备。
+- **来源与边界**：Windows 3.17.1.9553 隔离复现；[凭据加密实现](../../../../sources/official-zcode/packages/services/src/credential/providers/credentialCipherProvider.ts)；原始失败与重启日志位于 `.scratch/rewind-remote-lab/lab/logs/`，不入库。

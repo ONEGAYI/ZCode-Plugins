@@ -49,8 +49,14 @@ export function recentSnapshot({session,messages},workspacePath) {
     const targetIndex=messages.findIndex(m=>m.info.id===revert.targetMessageID);
     if(!revert.keptMessageIDs&&targetIndex<0)throw new Error("回退目标不在持久化历史中");
     const kept=revert.keptMessageIDs?revert.keptMessageIDs.map(id=>ids.get(id)).filter(Boolean):messages.slice(0,targetIndex);
-    const createdIndex=messages.findIndex(m=>m.info.id===revert.createdMessageID);
-    active=createdIndex>=0?[...kept,...messages.slice(createdIndex)]:kept;
+    // 新回退结构以提交前的历史尾部为切点；切点后的消息属于新分支，不再写 createdMessageID。
+    if(revert.branchCutAfterMessageID) {
+      const cutIndex=messages.findIndex(m=>m.info.id===revert.branchCutAfterMessageID);
+      active=cutIndex>=0?[...kept,...messages.slice(cutIndex+1)]:kept;
+    } else {
+      const createdIndex=messages.findIndex(m=>m.info.id===revert.createdMessageID);
+      active=createdIndex>=0?[...kept,...messages.slice(createdIndex)]:kept;
+    }
   }
   const users=[],byUser=new Map();
   for(const message of active) {

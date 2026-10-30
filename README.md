@@ -1,3 +1,5 @@
+<img src="assets/icons/zcode-plugins.png" alt="ZCode-Plugins 标识" width="96">
+
 版本与兼容范围以[实际发布页面](https://github.com/ONEGAYI/ZCode-Plugins/releases)和安装时的反馈信息为准。
 
 安装和升级时，Agent 会按 Desktop 应用版本选择适用的网关协议；日常重载会保留已有协议与用户配置。具体方法与限制见[公共网关配置说明](./suian-zcode-common/skills/configuration/SKILL.md)。
@@ -12,10 +14,10 @@
 
 | 插件 | 独立技能 |
 | --- | --- |
-| suian-zcode-common | setup、configuration、debug |
-| suian-zcode-title | setup、configuration、control、debug |
-| suian-zcode-app-mcp | setup、configuration、sessions、artifacts、glm、debug |
-| suian-side-editor | setup |
+| <img src="assets/icons/suian-zcode-common.png" alt="" width="32"> suian-zcode-common | setup、configuration、debug |
+| <img src="assets/icons/suian-zcode-title.png" alt="" width="32"> suian-zcode-title | setup、configuration、control、debug |
+| <img src="assets/icons/suian-zcode-app-mcp.png" alt="" width="32"> suian-zcode-app-mcp | setup、configuration、sessions、artifacts、glm、debug |
+| <img src="assets/icons/suian-side-editor.png" alt="" width="32"> suian-side-editor | setup |
 
 在 ZCode 桌面端按以下步骤安装：
 

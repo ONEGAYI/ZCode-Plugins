@@ -1,6 +1,6 @@
 {
   "name": "suian-zcode-title",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "ZCode 会话自动命名，提供模型配置、标题保护与 Hook 排障",
   "license": "MIT"
 }

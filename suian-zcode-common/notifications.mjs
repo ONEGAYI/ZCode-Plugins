@@ -4,7 +4,7 @@ import {shouldNotify,markShown,acquireDisplayLock} from "./cooldown.mjs";
 const escapeXml=value=>String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c]));
 
 export function buildToastXml({title,message,actionLabel,actionUri}) {
-  return `<toast activationType="protocol" launch="${escapeXml(actionUri)}" scenario="default"><visual><binding template="ToastGeneric"><text>${escapeXml(title)}</text><text>${escapeXml(message)}</text></binding></visual><actions><action activationType="protocol" arguments="${escapeXml(actionUri)}" content="${escapeXml(actionLabel)}"/><action activationType="system" arguments="dismiss" content="忽略"/></actions></toast>`;
+  return `<toast activationType="protocol" launch="${escapeXml(actionUri)}" scenario="default"><visual><binding template="ToastGeneric"><text>${escapeXml(title)}</text><text>${escapeXml(message)}</text></binding></visual><actions><action activationType="protocol" arguments="${escapeXml(actionUri)}" content="${escapeXml(actionLabel)}"/><action activationType="protocol" arguments="${escapeXml(actionUri.replace(/fix$/, "mute"))}" content="免打扰 24 小时"/></actions></toast>`;
 }
 
 export async function notifyOnce({dataDir,title,message,reasonCode,appId,now=Date.now,display=showToastViaPowerShell,actionLabel="复制排障提示词并打开 ZCode",actionUri}) {

@@ -18,6 +18,9 @@ const readJson=async path=>{
 };
 
 export async function shouldNotify({dataDir,now=Date.now}) {
+  const mute=await readJson(join(dataDir,"toast-mute.json"));
+  const until=mute&&Date.parse(mute.until);
+  if(Number.isFinite(until)&&now()<until)return{allowed:false,reason:"muted",nextAllowedAt:until};
   const stored=await readJson(join(dataDir,"toast-cooldown.json"));
   const last=stored&&Date.parse(stored.lastShownAt);
   if(!Number.isFinite(last))return{allowed:true};

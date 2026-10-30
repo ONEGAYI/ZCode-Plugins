@@ -25,6 +25,35 @@ test("按真实用户输入合并多条助手，取三轮并排除内部提醒�
   assert.notEqual(changed.fingerprint,snap.fingerprint);
 });
 
+for (const keptMessageIDs of [[],["prefix","prefix-answer"]]) test(`conversation_rewind 按切点保留新分支，保留前缀 ${keptMessageIDs.length} 条`,async()=>{
+  await ensureProjectionPolicy();
+  const messages=[m("prefix","user","保留的目标"),m("prefix-answer","assistant","前缀回答","prefix"),
+    m("old-user","user","已废弃的目标"),m("old-answer","assistant","已废弃的回答","old-user"),
+    m("new-user","user","回退后的手机输入",null,{semantics:{origin:"real_user"},metadata:{inputIntent:{inputOrigin:"mobile"}}}),
+    m("new-answer","assistant","新分支回答","new-user")];
+  const session={title:"原名",revert:{kind:"conversation_rewind",scope:"conversation",targetMessageID:"old-user",
+    messageID:"old-user",branchCutAfterMessageID:"old-answer",branchGeneration:1,keptMessageIDs}};
+  const snap=recentSnapshot({session,messages},"D:\\fixture");
+  assert.equal(snap.turnCount,keptMessageIDs.length?2:1);
+  assert.equal(snap.latestUserId,"new-user");
+  assert.equal(snap.context.original_goal,keptMessageIDs.length?"保留的目标":"回退后的手机输入");
+  assert.deepEqual(snap.context.recent_turns.at(-1).messages,[{role:"user",text:"回退后的手机输入"},{role:"assistant",text:"新分支回答"}]);
+  assert.equal(JSON.stringify(snap.context).includes("已废弃"),false);
+  const changed=recentSnapshot({session,messages:[...messages,m("next","user","继续新分支")]},"D:\\fixture");
+  assert.equal(changed.latestUserId,"next");
+  assert.notEqual(changed.fingerprint,snap.fingerprint);
+});
+
+test("分支切点优先于旧 createdMessageID，切点缺失时只使用保留前缀",async()=>{
+  await ensureProjectionPolicy();
+  const messages=[m("prefix","user","保留目标"),m("old","user","废弃目标"),m("cut","assistant","废弃回答","old"),m("new","user","新目标")];
+  const revert={targetMessageID:"old",keptMessageIDs:["prefix"],createdMessageID:"old",branchCutAfterMessageID:"cut"};
+  const snapshot=recentSnapshot({session:{title:"原名",revert},messages},"D:\\fixture");
+  assert.deepEqual(snapshot.context.recent_turns.map(t=>t.id),["prefix","new"]);
+  const missing=recentSnapshot({session:{title:"原名",revert:{...revert,branchCutAfterMessageID:"missing"}},messages},"D:\\fixture");
+  assert.deepEqual(missing.context.recent_turns.map(t=>t.id),["prefix"]);
+});
+
 test("超过 32 MiB 的真实 SQLite 历史完整读取，命名摘要仍截取且双库不变",{timeout:15000},async t=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-large-history-")),sessionDb=join(root,"session.sqlite"),indexDb=join(root,"index.sqlite");
   t.after(()=>rmSync(root,{recursive:true}));
