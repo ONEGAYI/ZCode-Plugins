@@ -131,8 +131,10 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
         ? { server_ts: unixNow() }
         : relayProtocolVersion === 2 ? { [socket === desktop ? 'server_ts' : 'client_ts']: Math.floor(Date.now() / 1000) } : { client_ts: Date.now() }) }));
     // 3.17.1 换终端归属会销毁物理桥。手机页面可以重建，共享桥的归属在本地使用者退出前保持稳定。
-    const withTerminalOwner = payload => {
+    const withTerminalOwner = (payload, phoneBootstrap = false) => {
       if (relayProtocolVersion !== 2 || !['bootstrap-request', 'workspace-bridge-open'].includes(payload.zcode_type)) return payload;
+      // 纯手机页面换代仍交给 Desktop 释放旧 owner 的终端资源；内部握手不主动换绑。
+      if (phoneBootstrap && !connection.localClients.size) connection.desktopTerminalClientSessionId = undefined;
       const id = connection.desktopTerminalClientSessionId ?? connection.terminalClientSessionId
         ?? (connection.localClients.size ? randomUUID() : undefined);
       if (!id) return payload;
@@ -280,7 +282,7 @@ export async function startGateway({ mode = 'relay', relayProtocolVersion = 1, u
       if (message?.type === 'data' && message.payload?.zcode_type === 'workspace-bridge-open') { void connection.broker.phoneOpen(message.payload); return; }
       if (message?.type === 'data' && ['rpc-frame', 'rpc-frame-ack'].includes(message.payload?.zcode_type)) { connection.broker.phoneFrame(message.payload); return; }
       if (relayProtocolVersion === 2 && message?.type === 'data' && message.payload?.zcode_type === 'bootstrap-request') {
-        desktop.send(JSON.stringify({ ...message, payload: withTerminalOwner(message.payload) })); return;
+        desktop.send(JSON.stringify({ ...message, payload: withTerminalOwner(message.payload, true) })); return;
       }
       desktop.send(data, { binary: isBinary });
     });

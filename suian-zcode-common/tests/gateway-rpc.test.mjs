@@ -45,6 +45,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
   else desktop.send(JSON.stringify({ type: 'auth_init', role: 'device', device_sid: 'd_fixture-existing' }));
   await ack;
   const requests = [], bridgeOpens = [], desktopMessages = [], phoneMessages = [];
+  const terminals = new Set(), disposedTerminals = [];
   phone?.on('message', data => phoneMessages.push(JSON.parse(data)));
   let identity, assembler, physical = 1, message = 1, helloIssued = false, boundClientId;
   let desktopPaired = pairStatus === 'matched', retiredBridge, terminalClientSessionId;
@@ -73,6 +74,9 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
       // 3.17.1 的 bootstrap 会更新终端归属；缺失或更换身份时销毁当前桥。
       if (options.terminalOwnerHost && terminalClientSessionId !== p.terminalClientSessionId) {
         terminalClientSessionId = p.terminalClientSessionId;
+        // 3.17.1 的 terminal owner scope 独立于桥／peer，只有 owner 结束才释放已创建终端。
+        for (const id of terminals) disposedTerminals.push({ id });
+        terminals.clear();
         if (identity) {
           desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'bridge-degraded', ...identity, reason: 'terminal-owner-ended' } }));
           identity = undefined; assembler = undefined;
@@ -103,6 +107,11 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
         desktop.send(JSON.stringify({ type: 'data', payload: { zcode_type: 'rpc-frame-ack', ...identity, ackMessageSeq: result.messageSeq } }));
         const [header, body] = unpack(result.bytes);
         requests.push([header, body]);
+        if (options.terminalOwnerHost && header[0] === 100 && header[2] === 'terminal' && header[3] === 'create') {
+          const id = 'terminal-fixture';
+          terminals.add(id);
+          respond([201, header[1]], { id, shell: 'fixture', fontFamily: 'monospace', fontFamilySource: 'default' });
+        }
         if (header[0] === 100 && header[2] === 'project' && header[3] === 'prepareSession' && options.projectDirectories) {
           const directories = options.projectDirectories[body[0].projectId];
           if (directories) respond([201, header[1]], directories);
@@ -133,7 +142,7 @@ async function fixture(t, pairStatus = 'matched', options = {}) {
       }
     }
   });
-  return { gateway, desktop, phone, relay, requests, bridgeOpens, respond, faults, diagnostics, desktopMessages, phoneMessages };
+  return { gateway, desktop, phone, relay, requests, bridgeOpens, respond, faults, diagnostics, desktopMessages, phoneMessages, disposedTerminals };
 }
 
 test('V2 自动继承手机终端身份，本地命名调用与手机刷新不结束共享桥', { timeout: 3000 }, async t => {
@@ -247,6 +256,39 @@ test('V2 手机重连期间保留在途命名 RPC，模型与改名均只提交�
       assert.deepEqual(phoneReply, [[201, 0], 'phone-ok']);
       assert.equal(f.bridgeOpens.length, 1, '重连只替换手机虚拟桥，原物理桥继续处理命名');
       assert.deepEqual(f.faults, []);
+    });
+  }
+});
+
+test('V2 无本地使用者的手机页面换代释放旧终端资源', async t => {
+  for (const localDuringReconnect of [false, true]) {
+    await t.test(`本地客户端曾保桥=${localDuringReconnect}`, { timeout: 3000 }, async t => {
+      const f = await fixture(t, 'matched', { terminalOwnerHost: true, gateway: { relayProtocolVersion: 2 } });
+      const send = payload => f.phone.send(JSON.stringify({ type: 'data', payload }));
+      send({ zcode_type: 'bootstrap-request', requestId: 'terminal-page-a', terminalClientSessionId: 'page-a' });
+      await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'terminal-page-a'));
+      const identity = { bridgeSessionId: 'terminal-page-bridge', bridgeGeneration: 1 };
+      send({ zcode_type: 'workspace-bridge-open', requestId: 'terminal-open', ...identity, workspaceKey: workspace, terminalClientSessionId: 'page-a' });
+      await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'terminal-open'));
+      for (const frame of encode(pack([100, 0, 'terminal', 'create'], []), { ...identity, firstPhysicalSeq: 1, messageSeq: 1 })) send(frame);
+      await until(() => f.requests.some(([header]) => header[2] === 'terminal' && header[3] === 'create'));
+      assert.deepEqual(f.disposedTerminals, []);
+      if (localDuringReconnect) {
+        const local = new WebSocket(f.gateway.url.replace('/ws', '/rpc'), { headers: { Authorization: 'Bearer fixture-rpc-token' } });
+        t.after(() => local.terminate());
+        await once(local, 'open');
+        send({ zcode_type: 'bootstrap-request', requestId: 'terminal-page-b', terminalClientSessionId: 'page-b' });
+        await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'terminal-page-b'));
+        assert.deepEqual(f.disposedTerminals, [], '本地仍使用共享桥时，手机重连不得结束归属');
+        assert.deepEqual(f.faults, []);
+        const closed = once(local, 'close'); local.close(); await closed;
+        const health = await (await fetch(f.gateway.url.replace('ws:', 'http:').replace('/ws', '/health'))).json();
+        assert.equal(health.local_clients, 0);
+      }
+      send({ zcode_type: 'bootstrap-request', requestId: 'terminal-page-c', terminalClientSessionId: 'page-c' });
+      await until(() => f.phoneMessages.some(m => m.payload?.requestId === 'terminal-page-c'));
+      assert.deepEqual(f.disposedTerminals, [{ id: 'terminal-fixture' }], '无人保桥时应恢复 Desktop 的旧页面资源释放');
+      assert.equal(f.desktopMessages.find(m => m.payload?.requestId === 'terminal-page-c').payload.terminalClientSessionId, 'page-c');
     });
   }
 });
