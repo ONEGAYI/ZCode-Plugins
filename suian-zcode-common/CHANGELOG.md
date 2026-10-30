@@ -1,5 +1,18 @@
 # 更新日志
 
+## [0.9.1] - 2026-10-30
+
+修复手机远控重连时可能中断会话自动命名的问题。
+
+### Bug 修复
+
+**手机重连与本地调用共存（#176、#182）**
+
+- 本地客户端使用共享桥期间，手机页面重新认证时保留 Desktop 侧终端归属，避免中断在途标题生成与改名调用。
+- 无本地客户端时，手机页面换代仍由 Desktop 释放旧页面的终端资源；不自动重放可能已执行的业务调用。
+
+> **验证范围**：网关回归覆盖模拟手机重连与终端资源释放；最终版本的真实手机重连尚未复测。
+
 ## [0.9.0] - 2026-10-30
 
 共享通知新增免打扰，并修复手机远控与本地插件共用网关时的终端身份问题。
@@ -128,6 +141,7 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.9.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.1...plugins-2026.10.30.2
 [0.9.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.10.30.1
 [0.8.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.25...plugins-2026.10.30
 [0.8.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.3...plugins-2026.10.25
