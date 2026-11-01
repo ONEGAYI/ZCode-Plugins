@@ -98,7 +98,7 @@ MCP 开始执行后，工具等待 Host 接受提交的 ACK 即返回并释放�
 
 ## 定时任务工具面唤醒
 
-`reset_cron_tools_visibility` 是 `send_message` 面向定时任务场景的语法糖。定时任务触发的派发轮里，官方为防任务递归修改自身调度，把 CronCreate / CronUpdate / CronDelete 从该轮模型工具面整体剥离——上下文中仍列出这些工具，实际调不动，调用意图会坍缩到最相似的可用工具（实测表现为连发 CronList）。轮结束后，下一轮（人工轮）恢复完整工具面。
+`reset_cron_tools_visibility` 是 `send_message` 面向定时任务场景的语法糖。定时任务触发的派发轮里，官方为防任务递归修改自身调度，把 CronCreate / CronUpdate / CronDelete 从该轮模型工具面整体剥离——上下文中仍列出这些工具，实际调不动，调用意图会坍缩到最相似的可用工具（实测表现为连发 CronList）。轮结束后，下一轮（人工轮）恢复完整工具面。官方自 v3.17.1 起在自动轮新增 CronPauseSelf 且不在剥离名单内：免审批、无参数，仅能暂停触发本轮的任务自身且不能恢复——任务到达停止条件只需自暂停时优先用它，无需本唤醒路径。
 
 ```json
 {"name":"reset_cron_tools_visibility","arguments":{}}
@@ -195,7 +195,7 @@ compact 尚在排队时，guide 仍可能先被当前轮消费；未消费而改
 
 语义与桌面管理页的启停一致：`enabled:false` 将 lifecycle 置为 paused，调度器不再认领派发；`true` 恢复 active，按原计划继续；任务 id、历史与会话绑定不变。操作可逆，不设 reset_glm_quota 级授权语义。
 
-写路径经公共网关调用 `zcode-agent` 通道的 `setAutomationEnabled`（Host 侧带工作区归属校验后透传 automationService.setEnabled）。官方会话内工具面没有启停能力——CronUpdate 明确禁改 enabled，且自动化派发轮内官方 Cron 写工具整体剥离——本工具经 MCP 注入不受该剥离影响，派发轮内可用。
+写路径经公共网关调用 `zcode-agent` 通道的 `setAutomationEnabled`（Host 侧带工作区归属校验后透传 automationService.setEnabled）。官方会话内工具面没有通用启停能力——CronUpdate 明确禁改 enabled，自动轮专属的 CronPauseSelf 仅能免审批暂停触发本轮的任务自身且不能恢复，恢复仍无官方会话内入口——本工具经 MCP 注入不受该剥离影响，任意任务的暂停与恢复在派发轮内亦可用。
 
 成功返回 `source:original_host`、`automation_id`、`workspace_path`、`enabled`。官方 setEnabled 无返回值且 UPDATE 零行不报错（`automation_id` 不存在或 `workspace_key` 不匹配都静默成功），插件不回显请求值：写后用同 scope 的 `listAutomations` 读回确认实际状态——读回未找到目标按 `automation_not_found_or_wrong_scope` 报错，读回 `enabled` 与请求不符按 `automation_update_unconfirmed` 报错，均不自动重试；已处于目标状态视为幂等确认，回执中的 `enabled` 为读回事实。目标工作区不在网关连接的 Desktop、网关不可达或 Host 拒绝时同样返回 `isError:true` 结构化错误，不抛裸异常、不猜成功。
 

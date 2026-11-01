@@ -18,7 +18,7 @@ description: 通过 ZCode 会话 MCP 列出、暂停或恢复定时任务，并�
 | set_cron_paused_and_resumed | enabled:false 暂停调度（任务保留不删）、true 恢复；写后读回确认实际状态，任务不存在、不属于该工作区或未生效时明确报错，不报告虚假成功；目标工作区须已在网关连接的 Desktop 打开 |
 | reset_cron_tools_visibility | 定时任务派发轮内发现自己调不动官方 Cron 写工具时调用；目标固定当前会话，投递固定 queue，收到回执后立即结束本轮，下一轮官方 Cron 工具恢复 |
 
-自动化轮边界：官方为防任务递归修改自身调度，把 CronCreate/CronUpdate/CronDelete 从定时任务派发轮的工具面剥离——上下文中仍列出这些工具，实际调不动。恢复的关键动作是结束当前轮、让下一轮以人工轮运行，不在本轮内反复重试；reset_cron_tools_visibility 是该路径的语法糖，直接用 send_message 给自己投递 queue 消息并结束本轮等效。
+自动化轮边界：官方为防任务递归修改自身调度，把 CronCreate/CronUpdate/CronDelete 从定时任务派发轮的工具面剥离——上下文中仍列出这些工具，实际调不动；官方自 v3.17.1 起增加例外 CronPauseSelf：自动轮内免审批、无参数，仅能暂停触发本次运行的任务自身且不能恢复，任务到达停止条件只需自暂停时优先用它，无需唤醒变人工轮。恢复的关键动作是结束当前轮、让下一轮以人工轮运行，不在本轮内反复重试；reset_cron_tools_visibility 是该路径的语法糖，直接用 send_message 给自己投递 queue 消息并结束本轮等效。
 
 启停与唤醒按用户对具体动作的授权执行。list_crons 不连网关，读取本机持久化状态，运行中任务的实时进度不在其中。
 
