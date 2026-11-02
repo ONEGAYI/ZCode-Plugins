@@ -1,5 +1,19 @@
 # 更新日志
 
+## [0.9.2] - 2026-11-02
+
+新增 Windows 3.17.2.9661 运行包的 local-only 适配档案，安装与诊断按原版摘要自动路由新版本。
+
+### 新增
+
+**Windows 3.17.2.9661 适配档案（#187）**
+
+- 新增原版运行包档案 `windows-3.17.2.9661-b11a6bc5`（独立修订号 1）：status / prepare / apply / restore 按本机 exe 版本与原版 asar 摘要自动识别并选择该档案，现场生成补丁候选。
+- 上游源码尚未公开同步 3.17.2，锚点语义基于 v3.17.1 源码与 3.17.2 编译产物逐锚点核对：relay WS 覆盖等六处变量映射更新，manager、窗口函数与 P5/P6 锚点原样；开关载体与注入行为语义不变。
+- 旧档案（3.16.2 / 3.16.3 / 3.17.1）字节不变，历史状态识别、同包升级与还原不受影响。
+
+> **验证范围**：local-only 71 项、setup / release-build 65 项测试通过；真实包两次 prepare 候选字节一致，副本 apply → restore 恢复摘要与原包逐字节一致。新版无登录冷启动、官方远控不可达、网关重启恢复与 MCP 闭环等原生运行验收未执行，该档案状态为适配候选。
+
 ## [0.9.1] - 2026-10-30
 
 修复手机远控重连时可能中断会话自动命名的问题。
@@ -141,6 +155,7 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.9.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.2...plugins-2026.11.02.1
 [0.9.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.1...plugins-2026.10.30.2
 [0.9.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.10.30.1
 [0.8.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.25...plugins-2026.10.30

@@ -2,6 +2,17 @@
 
 本文件记录 suian-zcode-app-mcp 的用户可感知变化，版本独立于 common 和自动命名插件。
 
+## [0.11.4] - 2026-11-02
+
+定时任务启停工具描述与文档跟进官方 v3.17.1 的自动轮自暂停边界，行为不变。
+
+### 其他改进
+
+**启停边界描述更正**
+
+- `set_cron_paused_and_resumed` 工具描述更正：官方会话内工具没有通用启停入口——`CronUpdate` 不含启停；官方自 v3.17.1 起提供的 `CronPauseSelf` 仅自动轮可用，只能暂停触发本轮的任务自身且不能恢复。暂停与恢复任意任务仍以本工具为入口。
+- 自动化技能文档同步更正同一边界表述，调用方式与返回结构不变。
+
 ## [0.11.3] - 2026-10-30
 
 定时任务启停工具更名，参数与行为保持不变，调用方仅需换名。
@@ -348,6 +359,7 @@
 较早版本链接保留对应源码提交；采用 Release 分发后的新版本链接指向实际发布标签。
 
 <!-- 变更链接 -->
+[0.11.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.11.02.1
 [0.11.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.3...plugins-2026.10.30
 [0.11.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.2...plugins-2026.10.23.3
 [0.11.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.1...plugins-2026.10.23.2
