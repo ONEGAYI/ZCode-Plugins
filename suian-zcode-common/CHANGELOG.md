@@ -1,5 +1,17 @@
 # 更新日志
 
+## [0.10.0] - 2026-11-04
+
+共享通知支持定位自动命名插件恢复的提示词文档。
+
+### 新增
+
+**提示词恢复通知（#192、#193）**
+
+- 通知按钮在资源管理器中定位恢复后的提示词，方便查看同目录的备份。
+- 恢复通知绕过普通故障冷却，仍遵守通知互斥和用户的免打扰设置。
+- 自动命名插件在恢复前核对已登记的通知路径。通知资产未就绪时保留原稿，并提示运行 setup。
+
 ## [0.9.2] - 2026-11-02
 
 新增 Windows 3.17.2.9661 运行包的 local-only 适配档案，安装与诊断按原版摘要自动路由新版本。
@@ -155,6 +167,7 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.10.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.02.1...plugins-2026.11.04
 [0.9.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.2...plugins-2026.11.02.1
 [0.9.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.1...plugins-2026.10.30.2
 [0.9.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.10.30.1
