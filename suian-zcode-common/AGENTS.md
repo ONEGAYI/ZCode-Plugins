@@ -53,6 +53,7 @@ local-only 按随包档案自动路由，历史记录兼容与新增档案流程
 | title-policy.mjs | 当前用户跨插件的会话锁定策略：MCP 写入，命名插件读取 |
 | project-context.mjs | 只读任务索引的会话项目／执行目录；冻结附加目录优先、旧版单目录兼容，拒绝远端、错 Host、相对目录和歧义归属，不写宿主库 |
 | notifications.mjs / cooldown.mjs | Toast 显示、XML、两小时冷却、跨进程显示互斥 |
+| prompt-recovery.mjs | 只读核对提示词恢复通知身份、缓存外执行器与实际协议目标；不修改注册或安装资产 |
 | client.mjs / client-install.mjs | 公共客户端运行期与安装期入口（PKG-01）：再导出三消费者实际使用的公共 API，第一代 commonApiVersion 为 1；导入无副作用，安装期函数独立入口避免运行期携带安装器 |
 | locate.mjs | 薄定位器（单一源码，构建时分发到业务包）：按完整插件身份从安装记录定位 common，锚点优先级与失败分类见 docs/client-contract.md；进程内首次加载固定 common 根 |
 | build-release.mjs | 发布目录构建（PKG-01）：客户端双入口及诊断/迁移/旧链接清理管理入口分别自包含打包（ws 与 vendor 内联）、许可组装、release.json 与 buildId、发布目录外的构建输入记录；npm run build:release -- --out <dir> |

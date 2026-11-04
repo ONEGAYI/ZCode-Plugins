@@ -55,6 +55,7 @@ local-only 供无法访问官方远控服务的机器连接当前窗口，不提
 | title-policy.mjs | MCP 写入、命名插件读取的独立锁定策略；默认在 `~/.zcode/tools/suian-zcode-common/session-titles` |
 | project-context.mjs | `readProjectContext({indexDbPath,sessionId,workspacePath,workspaceKey})`：只读会话的项目、执行及附加目录，冻结会话范围优先；侧栏编辑器与 MCP 共用，不改变网关或执行目录 |
 | notifications.mjs | `notifyOnce({dataDir,title,message,reasonCode,appId,actionUri})`；保留两小时冷却、跨进程互斥及显示失败结果 |
+| prompt-recovery.mjs | `checkPromptRecoveryToast()`：只读核对恢复通知的身份、执行器与协议目标 |
 | notification-action.mjs | `copyPromptAndOpenWorkspace({prompt,dataDir})`：复制调用方提示词后打开用户默认工作区；仅用户点击后执行 |
 | notification-install.mjs | `installToastAssets()` / `removeToastAssets()`：接收调用方的 protocol、appId、shortcutName、description、templateFile、homeDir、dataDir；vbs 转发缓存外稳定启动器，卸载只清理本身份 |
 | toast-runtime.mjs | 共享 Toast 稳定运行时：执行器部署到 `~/.zcode/tools/suian-zcode-common/toast`（暂存校验后切换活动记录）、调用方身份外置登记、`checkToastRuntime()` 安装检查 |

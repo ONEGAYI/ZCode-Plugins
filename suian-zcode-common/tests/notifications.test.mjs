@@ -5,8 +5,35 @@ import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {shouldNotify,markShown,acquireDisplayLock,TOAST_COOLDOWN_SECONDS} from "../cooldown.mjs";
 import {buildToastXml,notifyOnce} from "../notifications.mjs";
+import * as notifications from "../notifications.mjs";
+import {STALE_LOCK_MS} from "../cooldown.mjs";
 
 const freshDir=()=>{const root=mkdtempSync(join(tmpdir(),"z-title-toast-"));return root;};
+test("恢复通知等待窗口覆盖死进程锁的过期时间与轮询余量",()=>{
+  assert.ok(notifications.RECOVERY_LOCK_WAIT_MS>=STALE_LOCK_MS+100);
+});
+test("恢复通知不被旧故障冷却压制，保留独立免打扰按钮",async()=>{
+  const dataDir=freshDir(),now=()=>Date.parse("2026-10-06T12:00:00Z");
+  try {
+    await markShown({dataDir,now,reasonCode:"gateway_timeout"});
+    let xml;
+    const result=await notifyOnce({dataDir,now,title:"恢复",message:"备份",reasonCode:"prompt_restored",actionUri:"suian-zcode-title://prompt",actionLabel:"定位文件",bypassCooldown:true,display:async value=>{xml=value.xml;return{ok:true};}});
+    assert.equal(result.shown,true);
+    assert.match(xml,/suian-zcode-title:\/\/prompt/);assert.match(xml,/suian-zcode-title:\/\/mute/);
+  } finally {rmSync(dataDir,{recursive:true});}
+});
+test("恢复通知等待展示锁并在锁内复查静音",async()=>{
+  const dataDir=freshDir(),now=()=>Date.parse("2026-10-06T12:00:00Z");
+  try {
+    const lock=await acquireDisplayLock({dataDir,now});let shown=0;
+    const pending=notifyOnce({dataDir,now,title:"恢复",message:"备份",reasonCode:"prompt_restored",actionUri:"suian-zcode-title://prompt",bypassCooldown:true,display:async()=>{shown++;return{ok:true};}});
+    await new Promise(resolve=>setTimeout(resolve,30));
+    assert.equal(shown,0);
+    writeFileSync(join(dataDir,"toast-mute.json"),JSON.stringify({until:new Date(now()+10000).toISOString()}));
+    await lock.release();
+    assert.equal((await pending).reason,"muted");assert.equal(shown,0);
+  } finally {rmSync(dataDir,{recursive:true});}
+});
 test("免打扰期限内不显示，期限届满后恢复",async()=>{
   const dataDir=freshDir(),t0=Date.parse("2026-10-06T12:00:00Z");
   try {

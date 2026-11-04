@@ -8,6 +8,20 @@ import {spawnSync} from "node:child_process";
 import {fileURLToPath,pathToFileURL} from "node:url";
 
 const pluginRoot="D:\\plugin";
+test("原生 Hook 的事件与配置 JSON 错误分别记录固定诊断且不泄漏原文",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-hook-json-")),config=join(root,"config.json"),hookPath=fileURLToPath(new URL("../hook.mjs",import.meta.url));
+  const env={...process.env,OIL_ZCODE_TITLE_DATA:undefined,ZCODE_PLUGIN_DATA:root};
+  try {
+    writeFileSync(config,'{"enabled":true}');
+    let run=spawnSync(process.execPath,[hookPath,"--config",config],{encoding:"utf8",input:'{"secret":"private-event-sentinel"',windowsHide:true,env});
+    assert.equal(run.status,0);assert.match(run.stdout,/事件 JSON 格式无效/);assert.ok(!run.stdout.includes('private-event-sentinel'));
+    writeFileSync(config,'{"secret":"private-config-sentinel"');
+    run=spawnSync(process.execPath,[hookPath,"--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_x",cwd:"D:\\w"}),windowsHide:true,env});
+    assert.equal(run.status,0);assert.match(run.stdout,/配置 JSON 格式无效/);assert.ok(!run.stdout.includes('private-config-sentinel'));
+    const entries=readFileSync(join(root,"state","hook.log.jsonl"),"utf8").trim().split("\n").map(JSON.parse);
+    assert.deepEqual(entries.map(e=>e.error),["事件 JSON 格式无效","配置 JSON 格式无效"]);
+  } finally {rmSync(root,{recursive:true});}
+});
 test("stop_hook_active 或无效负载直接跳过，不启动任何进程",async()=>{
   const calls=[];
   const spawnWorker=async()=>{calls.push(1);};

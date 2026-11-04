@@ -40,7 +40,16 @@ export async function readHistory({dbPath,sessionId,workspacePath,sqliteBin="sql
   }))};
 }
 
-export function recentSnapshot({session,messages},workspacePath) {
+export function snapshotLimits(config={}) {
+  const total=Object.hasOwn(config,"assistantMaxChars")?config.assistantMaxChars:2000,percent=Object.hasOwn(config,"assistantHeadPercent")?config.assistantHeadPercent:40;
+  if(!Number.isSafeInteger(total)||total<2)return {total:2000,percent:40,reason:"assistantMaxChars 必须是至少为 2 的安全整数"};
+  if(!Number.isInteger(percent)||percent<=0||percent>=100)return {total:2000,percent:40,reason:"assistantHeadPercent 必须是 1–99 的整数"};
+  const head=Math.floor(total*percent/100);
+  if(head<1||head>=total)return {total:2000,percent:40,reason:"字符预算和头部比例须保证首尾各有字符"};
+  return {total,percent};
+}
+
+export function recentSnapshot({session,messages},workspacePath,config={}) {
   if(!projectionPolicy)throw new Error("投影策略未就绪：recentSnapshot 需在 readHistory 或 ensureProjectionPolicy 之后调用");
   let active=messages;
   const revert=session.revert;
@@ -58,23 +67,31 @@ export function recentSnapshot({session,messages},workspacePath) {
       active=createdIndex>=0?[...kept,...messages.slice(createdIndex)]:kept;
     }
   }
-  const users=[],byUser=new Map();
+  const users=[],byUser=new Map(),notificationParents=new Map();
   for(const message of active) {
     const policy=projectionPolicy(message);
     const text=message.parts.filter(p=>p.type==="text"&&!p.ignored&&!p.synthetic).map(p=>p.text).join("").trim();
     if(message.info.role==="user"&&policy==="realUserInput") {
       const turn={id:message.info.id,user:text,assistant:[]};users.push(turn);byUser.set(turn.id,turn);
+    } else if(message.info.role==="user"&&policy==="providerContextOnly"&&(
+      [message.info.source,message.info.metadata?.source,message.info.semantics?.source,...message.parts.map(p=>p.metadata?.source)].includes("task_notification")||
+      message.parts.filter(p=>p.type==="text"&&!p.ignored).map(p=>p.text??"").join("").trimStart().startsWith("<task-notification>")
+    )) {
+      const prior=[...users].reverse().find(turn=>turn.user);
+      if(prior)notificationParents.set(message.info.id,prior);
     } else if(message.info.role==="assistant"&&policy==="visibleAssistant"&&text) {
       const parent=message.info.parentID;
       if(parent===revert?.createdMessageID&&text.endsWith("Rewound conversation to before message "+revert.targetMessageID+"."))continue;
-      const turn=byUser.get(parent);
+      const turn=byUser.get(parent)??notificationParents.get(parent);
       if(turn)turn.assistant.push(text);
     }
   }
   const effective=users.filter(t=>t.user),selected=effective.slice(-3);
+  const {total,percent}=snapshotLimits(config),head=Math.floor(total*percent/100);
+  const truncate=text=>{const chars=Array.from(text);return chars.length<=total?text:chars.slice(0,head).join("")+"\n…\n"+chars.slice(-(total-head)).join("");};
   const recent=selected.map(t=>({id:t.id,messages:[
     {role:"user",text:t.user.slice(0,1200)},
-    ...t.assistant.length?[{role:"assistant",text:t.assistant.join("\n").slice(0,1500)}]:[]
+    ...t.assistant.length?[{role:"assistant",text:truncate(t.assistant.join("\n"))}]:[]
   ]}));
   const signature={policy:1,activeIds:active.map(m=>m.info.id),originalGoal:effective[0]?.user??"",recent:selected};
   return {

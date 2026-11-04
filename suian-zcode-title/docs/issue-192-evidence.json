@@ -1,0 +1,30 @@
+{
+  "scope": "Issue #192 定向契约验证，真实宿主验收与完整门禁另行执行",
+  "redGreen": [
+    {"case": "后台任务通知后的可见回复与首尾截取", "red": "助手回复未归并", "green": "定向断言通过"},
+    {"case": "截取配置整组回退与 Unicode", "red": "null 被当作缺省值", "green": "定向断言通过"},
+    {"case": "模型输出纠错与用量汇总", "red": "无效 JSON 直接抛出", "green": "定向断言通过"},
+    {"case": "纠错耗尽及超时保留用量", "red": "错误未附此前用量", "green": "定向断言通过"},
+    {"case": "外置提示词部署、版本升级、恢复和备份", "red": "未实现部署入口", "green": "定向断言通过"},
+    {"case": "frontmatter 扩展元数据", "red": "合法扩展字段被误判为损坏", "green": "定向断言通过"},
+    {"case": "恢复通知及受控定位动作", "red": "普通故障冷却压制恢复通知且动作不受理", "green": "common 定向断言通过"},
+    {"case": "迟到连接和目录查询", "red": "超时后继续请求且未关闭连接", "green": "定向断言通过"},
+    {"case": "恢复通知能力及资产", "red": "旧版本与错误注册目标未阻止恢复", "green": "定向断言通过"},
+    {"case": "单份滚动备份", "red": "多次覆盖产生多份备份", "green": "定向断言通过"},
+    {"case": "恢复通知互斥及静音", "red": "绕过冷却时直接跳过展示锁", "green": "定向断言通过"},
+    {"case": "原生 Hook JSON 错误", "red": "事件静默忽略、配置解析异常逃逸", "green": "定向断言通过"},
+    {"case": "邮箱安全边界", "red": "真实邮箱未被拦截", "green": "定向断言通过"},
+    {"case": "恢复前复读和备份事务", "red": "预检期间用户修改被覆盖，活动稿换入前即替换旧备份", "green": "变化时拒绝覆盖，换入及备份提交失败的状态均通过定向断言"},
+    {"case": "二轮审查边界", "red": "版本注释无空格误判、恢复等待锁不足、失败未写日志及原始网关拒绝值泄漏", "green": "各项定向断言通过"}
+  ],
+  "targeted": [
+    {"scope": "title 历史、命名、backend、提示词部署、CLI", "result": "61 项通过", "log": ".scratch/issue-192-title-targeted-v2.log"},
+    {"scope": "title 命名、提示词部署、CLI 后续复核", "result": "47 项通过", "log": ".scratch/issue-192-title-focused-final.log"},
+    {"scope": "common 通知、执行器、启动器、安装", "result": "首轮两项旧白名单断言失败；其余通过；更新断言后两项定向复测通过", "log": ".scratch/issue-192-common-targeted.log"},
+    {"scope": "MCP start_session 工具说明", "result": "定向断言通过"},
+    {"scope": "审查修复后 title 后端、命名、提示词、CLI 与 Hook", "result": "65 项通过", "log": ".scratch/issue-192-review-title.log"},
+    {"scope": "审查修复后 common 通知、执行器、启动器和安装", "result": "43 项通过", "log": ".scratch/issue-192-review-common.log"},
+    {"scope": "二轮修复后 title 提示词、命名、通知与 CLI", "result": "55 项通过", "log": ".scratch/issue-192-review2-title.log"},
+    {"scope": "二轮修复后 common 通知", "result": "12 项通过", "log": ".scratch/issue-192-review2-notifications.log"}
+  ]
+}

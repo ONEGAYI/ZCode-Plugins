@@ -15,6 +15,51 @@ function fixture() {
   };
   return box;
 }
+test("模型输出错误最多纠正两次并汇总用量，允许本地自定义标题样式",async()=>{
+  const box=fixture(),contexts=[];
+  box.backend.generate=async (context,selection,options)=>{
+    contexts.push({context,options});
+    return {text:contexts.length===1?"非 JSON":contexts.length===2?JSON.stringify({action:"rename",title:"",reason:"原因"}):JSON.stringify({action:"rename",title:"无分隔符的自定义标题 ✅",reason:"原因"}),finishReason:"stop",usage:{inputTokens:2,outputTokens:1}};
+  };
+  const result=await runNaming({backend:box.backend,selection,timeoutMs:10000});
+  assert.equal(result.title,"无分隔符的自定义标题 ✅");
+  assert.deepEqual(result.usage,{inputTokens:6,outputTokens:3});
+  assert.equal(contexts.length,3);
+  assert.equal(contexts[1].context.title_format_feedback,"模型输出不是有效 JSON");
+  assert.equal(contexts[2].context.title_format_feedback,"命名标题不能为空");
+  assert.ok(contexts.every(x=>x.options.timeoutMs>0&&x.options.timeoutMs<=10000));
+  assert.ok(!JSON.stringify(contexts).includes("非 JSON"));
+});
+test("纠错耗尽返回固定原因和用量，常规样式及组合 emoji 不受限制",async()=>{
+  const box=fixture();let calls=0;
+  box.backend.generate=async()=>{calls++;return{text:JSON.stringify({action:"rename",title:"control_token=秘密",reason:"理由"}),finishReason:"stop",usage:{inputTokens:2,outputTokens:1}};};
+  await assert.rejects(runNaming({backend:box.backend,selection}),error=>error.stage==="model_generation"&&error.reasonCode==="naming_invalid_output"&&error.message==="命名标题包含不允许的链接、凭据或私人路径"&&error.usage.inputTokens===6&&!error.message.includes("秘密"));
+  assert.equal(calls,3);
+  box.backend.generate=async()=>({text:JSON.stringify({action:"rename",title:"👩‍💻 " + "自".repeat(60),reason:"理由"}),finishReason:"stop"});
+  assert.equal((await runNaming({backend:box.backend,selection})).title,"👩‍💻 " + "自".repeat(60));
+});
+test("屏蔽真实邮箱而允许普通 @ 样式",async()=>{
+  const box=fixture();
+  box.backend.generate=async()=>({text:JSON.stringify({action:"rename",title:"联系 user@example.com",reason:"理由"}),finishReason:"stop"});
+  await assert.rejects(runNaming({backend:box.backend,selection}),/私人路径/);
+  box.backend.generate=async()=>({text:JSON.stringify({action:"rename",title:"@工具 状态",reason:"目标 @ 工具"}),finishReason:"stop"});
+  assert.equal((await runNaming({backend:box.backend,selection})).title,"@工具 状态");
+});
+test("生成超时预算贯穿多次纠错，网关失败不重试",async()=>{
+  const box=fixture();let calls=0;
+  box.backend.generate=async()=>{calls++;if(calls===1)return{text:"错误",finishReason:"stop",usage:{inputTokens:7}};return new Promise(()=>{});};
+  await assert.rejects(runNaming({backend:box.backend,selection,timeoutMs:30}),error=>error.stage==="model_generation"&&error.reasonCode==="naming_model_timeout"&&error.usage?.inputTokens===7);
+  assert.equal(calls,2);
+  calls=0;box.backend.generate=async()=>{calls++;throw Object.assign(new Error("不可用"),{stage:"gateway",reasonCode:"gateway_timeout"});};
+  await assert.rejects(runNaming({backend:box.backend,selection}),{stage:"gateway",reasonCode:"gateway_timeout"});assert.equal(calls,1);
+});
+test("纠错时网关拒绝原始值不会泄漏，也保留已累计用量",async()=>{
+  for(const rejected of ["private-gateway-sentinel",null]) {
+    const box=fixture();let calls=0;
+    box.backend.generate=async()=>{if(++calls===1)return{text:"无效",finishReason:"stop",usage:{inputTokens:7}};throw rejected;};
+    await assert.rejects(runNaming({backend:box.backend,selection}),error=>error.stage==='gateway'&&error.reasonCode==='gateway_rpc_failed'&&error.usage?.inputTokens===7&&!error.message.includes('private-gateway-sentinel'));
+  }
+});
 test("独立生成标题，写原 Host 并读回；重复 Stop 不重复调用模型",async()=>{
   const box=fixture();
   const result=await runNaming({backend:box.backend,selection,state:box.state,apply:true,eventUserId:"u3"});
@@ -206,31 +251,31 @@ test("锁定前二次查证否定时维持手动改名锁定（#125）",async()=
   assert.equal(box.generations,0);
 });
 
-test('MCP 显式不锁名称时非规范 keep 要纠正一次，并记录模型理由', async () => {
+test('MCP 显式不锁名称时允许 keep，保留相同内容和标题去重', async () => {
   const box = fixture();
   box.snapshot.titlePolicy = { version: 1, locked: false };
   box.backend.generate = async context => {
     box.generations++;
-    assert.equal(context.title_format_required, true);
-    return { text: JSON.stringify(box.generations === 1 ? { action: 'keep', title: '原名', reason: '信息不足' } : candidate), finishReason: 'stop' };
+    assert.equal(context.title_format_required, undefined);
+    return { text: JSON.stringify({ action: 'keep', title: '原名', reason: '信息不足' }), finishReason: 'stop' };
   };
   const result = await runNaming({ backend: box.backend, selection, apply: true,
-    state: { lastFingerprint: 'content-v1', lastTitle: '原名', locked: true } });
-  assert.equal(result.status, 'renamed');
-  assert.equal(result.reason, candidate.reason);
-  assert.equal(box.generations, 2);
+    state: { locked: true } });
+  assert.equal(result.status, 'kept');
+  assert.equal(result.reason, '信息不足');
+  assert.equal(box.generations, 1);
   assert.equal(box.state.locked, undefined);
+  assert.equal((await runNaming({backend:box.backend,selection,apply:true,state:box.state})).status,'unchanged');
 });
 
-test('MCP 锁定策略阻止生成；持续返回不合规 keep 时失败而不记录成功基线', async () => {
+test('MCP 锁定策略阻止生成；解锁后由模型决定是否保留', async () => {
   const box = fixture(); box.snapshot.titlePolicy = { version: 1, locked: true };
   assert.equal((await runNaming({ backend: box.backend, selection, apply: true })).status, 'locked');
   assert.equal(box.generations, 0);
   box.snapshot.titlePolicy.locked = false;
   box.backend.generate = async () => { box.generations++; return { text: JSON.stringify({ action: 'keep', title: '原名', reason: 'keep' }), finishReason: 'stop' }; };
-  await assert.rejects(runNaming({ backend: box.backend, selection, apply: true }), /格式/);
-  assert.equal(box.generations, 2);
-  assert.deepEqual(box.state, {});
+  assert.equal((await runNaming({ backend: box.backend, selection, apply: true })).status,'kept');
+  assert.equal(box.generations, 1);
 });
 
 test('模型理由包含链接或凭据片段时拒绝，不将理由写入结果和状态', async () => {

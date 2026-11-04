@@ -9,6 +9,25 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
 const cli=fileURLToPath(new URL("../cli.mjs",import.meta.url));
+test("非命名命令不读取损坏提示词，run 在锁内恢复并保留备份",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-prompt-cli-")),state=join(root,"state"),config=join(root,"config.json"),db=join(root,"session.sqlite"),index=join(root,"index.sqlite");
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3",env={...process.env,OIL_ZCODE_TITLE_DISABLE_TOAST:"1"},input=JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"});
+  try {
+    mkdirSync(state);writeFileSync(join(state,"naming-prompt.md"),"损坏原文");
+    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');"]);
+    execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','原名',0,0,'completed');"]);
+    writeFileSync(config,JSON.stringify({dataDir:state,sessionDb:db,indexDb:index,sqliteBin,assistantMaxChars:null}));
+    const status=spawnSync(process.execPath,[cli,"status","--config",config],{encoding:"utf8",input,windowsHide:true,env});
+    assert.equal(status.status,0,status.stderr);assert.equal(readFileSync(join(state,"naming-prompt.md"),"utf8"),"损坏原文");
+    const run=spawnSync(process.execPath,[cli,"run","--config",config],{encoding:"utf8",input,windowsHide:true,env});
+    assert.equal(run.status,0,run.stderr);assert.equal(JSON.parse(run.stdout).status,"empty");
+    const log=readFileSync(join(state,"runner.log.jsonl"),"utf8").trim().split("\n").map(JSON.parse);
+    const restored=log.find(x=>x.event==="naming_prompt_restored");assert.equal(readFileSync(restored.backupPath,"utf8"),"损坏原文");
+    assert.match(readFileSync(join(state,"naming-prompt.md"),"utf8"),/^---\r?\nversion:/);
+    assert.match(log.find(x=>x.event==="snapshot_config_fallback").reason,/assistantMaxChars/);
+    assert.equal(JSON.parse(readFileSync(config,"utf8")).assistantMaxChars,null);
+  } finally {rmSync(root,{recursive:true});}
+});
 test("probe 网关配置缺失时明确报错，不依赖远控链接",()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-gateway-probe-")),config=join(root,"config.json");
   try {

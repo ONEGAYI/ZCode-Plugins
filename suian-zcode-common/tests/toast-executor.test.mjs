@@ -9,10 +9,11 @@ import childProcess from 'node:child_process';
 import { promisify } from 'node:util';
 import { syncBuiltinESMExports } from 'node:module';
 import { buildReleaseWorld } from './depcheck-fixture.mjs';
-import { deployToastRuntime, readExecutorText, registerToastIdentity, toastRootFor } from '../toast-runtime.mjs';
+import { deployToastRuntime, readExecutorText, registerToastIdentity, toastRootFor, buildForwardVbs } from '../toast-runtime.mjs';
 import { runAction, parseActionUri, TITLE_PLUGIN_ID } from '../toast-executor.mjs';
 import { shouldNotify } from '../cooldown.mjs';
 import { dayStamp } from '../log-rotate.mjs';
+import {checkPromptRecoveryToast} from '../prompt-recovery.mjs';
 
 const pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const executorSource = join(pluginRoot, 'toast-executor.mjs');
@@ -81,6 +82,31 @@ test('免打扰按钮只静音对应插件 24 小时，不复制或打开工作�
   assert.equal((await shouldNotify({ dataDir: world.titleDataDir, now: () => now + 86399999 })).reason, 'muted');
   assert.equal((await shouldNotify({ dataDir: world.titleDataDir, now: () => now + 86400000 })).allowed, true);
   assert.equal((await shouldNotify({ dataDir: world.commonDataDir, now: () => now })).allowed, true);
+});
+
+test('恢复提示词按钮仅定位身份目录内的固定文件', async t => {
+  const world=await buildToastWorld(t),opened=[];
+  await writeFile(join(world.titleDataDir,'naming-prompt.md'),'恢复稿');
+  const result=await runAction({uri:'suian-zcode-title://prompt',homeDir:world.homeDir,revealPrompt:async path=>opened.push(path)});
+  assert.equal(result.ok,true);
+  assert.deepEqual(opened,[join(world.titleDataDir,'naming-prompt.md')]);
+  assert.equal((await runAction({uri:'suian-zcode-common://prompt',homeDir:world.homeDir,revealPrompt:async()=>{throw Error('unexpected');}})).reason,'unknown_action');
+});
+test('资源管理器退出码 1 表示已委托打开，其他错误仍上报',async()=>{
+  const {revealPromptInExplorer}=await import('../toast-executor.mjs');
+  assert.equal(typeof revealPromptInExplorer,'function');
+  await revealPromptInExplorer('D:\\fixture\\naming-prompt.md',{execute:async()=>{throw Object.assign(new Error('delegated'),{code:1});}});
+  await assert.rejects(revealPromptInExplorer('D:\\fixture\\naming-prompt.md',{execute:async()=>{throw Object.assign(new Error('failed'),{code:2});}}),/failed/);
+});
+test('恢复前只读核对已部署身份、受控动作与目标状态目录', async t => {
+  const world=await buildToastWorld(t);
+  await writeFile(join(world.titleDataDir,'toast-launch.vbs'),buildForwardVbs({protocol:'suian-zcode-title',launcherPath:join(world.toastRoot,'launch.vbs')}));
+  const readProtocolCommand=async()=>`wscript.exe "${join(world.titleDataDir,'toast-launch.vbs')}" "%1"`;
+  assert.deepEqual(await checkPromptRecoveryToast({homeDir:world.homeDir,dataDir:world.titleDataDir,readProtocolCommand}),{ready:true});
+  assert.equal((await checkPromptRecoveryToast({homeDir:world.homeDir,dataDir:world.commonDataDir,readProtocolCommand})).ready,false);
+  assert.equal((await checkPromptRecoveryToast({homeDir:world.homeDir,dataDir:world.titleDataDir,readProtocolCommand:async()=>`wscript.exe "other.vbs" "%1"`})).ready,false);
+  await writeFile(join(world.titleDataDir,'toast-launch.vbs'),'旧启动器');
+  assert.equal((await checkPromptRecoveryToast({homeDir:world.homeDir,dataDir:world.titleDataDir,readProtocolCommand})).ready,false);
 });
 
 const inject = () => {
