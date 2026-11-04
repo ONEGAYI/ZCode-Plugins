@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// PROMPT_RECOVERY_TOAST_CAPABILITY=1
 // suian 共享 Toast 执行器（PKG-06 部署快照）：common 在安装/报警时把本文件原样部署到
 // <homeDir>/.zcode/tools/suian-zcode-common/toast/executor.mjs（版本缓存之外）。
 // 单文件自包含、只依赖 Node 内置模块：即便 common 与 title 的插件缓存被整体删除，
@@ -335,19 +336,30 @@ async function setClipboardViaTempFile(text, { dataDir, executePowerShell = runP
 async function openWorkspaceViaShell(uri) {
   await promisify(execFile)('cmd.exe', ['/c', 'start', '', uri], { windowsHide: true });
 }
+export async function revealPromptInExplorer(path,{execute=promisify(execFile)}={}) {
+  try {await execute('explorer.exe',['/select,'+path],{windowsHide:true});}
+  catch(error) {if(error.code!==1)throw error;}
+}
 
 // —— 公开动作入口 ——
 
-export async function runAction({ uri, homeDir, toastRoot, pluginsFile, now = Date.now, setClipboard = setClipboardViaTempFile, openWorkspace = openWorkspaceViaShell }) {
+export async function runAction({ uri, homeDir, toastRoot, pluginsFile, now = Date.now, setClipboard = setClipboardViaTempFile, openWorkspace = openWorkspaceViaShell, revealPrompt = revealPromptInExplorer }) {
   const parsed = parseActionUri(uri);
   if (!parsed) return { ok: false, reason: 'invalid_uri' };
-  if (parsed.action !== 'fix' && parsed.action !== 'mute') return { ok: false, reason: 'unknown_action' };
+  if (parsed.action !== 'fix' && parsed.action !== 'mute' && !(parsed.action === 'prompt' && parsed.protocol === 'suian-zcode-title')) return { ok: false, reason: 'unknown_action' };
   const resolvedHome = homeDir ?? process.env.SUIAN_TOAST_HOME ?? homedir();
   const root = toastRoot ?? toastRootFor(resolvedHome);
   const loaded = await loadIdentity(root, parsed.protocol);
   if (loaded.status === 'absent' || !loaded.identity) return { ok: false, reason: 'identity_missing' };
   const identity = loaded.identity;
   if (identity.protocol !== parsed.protocol) return { ok: false, reason: 'identity_mismatch' };
+
+  if (parsed.action === 'prompt') {
+    const path=join(identity.dataDir,'naming-prompt.md');
+    if (!(await maybeLstat(path))?.isFile()) return {ok:false,reason:'prompt_missing'};
+    await revealPrompt(path);
+    return {ok:true,action:'prompt',identity:parsed.protocol};
+  }
 
   if (parsed.action === 'mute') {
     const until = new Date(now() + 24 * 60 * 60 * 1000).toISOString();

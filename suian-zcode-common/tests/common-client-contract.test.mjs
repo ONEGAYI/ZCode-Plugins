@@ -14,7 +14,7 @@ const nodeBin = process.execPath;
 const RUNTIME_EXPORTS = [
   'COMMON_API_VERSION', 'connectHost', 'probeHost', 'saveAuthorization', 'clearAuthorization',
   'readTitlePolicy', 'writeTitlePolicy', 'readProjectContext', 'MCP_APP_MIME_TYPE',
-  'supportsZcodeMcpApps', 'notifyOnce', 'shouldNotify', 'copyPromptAndOpenWorkspace',
+  'supportsZcodeMcpApps', 'notifyOnce', 'checkPromptRecoveryToast', 'shouldNotify', 'copyPromptAndOpenWorkspace',
   'getConversationMessageProjectionPolicy', 'TopicWireFrameAssembler', 'conversationTopicFrameSchema',
   'v4ConversationRowsRangeResultSchema', 'PROTOCOL_V4_LIMITS', 'measureTopicNotificationEnvelopeBytes',
   'encodeTopicWireFrames',

@@ -2,6 +2,14 @@
 
 本文件记录 suian-zcode-app-mcp 的用户可感知变化，版本独立于 common 和自动命名插件。
 
+## [0.11.5] - 2026-11-04
+
+创建会话工具的标题锁说明与自动命名插件的本地提示词配置同步。
+
+### 其他改进
+
+- `start_session` 的 `lock_title: false` 允许命名模型按本地提示词判断保留或改名。`true` 继续阻止自动命名（#192、#193）。
+
 ## [0.11.4] - 2026-11-02
 
 定时任务启停工具描述与文档跟进官方 v3.17.1 的自动轮自暂停边界，行为不变。
@@ -359,6 +367,7 @@
 较早版本链接保留对应源码提交；采用 Release 分发后的新版本链接指向实际发布标签。
 
 <!-- 变更链接 -->
+[0.11.5]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.02.1...plugins-2026.11.04
 [0.11.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.11.02.1
 [0.11.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.3...plugins-2026.10.30
 [0.11.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.2...plugins-2026.10.23.3

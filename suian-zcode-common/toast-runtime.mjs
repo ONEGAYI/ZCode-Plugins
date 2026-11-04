@@ -35,7 +35,7 @@ export function buildStableLauncherVbs({ nodeExe, executorPath }) {
     'If WScript.Arguments.Count = 0 Then WScript.Quit 1',
     'Dim uri',
     'uri = WScript.Arguments(0)',
-    'If uri <> "suian-zcode-common://fix" And uri <> "suian-zcode-title://fix" Then WScript.Quit 1',
+    'If uri <> "suian-zcode-common://fix" And uri <> "suian-zcode-common://mute" And uri <> "suian-zcode-title://fix" And uri <> "suian-zcode-title://mute" And uri <> "suian-zcode-title://prompt" Then WScript.Quit 1',
     'Set sh = CreateObject("WScript.Shell")',
     `sh.Run """" & "${vbsQuote(nodeExe)}" & """ """ & "${vbsQuote(executorPath)}" & """ """ & uri & """", 0, False`,
   ].join('\r\n') + '\r\n';
@@ -48,7 +48,7 @@ export function buildForwardVbs({ protocol, launcherPath }) {
     'If WScript.Arguments.Count = 0 Then WScript.Quit 1',
     'Dim uri',
     'uri = WScript.Arguments(0)',
-    `If uri <> "${vbsQuote(protocol)}://fix" Then WScript.Quit 1`,
+    `If uri <> "${vbsQuote(protocol)}://fix" And uri <> "${vbsQuote(protocol)}://mute"${protocol==='suian-zcode-title'?' And uri <> "suian-zcode-title://prompt"':''} Then WScript.Quit 1`,
     'Set sh = CreateObject("WScript.Shell")',
     `sh.Run """" & "${vbsQuote(launcherPath)}" & """ """ & uri & """", 0, False`,
   ].join('\r\n') + '\r\n';

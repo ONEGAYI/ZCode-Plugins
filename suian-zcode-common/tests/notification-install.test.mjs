@@ -77,7 +77,7 @@ test('两个调用方共享稳定运行时，身份互不覆盖', async () => {
   await installToastAssets(title);
   await installToastAssets(mcp);
   const mcpVbs = shell.files.get(join(mcp.dataDir, 'toast-launch.vbs'));
-  assert.ok(mcpVbs.includes('If uri <> "example-mcp://fix" Then WScript.Quit 1'), '转发桥只放行本协议 fix');
+  assert.ok(mcpVbs.includes('If uri <> "example-mcp://fix" And uri <> "example-mcp://mute" Then WScript.Quit 1'), '转发桥只放行本协议白名单动作');
   assert.ok(shell.files.has(join(toastRoot, 'identities', 'example-title.json')));
   assert.ok(shell.files.has(join(toastRoot, 'identities', 'example-mcp.json')));
   assert.equal(shell.runs.filter(run => run.args[0] === '--check').length, 1, '共享执行器只部署校验一次');

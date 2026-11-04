@@ -1,26 +1,20 @@
-const emoji=["🎬","🧩","🧪","📋","🔎","📝","📅","🎨","⚙️","💬"];
-function titleFormatError(title) {
-  const count=[...title].length,prefix=emoji.find(e=>title.startsWith(e+" "));
-  if(!prefix||title!==title.trim()||count<4||count>48)return "标题长度或类别格式无效";
-  const body=title.slice(prefix.length+1),pieces=body.split("｜");
-  if(pieces.length!==2||pieces.some(p=>!p||p!==p.trim()))return "标题必须采用对象｜目标格式";
-  if(/[\p{Cc}\p{Cf}\u0060|@]|\p{Extended_Pictographic}/u.test(body)||/[A-Za-z]:[\\/]|\\\\|https?:\/\/|\/Users\/|sk-/i.test(title))return "标题包含不允许的格式或私人信息";
-  return null;
-}
-function candidateFrom(result,currentTitle,requireFormat=false) {
-  if(result.finishReason!=="stop")throw new Error("模型结束原因不是正常完成");
-  if(result.toolCalls?.length)throw new Error("命名模型返回了工具调用");
-  const value=JSON.parse(result.text);
-  if(Object.keys(value).sort().join(",")!=="action,reason,title"||!["keep","rename"].includes(value.action)||typeof value.title!=="string"||typeof value.reason!=="string")throw new Error("命名输出字段无效");
-  if(/https?:\/\/|\b(?:device_)?(?:sid|hash|mid)["']?\s*[=:]|\bsk-|[A-Za-z]:[\\/]|\\\\|\/Users\//i.test(value.reason))throw new Error("命名理由包含不允许的链接、凭据或私人路径");
-  if(value.action==="keep"&&!requireFormat)return{...value,title:currentTitle};
-  const title=value.action==="keep"?currentTitle:value.title;
-  const invalid=titleFormatError(title);
-  if(invalid)throw Object.assign(new Error(invalid),{code:value.action==="keep"?"invalid_keep_title":"invalid_title"});
-  return {...value,title};
+const unsafe=/https?:\/\/|\b(?:(?:device_)?(?:sid|hash|mid)|control_token|api[_-]?key|access[_-]?token)["']?\s*[=:]|\bsk-|[A-Za-z]:[\\/]|\\\\|\/(?:Users|home|root)\/|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+function invalid(message) {return Object.assign(new Error(message),{code:"invalid_model_output"});}
+function candidateFrom(result,currentTitle) {
+  if(result.finishReason!=="stop")throw Object.assign(new Error("模型结束原因不是正常完成"),{stage:"model_generation",reasonCode:"naming_model_incomplete"});
+  if(result.toolCalls?.length)throw Object.assign(new Error("命名模型返回了工具调用"),{stage:"model_generation",reasonCode:"naming_model_tool_call"});
+  let value;
+  try {value=JSON.parse(result.text);}catch {throw invalid("模型输出不是有效 JSON");}
+  if(!value||typeof value!=="object"||Array.isArray(value)||Object.keys(value).sort().join(",")!=="action,reason,title"||!["keep","rename"].includes(value.action)||typeof value.title!=="string"||typeof value.reason!=="string")throw invalid("命名输出字段无效");
+  if(unsafe.test(value.reason))throw invalid("命名理由包含不允许的链接、凭据或私人路径");
+  if(!value.title.trim())throw invalid("命名标题不能为空");
+  if(/[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(value.title))throw invalid("命名标题包含控制字符");
+  if(unsafe.test(value.title))throw invalid("命名标题包含不允许的链接、凭据或私人路径");
+  if(value.action==="keep")return{...value,title:currentTitle};
+  return value;
 }
 
-export async function runNaming({backend,selection,state={},apply=false,eventUserId}) {
+export async function runNaming({backend,selection,state={},apply=false,eventUserId,timeoutMs=120000}) {
   const before=await backend.read();
   if(before.archived||before.deleted)return{status:"archived",title:before.title};
   if(before.running)return{status:"running",title:before.title};
@@ -47,18 +41,36 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
       return{status:"manual_title",title:before.title};
     }
   }
-  const requireFormat=before.titlePolicy?.locked===false;
-  if(state.lastFingerprint===before.fingerprint&&state.lastTitle===before.title&&(!requireFormat||!titleFormatError(before.title)))return{status:"unchanged",title:before.title};
-  const context=requireFormat?{...before.context,title_format_required:true}:before.context;
-  let generated=await backend.generate(context,selection),candidate;
-  try {candidate=candidateFrom(generated,before.title,requireFormat);}
-  catch(error) {
-    if(error.code!=="invalid_keep_title")throw error;
-    const firstUsage=generated.usage;
-    generated=await backend.generate({...context,title_format_feedback:"原标题不符合规范，不能 keep；请返回 rename 与合法的类别 对象｜目标标题"},selection);
-    if(firstUsage&&generated.usage)generated.usage=Object.fromEntries(Object.keys(generated.usage).map(key=>[key,(firstUsage[key]??0)+generated.usage[key]]));
-    candidate=candidateFrom(generated,before.title,true);
+  if(state.lastFingerprint===before.fingerprint&&state.lastTitle===before.title)return{status:"unchanged",title:before.title};
+  const deadline=Date.now()+timeoutMs;
+  const controller=new AbortController();
+  let generated,candidate,feedback,usage;
+  for(let attempt=0;attempt<3;attempt++) {
+    const remaining=deadline-Date.now();
+    if(remaining<=0)throw Object.assign(new Error("命名模型生成预算已耗尽，本轮失败"),{stage:"model_generation",reasonCode:"naming_model_timeout",usage});
+    let timer;
+    try {
+      generated=await Promise.race([
+        backend.generate(feedback?{...before.context,title_format_feedback:feedback}:before.context,selection,{timeoutMs:remaining,deadline,signal:controller.signal}),
+        new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Object.assign(new Error("命名模型生成预算已耗尽，本轮失败"),{stage:"model_generation",reasonCode:"naming_model_timeout"}));},remaining);})
+      ]);
+    } catch(error) {
+      const safe=error instanceof Error?error:Object.assign(new Error("公共网关 RPC 调用失败"),{stage:"gateway",reasonCode:"gateway_rpc_failed"});
+      if(usage)safe.usage=usage;throw safe;
+    }
+    finally {clearTimeout(timer);}
+    if(generated.usage) {
+      usage??={};
+      for(const [key,value] of Object.entries(generated.usage))if(typeof value==="number")usage[key]=(usage[key]??0)+value;
+    }
+    try {candidate=candidateFrom(generated,before.title);break;}
+    catch(error) {
+      if(error.code!=="invalid_model_output") {if(usage)error.usage=usage;throw error;}
+      feedback=error.message;
+      if(attempt===2)throw Object.assign(error,{stage:"model_generation",reasonCode:"naming_invalid_output",usage});
+    }
   }
+  generated.usage=usage;
   const result={status:"preview",action:candidate.action,title:candidate.title,reason:candidate.reason,usage:generated.usage,selectedTurns:before.context.recent_turns.length};
   if(!apply)return result;
   const fresh=await backend.read();

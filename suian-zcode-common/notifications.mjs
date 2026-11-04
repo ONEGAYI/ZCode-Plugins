@@ -1,24 +1,33 @@
 import {runPowerShell} from "./windows.mjs";
-import {shouldNotify,markShown,acquireDisplayLock} from "./cooldown.mjs";
+import {shouldNotify,markShown,acquireDisplayLock,STALE_LOCK_MS} from "./cooldown.mjs";
+
+const RECOVERY_POLL_MS=100;
+export const RECOVERY_LOCK_WAIT_MS=STALE_LOCK_MS+2*RECOVERY_POLL_MS;
 
 const escapeXml=value=>String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c]));
 
 export function buildToastXml({title,message,actionLabel,actionUri}) {
-  return `<toast activationType="protocol" launch="${escapeXml(actionUri)}" scenario="default"><visual><binding template="ToastGeneric"><text>${escapeXml(title)}</text><text>${escapeXml(message)}</text></binding></visual><actions><action activationType="protocol" arguments="${escapeXml(actionUri)}" content="${escapeXml(actionLabel)}"/><action activationType="protocol" arguments="${escapeXml(actionUri.replace(/fix$/, "mute"))}" content="免打扰 24 小时"/></actions></toast>`;
+  return `<toast activationType="protocol" launch="${escapeXml(actionUri)}" scenario="default"><visual><binding template="ToastGeneric"><text>${escapeXml(title)}</text><text>${escapeXml(message)}</text></binding></visual><actions><action activationType="protocol" arguments="${escapeXml(actionUri)}" content="${escapeXml(actionLabel)}"/><action activationType="protocol" arguments="${escapeXml(actionUri.replace(/[^/]+$/, "mute"))}" content="免打扰 24 小时"/></actions></toast>`;
 }
 
-export async function notifyOnce({dataDir,title,message,reasonCode,appId,now=Date.now,display=showToastViaPowerShell,actionLabel="复制排障提示词并打开 ZCode",actionUri}) {
+export async function notifyOnce({dataDir,title,message,reasonCode,appId,now=Date.now,display=showToastViaPowerShell,actionLabel="复制排障提示词并打开 ZCode",actionUri,bypassCooldown=false}) {
   const early=await shouldNotify({dataDir,now});
-  if(!early.allowed)return{shown:false,...early};
-  const lock=await acquireDisplayLock({dataDir,now});
+  if(!early.allowed&&!(bypassCooldown&&early.reason==="cooldown"))return{shown:false,...early};
+  let lock=await acquireDisplayLock({dataDir,now});
+  // 已发生的覆盖不能被正在显示的旧故障压掉；等待锁后仍检查用户静音。
+  const waitDeadline=Date.now()+RECOVERY_LOCK_WAIT_MS;
+  while(bypassCooldown&&!lock.acquired&&lock.reason==="inflight"&&Date.now()<waitDeadline) {
+    await new Promise(resolve=>setTimeout(resolve,RECOVERY_POLL_MS));
+    lock=await acquireDisplayLock({dataDir,now});
+  }
   if(!lock.acquired)return{shown:false,reason:lock.reason};
   try {
     const recheck=await shouldNotify({dataDir,now});
-    if(!recheck.allowed)return{shown:false,...recheck};
+    if(!recheck.allowed&&!(bypassCooldown&&recheck.reason==="cooldown"))return{shown:false,...recheck};
     const xml=buildToastXml({title,message,actionLabel,actionUri});
     const result=await display({title,message,xml,actionLabel,actionUri,appId});
     if(!result.ok)return{shown:false,reason:"display_failed",detail:result.detail};
-    await markShown({dataDir,now,reasonCode});
+    if(!bypassCooldown)await markShown({dataDir,now,reasonCode});
     return{shown:true};
   } finally {await lock.release();}
 }

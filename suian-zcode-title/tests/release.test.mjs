@@ -257,8 +257,9 @@ test("隔离世界：Hook 派发的是包内 worker，参数携带会话元数�
   assert.equal(record.detached, true);
 });
 
-test("隔离世界：发布 CLI 的 status 加载运行期与安装期双入口，提示词从发布根读取", async t => {
+test("隔离世界：发布 CLI 的 status 不依赖提示词镜像，加载运行期与安装期双入口", async t => {
   const world = await buildWorld(t);
+  await writeFile(join(world.titleInstall,"prompt.md"),"损坏的镜像");
   const config = join(world.dataDir, "config.json");
   await writeFile(config, JSON.stringify({ dataDir: join(world.dataDir, "state") }));
   const run = runCli(world, ["status", "--config", config], { stdin: JSON.stringify({ session_id: "sess_release_status", cwd: world.base }) });

@@ -9,5 +9,7 @@
   "sqliteBin": "sqlite3",
   "dataDir": ".local",
   "timeoutMs": 120000,
+  "assistantMaxChars": 2000,
+  "assistantHeadPercent": 40,
   "maxOutputTokens": 2048
 }

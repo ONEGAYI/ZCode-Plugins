@@ -9,7 +9,7 @@
 - 公共 vendor 是固定来源的协议与投影库；版本信息见 ../suian-zcode-common/vendor/NOTICE.md，不自动更新。
 - 新行为先写契约测试，记录红绿验证日志（docs/ 下按功能分卷，现有 round2-evidence.json 与 title-lock-evidence.json）；不添加无关功能。
 - 会话 ID 同时接受旧版 `sess_` 与 3.16 的 `session_` 前缀；其余字符仍限制为字母、数字、下划线与连字符。前缀兼容测试不代表真实 3.16 Stop Hook 与自动命名已验收。
-- MCP 创建会话的公共命名策略优先：locked:true 不生成；false 不推断手动保护、要求格式合规。不合规 keep 最多纠正一次并记录理由。既有无策略会话保留原规则。
+- MCP 创建会话的公共命名策略优先：locked:true 不生成；false 不推断手动保护，模型根据本地提示词决定保留或改名。既有无策略会话保留原手动标题保护。
 
 ## 技术参考（面向维护者）
 
@@ -48,9 +48,9 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 
 1. Stop Hook（hook.mjs）收到事件：stop_hook_active:true 跳过；延迟 8 秒等持久化收尾后派发 cli.mjs run --apply，只传会话元数据，不解密或注入链接。worker.lock 串行，busy 让位下一轮。宿主在创建会话时快照 hooks，新条目只对新会话生效。
 2. 只读查询任务索引与 CLI SQLite 双库，校验工作区与标题一致。
-3. 按持久化 `session.revert` 裁剪回退分支：优先使用 `branchCutAfterMessageID` 拼接保留前缀与切点之后的新消息，兼容旧 `createdMessageID`；切点不存在时只保留已登记前缀，不重新纳入废弃分支。复用官方可见消息规则；用户文本每轮上限 1,200 字符、助手 1,500、最初目标 800，取最近三轮。
+3. 按持久化 `session.revert` 裁剪回退分支：优先使用 `branchCutAfterMessageID` 拼接保留前缀与切点之后的新消息，兼容旧 `createdMessageID`；切点不存在时只保留已登记前缀。复用官方可见消息规则；用户文本每轮上限 1,200 字符、最初目标 800，取最近三轮。助手正文默认 2,000 字符，超额保留首尾；后台任务通知触发的可见回复归入通知前最近真人有效轮次。
 4. 经公共网关附着原 Host（握手短超时 8s，失败按 stage/reasonCode 分类），model-selection.getView 校验模型档位后调 zcode-agent.generateWorkspaceText；不创建普通 Agent 任务，不切换主会话模型。旧网关明确要求重载，不回退官方 terminal。
-5. 校验严格 JSON、类别 emoji、「对象｜目标」结构与 48 字符上限；写前复读，仅宿主 `generated` 标题变化且候选为 `rename` 时允许继续，是否写入以最新标题比较；`keep`、非 generated 标题变化、运行或内容变化仍返回 `stale_result`（附 `staleReason`：running/fingerprint/title）。
+5. 校验严格 JSON、字段、非空标题与安全边界；格式由本地提示词决定。输出无效时最多纠错两次，三次共享生成超时预算。写前复读，仅宿主 `generated` 标题变化且候选为 `rename` 时允许继续，是否写入以最新标题比较；`keep`、非 generated 标题变化、运行或内容变化仍返回 `stale_result`（附 `staleReason`：running/fingerprint/title）。
 6. `zcode-task.renameTask` 写回后三处核验（原 Host 与双库），保存指纹与用量。
 7. 远控类失败或所选命名模型／思考档位不在原 Host 可用目录时不改标题，按 7200 秒跨进程冷却弹原生 Toast；按钮可复制排障提示词或对命名插件免打扰 24 小时，协议激活由独立进程处理。`OIL_ZCODE_TITLE_DISABLE_TOAST=1` 静音。
 
@@ -83,7 +83,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 | .zcode-plugin/plugin.json / hooks/hooks.json | 原生元信息与异步 Stop；发布构建把 Stop 命令改指 dist/hook.mjs，native 初始化不重复全局注册 |
 | skills/ | setup / configuration / control / debug，paths.md 统一路径与数据说明 |
 | doctor.mjs | 只读双库/模型与实际用户级 Stop Hook 配置检查；明确区分配置就绪和执行待验证 |
-| prompt.md | 命名规则（沿用自 oil-codex-title 的 prompts/naming.md，只调整编辑器名称）；发布时从发布根定位 |
+| prompt.md / prompt-deploy.mjs | 命名规则镜像及缓存外部署：状态目录 naming-prompt.md 为实际 system prompt，版本升级或修复前备份 |
 | CHANGELOG.md | 用户可感知变更与版本验证边界 |
 | SKILL.md | 源码兼容路由，按请求读取拆分技能；公共配置委托 common 技能 |
 | ../suian-zcode-common/vendor/ | 两个插件共用的固定投影库与远控协议库，见公共 NOTICE.md |

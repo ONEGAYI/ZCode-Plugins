@@ -39,11 +39,11 @@ test("CLI 原生卸载在无宿主注入时传递两种显式公共锚点",async
     assert.equal(JSON.parse(await readFile(trace,"utf8")).dataDir,dataDir);
   }
 });
-test("vbs 桥与协议命令行：调用方 vbs 只转发到稳定启动器，只放行本协议 fix",()=>{
+test("vbs 桥与协议命令行：调用方 vbs 只转发到稳定启动器，只放行本协议固定动作",()=>{
   const toastRoot=join("H:\\toast-home",".zcode","tools","suian-zcode-common","toast");
   const vbs=buildVbsContent({protocol:PROTOCOL,launcherPath:join(toastRoot,"launch.vbs")});
   assert.ok(vbs.includes(join(toastRoot,"launch.vbs")),"必须引用缓存外稳定启动器");
-  assert.ok(vbs.includes(`If uri <> "${PROTOCOL}://fix" Then WScript.Quit 1`),"URI 采用精确白名单比对，运行参数不进入自由拼接");
+  assert.equal(vbs.split(/\r?\n/).find(line=>line.startsWith("If uri <>")),`If uri <> "${PROTOCOL}://fix" And uri <> "${PROTOCOL}://mute" And uri <> "${PROTOCOL}://prompt" Then WScript.Quit 1`,"只放行三个精确 URI，其他输入均被拒绝");
   assert.ok(vbs.includes("WScript.Arguments(0)"),"%1 传入的 URI 必须转发");
   assert.ok(vbs.includes(", 0, False"),"必须以隐藏窗口运行");
   assert.ok(!vbs.includes("toast-action.mjs"),"不得引用版本缓存内的命令入口");

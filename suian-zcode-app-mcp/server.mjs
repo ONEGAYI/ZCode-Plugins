@@ -109,7 +109,7 @@ export async function createMcpServer(config, { controller, prStatus, reveal } =
     permission_mode: z.enum(['build', 'plan', 'edit', 'auto', 'yolo']).optional().describe('正常省略以继承父会话 CLI 权限，失败用 Host 默认并告警；仅用户明确指定时填写。build=变更前确认，非构建任务类型；plan=规划，edit=自动编辑，auto=Host 自动策略，yolo=完全访问。不得为等待合并批准改为 build，显式提权须用户授权。') };
   server.registerTool('start_session', {
     title: '启动 ZCode 会话',
-    description: '按用户授权在网关连接的 Desktop 已打开的本地工作区创建独立会话并发送开局消息。服务自动识别来源，来源不是授权、不接受手填来源 ID；冲突附 warnings，缺失或损坏时报错。title 仅命名新会话；lock_title=true 阻止自动命名。accepted 仅表示提交，回复用 read_session；部分失败先核查返回 ID，不盲目重试。',
+    description: '按用户授权在网关连接的 Desktop 已打开的本地工作区创建独立会话并发送开局消息。服务自动识别来源，来源不是授权、不接受手填来源 ID；冲突附 warnings，缺失或损坏时报错。title 仅命名新会话；lock_title=false 允许模型按本地提示词决定保留或改名，true 阻止自动命名。accepted 仅表示提交，回复用 read_session；部分失败先核查返回 ID，不盲目重试。',
     // 新宿主（索引含 projects 表）两参二选一：project_id 项目模式 / workspace_path 目录模式；
     // 旧宿主维持目录模式原 schema，project_id 字段不出现
     inputSchema: projectCapable

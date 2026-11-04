@@ -9,7 +9,7 @@
 
 所有命名 CLI 操作加 --config {{config_path}}，stdin 传 `{"session_id":"sess_...","workspace_path":"工作区绝对路径"}`。目标可以是用户指定的其他会话，不把 turn_id 当用户消息 ID。
 
-命令入口与资源分两种形态：发布安装的命令入口（cli.mjs、install.mjs、hook.mjs、toast-action.mjs）位于插件根 `dist/`，提示词、技能与 Hook 清单在插件根；源码模式入口与资源同在插件根。
+命令入口与资源分两种形态：发布安装的命令入口（cli.mjs、install.mjs、hook.mjs、toast-action.mjs）位于插件根 `dist/`，提示词镜像、技能与 Hook 清单在插件根；源码模式入口与镜像同在插件根。实际命名提示词为状态目录中的 `naming-prompt.md`，备份也保留在同一目录。
 
 执行技能命令前确定 `{{command_dir}}`：含 release.json 的发布包取 `{{plugin_root}}/dist`，源码取 `{{plugin_root}}`。`{{plugin_root}}` 始终指插件根，不为调用命令而改成 dist。
 
