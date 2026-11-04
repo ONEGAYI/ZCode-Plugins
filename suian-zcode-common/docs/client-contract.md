@@ -19,7 +19,7 @@
 
 ## 导出契约
 
-- `client.mjs`（运行期，`COMMON_API_VERSION = 1`）：connectHost、probeHost、saveAuthorization、clearAuthorization、readTitlePolicy、writeTitlePolicy、readProjectContext、MCP_APP_MIME_TYPE、supportsZcodeMcpApps、notifyOnce、shouldNotify、copyPromptAndOpenWorkspace、getConversationMessageProjectionPolicy，及 vendor/conversation-wire 的 TopicWireFrameAssembler、conversationTopicFrameSchema、v4ConversationRowsRangeResultSchema、PROTOCOL_V4_LIMITS、measureTopicNotificationEnvelopeBytes、encodeTopicWireFrames。
+- `client.mjs`（运行期，`COMMON_API_VERSION = 1`）：connectHost、probeHost、saveAuthorization、clearAuthorization、readTitlePolicy、writeTitlePolicy、readProjectContext、MCP_APP_MIME_TYPE、supportsZcodeMcpApps、notifyOnce、checkPromptRecoveryToast、shouldNotify、copyPromptAndOpenWorkspace、getConversationMessageProjectionPolicy，及 vendor/conversation-wire 的 TopicWireFrameAssembler、conversationTopicFrameSchema、v4ConversationRowsRangeResultSchema、PROTOCOL_V4_LIMITS、measureTopicNotificationEnvelopeBytes、encodeTopicWireFrames。`checkPromptRecoveryToast` 只读核对提示词恢复通知的身份、动作及注册目标，旧版本缺少此导出，调用方须在覆盖损坏提示词之前检测。
 - `client-install.mjs`（安装期，独立入口避免运行期携带安装器）：checkRuntime、fileShell、buildVbsContent、buildProtocolCommand、ensureToastAppId、installToastAssets、removeToastAssets。
 - 导入入口不触发启动、通知、凭据读取或源码指纹扫描（契约测试实证）。
 

@@ -77,10 +77,10 @@ test('部署稳定运行时：executor/launch/活动记录落位，均不引用�
 
 test('稳定启动器与转发 vbs 的 URI 采用精确白名单比对，运行参数不进入命令行拼接自由输入', async () => {
   const launcher = buildStableLauncherVbs({ nodeExe: NODE, executorPath: 'D:\\tools\\toast\\executor.mjs' });
-  assert.ok(launcher.includes('If uri <> "suian-zcode-common://fix" And uri <> "suian-zcode-title://fix" Then WScript.Quit 1'));
+  assert.ok(launcher.includes('If uri <> "suian-zcode-common://fix" And uri <> "suian-zcode-common://mute" And uri <> "suian-zcode-title://fix" And uri <> "suian-zcode-title://mute" And uri <> "suian-zcode-title://prompt" Then WScript.Quit 1'));
   assert.ok(launcher.includes('WScript.Arguments(0)'));
   const forward = buildForwardVbs({ protocol: 'suian-zcode-title', launcherPath: 'D:\\tools\\toast\\launch.vbs' });
-  assert.ok(forward.includes('If uri <> "suian-zcode-title://fix" Then WScript.Quit 1'), '转发桥只接受本协议的 fix 动作');
+  assert.ok(forward.includes('If uri <> "suian-zcode-title://fix" And uri <> "suian-zcode-title://mute" And uri <> "suian-zcode-title://prompt" Then WScript.Quit 1'), '转发桥只接受本协议白名单动作');
   assert.ok(!forward.includes('suian-zcode-common://fix" Then'), '转发桥不得放行另一身份的 URI');
   assert.ok(!forward.includes(NODE), '转发桥不直接引用 Node');
   assert.ok(!forward.includes('toast-action.mjs'), '转发桥不得引用版本缓存内的命令入口');

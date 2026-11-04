@@ -12,10 +12,7 @@ import {resolvePluginLayout} from "./release-layout.mjs";
 const pluginRoot=dirname(fileURLToPath(import.meta.url));
 const layout=resolvePluginLayout();
 
-async function resolveDataDir(configPath) {
-  let supplied={};
-  try {supplied=JSON.parse(await readFile(configPath,"utf8"));}
-  catch(error) {if(error.code!=="ENOENT")throw error;}
+function resolveDataDir(configPath,supplied={}) {
   return resolve(dirname(configPath),process.env.OIL_ZCODE_TITLE_DATA??supplied.dataDir??(process.env.ZCODE_PLUGIN_DATA?join(process.env.ZCODE_PLUGIN_DATA,"state"):join(homedir(),".zcode","suian-zcode-title")));
 }
 
@@ -59,9 +56,16 @@ if(isMain) {
   }
   let raw="";
   for await(const chunk of process.stdin)raw+=chunk;
-  let payload=null;
-  try {payload=JSON.parse(raw);}catch {}
-  const dataDir=dataDirArg??(configPath?await resolveDataDir(configPath):(process.env.OIL_ZCODE_TITLE_DATA??join(layout.root,".local")));
+  let payload=null,eventError=null,config={},configError=null,configMissing=false;
+  try {payload=JSON.parse(raw);}catch {eventError=new Error("事件 JSON 格式无效");}
+  if(configPath) {
+    try {
+      const configText=await readFile(configPath,"utf8");
+      try {config=JSON.parse(configText);}catch {throw new Error("配置 JSON 格式无效");}
+      if(!config||typeof config!=="object"||Array.isArray(config))throw new Error("配置 JSON 必须为对象");
+    } catch(error) {if(error.code==="ENOENT")configMissing=true;else configError=error;config={};}
+  }
+  const dataDir=dataDirArg??(configPath?resolveDataDir(configPath,config):(process.env.OIL_ZCODE_TITLE_DATA??join(layout.root,".local")));
   const logHook=async entry=>{
     try {
       const {mkdir}=await import("node:fs/promises");
@@ -70,11 +74,11 @@ if(isMain) {
     }catch{}
   };
   try {
+    if(eventError)throw eventError;
+    if(configError)throw configError;
     let result;
     if(configPath&&payload?.stop_hook_active!==true) {
-      let config;
-      try {config=JSON.parse(await readFile(configPath,"utf8"));}
-      catch(error){if(error.code!=="ENOENT")throw error;result={action:"not_configured"};}
+      if(configMissing)result={action:"not_configured"};
       if(config?.enabled===false)result={action:"disabled"};
     }
     result??=await dispatchStopEvent({payload,dataDir,pluginRoot,configPath});

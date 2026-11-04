@@ -34,6 +34,6 @@ permission_mode 使用工具公开的规范值（build、plan、edit、auto、yo
 
 3.16 用 get_current_session 核对当前项目与附加目录，再用 list_sessions 的 project_id 筛选同项目；workspace_path 只筛选执行目录，不能据同目录猜项目。start_session 的 workspace_path 与 project_id 二选一：目录模式下目标在发起会话目录范围内默认继承项目与其余目录；目标属于已注册项目根但跨项目时必须改用 project_id——先 list_projects 按 root_path 反查确认（显式 null 已不合法）。项目模式以项目主根为执行目录并归属该项目，附加目录须显式传入、不继承；additional_directories:[] 可明确不带附加目录。只有用户授权时才新增目录范围，不能用项目所有 roots 替代会话冻结范围。
 
-lock_title 默认 false，允许命名插件滚动更新并要求格式合规；true 阻止命名生成，不阻止用户显式改名。标题策略不会安装或启用自动命名。
+lock_title 默认 false，允许自动命名，模型按本地提示词决定 keep 或 rename；true 阻止命名生成，不阻止用户显式改名。标题策略不会安装或启用自动命名。
 
 原 Host 写操作要求目标本地工作区已在所连 Desktop 打开。手机远端工作区忙时让位，不切走手机；共存结论需实际验收。

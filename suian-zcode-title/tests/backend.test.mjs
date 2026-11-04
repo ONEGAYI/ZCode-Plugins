@@ -5,6 +5,25 @@ import {execFileSync} from "node:child_process";
 import {mkdtempSync,rmSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
+test("超时后迟到连接必须关闭，不能继续发模型或查询请求",async()=>{
+  let connected,started;const reached=new Promise(resolve=>{started=resolve;});
+  const calls=[],remote={call:async(_channel,method)=>{calls.push(method);return{};},close:()=>calls.push("close")};
+  const backend=createBackend({event:{session_id:"sess_late",cwd:"D:\\fixture"},config:{sessionDb:"missing",indexDb:"missing",sqliteBin:"missing-sqlite"},connect:async()=>{started();return await new Promise(resolve=>{connected=resolve;});}});
+  const controller=new AbortController();
+  const pending=backend.generate({current_title:"原名"},{},{deadline:Date.now()+10000,signal:controller.signal});
+  await reached;controller.abort();backend.close();connected(remote);
+  await assert.rejects(pending);
+  assert.deepEqual(calls,["close"]);
+});
+test("模型目录查询迟到后不再发元数据或生成请求",async()=>{
+  let finish,started;const reached=new Promise(resolve=>{started=resolve;});
+  const calls=[],remote={call:async(_channel,method)=>{calls.push(method);if(method==='getView'){started();return await new Promise(resolve=>{finish=resolve;});}throw Error('unexpected');},close:()=>calls.push('close')};
+  const backend=createBackend({event:{session_id:"sess_late",cwd:"D:\\fixture"},config:{sessionDb:"missing",indexDb:"missing",sqliteBin:"missing-sqlite"},connect:async()=>remote});
+  const controller=new AbortController(),pending=backend.generate({current_title:"原名"},{},{deadline:Date.now()+10000,signal:controller.signal});
+  await reached;controller.abort();finish({providers:[]});
+  await assert.rejects(pending,{reasonCode:'naming_model_timeout'});
+  assert.deepEqual(calls,['getView','close']);
+});
 for (const sessionId of ['sess_fixture', 'session_316_fixture']) test(`命名后端兼容 ${sessionId.split('_')[0]} 前缀，读双库、辅助生成和原 Host 改名核验`,async()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-backend-")),sessionDb=join(root,"session.sqlite"),indexDb=join(root,"index.sqlite");
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3",workspacePath="D:\\fixture";

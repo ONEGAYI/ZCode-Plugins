@@ -33,6 +33,8 @@ node "{{command_dir}}/install.mjs" "{{state_dir}}" --native-plugin --config "{{d
 
 ## 升级与卸载
 
+命名提示词在状态目录 `naming-prompt.md`，不放插件版本缓存；下次命名运行按版本部署或升级。负 `version` 锁定本地修改，镜像版本更高时会先备份旧文件再覆盖；需要重置时按 [configuration](../configuration/SKILL.md) 将本地版本改低。损坏的本地文件恢复时同目录保留备份并弹通知，可从通知定位恢复稿。
+
 原生安装按公共 setup 通过原生管理器更新，再从插件清单获取新路径；源码安装才更新原仓库。原生更新无需重装依赖或修链，以实际状态目录、配置和 `--installed-plugins` 重跑同一安装命令，更新共享 Toast 执行器并将实际安装清单路径保存到 title 外置身份。旧身份缺少清单锚点时也按此补齐；只做 `--check-only` 不更新身份。保留配置、状态、授权和原暂停状态；若升级需要临时暂停，记录原开关并按第 4、5 步恢复。常驻网关升级只按公共 setup 处理。
 
 原生卸载通知资产用 `node "{{command_dir}}/install.mjs" "{{state_dir}}" --native-plugin --remove --installed-plugins "{{installed_plugins_json}}"`，再通过原生管理器停用或卸载本插件。源码模式不加 native 标志，安装器同时移除自有全局 Hook 与技能。保留业务状态和公共网关；明确要求恢复直连时才调用公共 Remove。

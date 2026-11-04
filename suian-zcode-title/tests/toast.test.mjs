@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {buildFixPrompt,toastBodyFor} from "../toast.mjs";
+test("恢复通知展示失败或异常写 runner 日志，静音不报故障",async()=>{
+  const {reportPromptRecoveryToast}=await import('../toast.mjs'),entries=[];
+  assert.equal(typeof reportPromptRecoveryToast,'function');
+  for(const result of [{shown:false,reason:'display_failed'},{shown:false,reason:'inflight'},{shown:false,reason:'muted'}])await reportPromptRecoveryToast({display:async()=>result,log:async e=>entries.push(e)});
+  await reportPromptRecoveryToast({display:async()=>{throw Error('private sentinel');},log:async e=>entries.push(e)});
+  assert.deepEqual(entries.map(e=>e.reason),['display_failed','inflight','unavailable']);
+  assert.ok(!JSON.stringify(entries).includes('private sentinel'));
+});
 
 test("修复提示词仅包含非秘密路径且模板可整体替换",()=>{
   const prompt=buildFixPrompt({pluginRoot:"D:\\CODE\\Project\\_VibeCoding\\ZCode-Plugins\\suian-zcode-title",dataDir:join(tmpdir(),"suian-zcode-title")});

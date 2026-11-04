@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {recentSnapshot,readHistory,ensureProjectionPolicy} from "../history.mjs";
+import {recentSnapshot,readHistory,ensureProjectionPolicy,snapshotLimits} from "../history.mjs";
 import {createBackend} from "../backend.mjs";
 import {createHash} from "node:crypto";
 import {execFileSync} from "node:child_process";
@@ -8,6 +8,28 @@ import {mkdtempSync,rmSync,readFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 const m=(id,role,text,parentID,extra={})=>({info:{id,role,parentID,...extra},parts:[{type:"text",text},{type:"reasoning",text:"不交给命名模型"}]});
+test("长助手正文保留首尾，后台任务通知后的回复归入最近真人轮次",async()=>{
+  await ensureProjectionPolicy();
+  const long="头".repeat(800)+"中".repeat(400)+"尾".repeat(1200);
+  const messages=[m("u","user","目标"),m("notice","user","<task-notification>内部结果</task-notification>",null,{synthetic:true,source:"task_notification"}),m("a","assistant",long,"notice")];
+  const snap=recentSnapshot({session:{title:"原名"},messages},"D:\\fixture");
+  assert.deepEqual(snap.context.recent_turns[0].messages,[{role:"user",text:"目标"},{role:"assistant",text:"头".repeat(800)+"\n…\n"+"尾".repeat(1200)}]);
+});
+test("截取预算整组校验，按 Unicode 字符保留头尾",async()=>{
+  await ensureProjectionPolicy();
+  assert.deepEqual(snapshotLimits({assistantMaxChars:null,assistantHeadPercent:50}),{total:2000,percent:40,reason:"assistantMaxChars 必须是至少为 2 的安全整数"});
+  const messages=[m("u","user","目标"),m("a","assistant","😀甲乙丙丁戊己庚辛壬癸","u")];
+  const snap=recentSnapshot({session:{title:"原名"},messages},"D:\\fixture",{assistantMaxChars:5,assistantHeadPercent:40});
+  assert.equal(snap.context.recent_turns[0].messages[1].text,"😀甲\n…\n辛壬癸");
+});
+test("只为当前分支中确认的后台任务通知关联回复",async()=>{
+  await ensureProjectionPolicy();
+  const messages=[m("u","user","目标"),m("notice","user","<task-notification>隐藏</task-notification>",null,{synthetic:true}),m("a","assistant","任务结果","notice"),m("hidden","user","隐藏消息",null,{synthetic:true,source:"goal-continuation"}),m("b","assistant","不得归并","hidden"),m("c","assistant","缺失父节点","missing")];
+  const snap=recentSnapshot({session:{title:"原名"},messages},"D:\\fixture");
+  assert.deepEqual(snap.context.recent_turns[0].messages,[{role:"user",text:"目标"},{role:"assistant",text:"任务结果"}]);
+  const reverted=recentSnapshot({session:{title:"原名",revert:{targetMessageID:"notice",keptMessageIDs:["u"],branchCutAfterMessageID:"b"}},messages},"D:\\fixture");
+  assert.deepEqual(reverted.context.recent_turns[0].messages,[{role:"user",text:"目标"}]);
+});
 test("按真实用户输入合并多条助手，取三轮并排除内部提醒与旧回退分支",async()=>{
   // 投影策略经公共客户端契约加载（测试预载提供定位锚点）
   await ensureProjectionPolicy();

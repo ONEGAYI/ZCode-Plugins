@@ -7,6 +7,7 @@ export { readTitlePolicy, writeTitlePolicy } from './title-policy.mjs';
 export { readProjectContext } from './project-context.mjs';
 export { MCP_APP_MIME_TYPE, supportsZcodeMcpApps } from './ui-capabilities.mjs';
 export { notifyOnce } from './notifications.mjs';
+export { checkPromptRecoveryToast } from './prompt-recovery.mjs';
 export { shouldNotify } from './cooldown.mjs';
 export { copyPromptAndOpenWorkspace } from './notification-action.mjs';
 export { getConversationMessageProjectionPolicy } from './vendor/projection.js';

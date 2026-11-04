@@ -7,10 +7,12 @@ import {resolve,dirname,join} from "node:path";
 import {randomUUID} from "node:crypto";
 import {createBackend} from "./backend.mjs";
 import {runNaming} from "./naming.mjs";
+import {snapshotLimits} from "./history.mjs";
+import {deployNamingPrompt,requirePromptRecoveryToast} from "./prompt-deploy.mjs";
 import {commonRuntime,commonAnchorOptions} from "./common-access.mjs";
 import {resolvePluginLayout} from "./release-layout.mjs";
-import {toastBodyFor} from "./toast.mjs";
-import {ensureToastAppId,PROTOCOL} from "./installer.mjs";
+import {toastBodyFor,reportPromptRecoveryToast} from "./toast.mjs";
+import {ensureToastAppId,AUMID,PROTOCOL} from "./installer.mjs";
 import {runDoctor} from "./doctor.mjs";
 
 const args=process.argv.slice(2);
@@ -31,9 +33,11 @@ if(args.includes("--help")||!args.length) {
       else throw new Error("未知参数");
     }
     let raw="";for await(const chunk of process.stdin)raw+=chunk;
-    event=JSON.parse(raw);raw="";
+    try {event=JSON.parse(raw);} catch {throw new Error("事件 JSON 格式无效");} raw="";
     if(!event||typeof event!=="object"||Array.isArray(event))throw new Error("stdin 必须为会话事件对象");
-    const supplied=configPath?JSON.parse(await readFile(configPath,"utf8")):{};
+    let supplied={};
+    if(configPath) {const configText=await readFile(configPath,"utf8");try {supplied=JSON.parse(configText);} catch {throw new Error("配置 JSON 格式无效");}}
+    if(!supplied||typeof supplied!=="object"||Array.isArray(supplied))throw new Error("配置 JSON 必须为对象");
     const config={
       sessionDb:join(homedir(),".zcode","cli","db","db.sqlite"),
       indexDb:join(homedir(),".zcode","v2","tasks-index.sqlite"),
@@ -45,17 +49,7 @@ if(args.includes("--help")||!args.length) {
     dataDir=resolve(configPath?dirname(configPath):process.cwd(),process.env.OIL_ZCODE_TITLE_DATA??config.dataDir??join(homedir(),".zcode","suian-zcode-title"));
     // 锚点：显式 --common-root / --installed-plugins 优先，宿主注入交给定位器，否则回退配置记录。
     const anchor=commonAnchorOptions({commonRoot:commonRootArg,installedPlugins:installedPluginsArg,config:supplied});
-    // 提示词从明确的发布根读取，不用 bundle 所在目录解释源码相对路径。
-    const prompt=await readFile(join(resolvePluginLayout().root,"prompt.md"),"utf8");
     const statePath=join(dataDir,event.session_id+".json");
-    backend=createBackend({
-      event,config,prompt,
-      saveState:async state=>{
-        const temporary=statePath+".tmp-"+randomUUID();
-        await writeFile(temporary,JSON.stringify(state,null,2)+"\n","utf8");
-        await rename(temporary,statePath);
-      }
-    });
     if(command==="run"&&config.enabled===false)console.log(JSON.stringify({status:"disabled"}));
     else {
       // 公共定位失败必须先于 mkdir、建锁等本地副作用；enable/disable 是纯本地命令不依赖 common。
@@ -65,6 +59,33 @@ if(args.includes("--help")||!args.length) {
       try {lease=await open(requestedLeasePath,"wx");leasePath=requestedLeasePath;}
       catch(error) {if(error.code==="EEXIST")throw new Error("busy：另一个命名进程持有共享远控连接");throw error;}
       await lease.writeFile(JSON.stringify({pid:process.pid,startedAt:new Date().toISOString()}));
+      let prompt;
+      if(command==="run") {
+        const limits=snapshotLimits(config);
+        if(limits.reason)await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),event:"snapshot_config_fallback",reason:limits.reason})+"\n","utf8");
+        const deployed=await deployNamingPrompt({dataDir,mirror:join(resolvePluginLayout().root,"prompt.md"),requireRecoveryCapability:async()=>{
+          const common=await commonRuntime();
+          await requirePromptRecoveryToast({common,dataDir,appId:AUMID,disabled:process.env.OIL_ZCODE_TITLE_DISABLE_TOAST==="1"});
+        }});
+        prompt=deployed.prompt;
+        if(deployed.action==="restored") {
+          await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),event:"naming_prompt_restored",backupPath:deployed.backupPath})+"\n","utf8");
+          if(process.env.OIL_ZCODE_TITLE_DISABLE_TOAST!=="1") {
+            await reportPromptRecoveryToast({display:async()=>{
+              const appId=await ensureToastAppId({dataDir});
+              const {notifyOnce}=await commonRuntime();
+              return notifyOnce({dataDir,title:"自动命名提示词已恢复",message:`本地提示词无效，已恢复默认版本；旧文件备份于 ${deployed.backupPath}`,reasonCode:"prompt_restored",appId,actionUri:"suian-zcode-title://prompt",actionLabel:"定位恢复的提示词",bypassCooldown:true});
+            },log:async entry=>{
+              await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),...entry})+"\n","utf8").catch(error=>console.error(JSON.stringify({event:"runner_log_failed",code:error.code})));
+            }});
+          }
+        }
+      }
+      backend=createBackend({event,config,prompt,saveState:async state=>{
+        const temporary=statePath+".tmp-"+randomUUID();
+        await writeFile(temporary,JSON.stringify(state,null,2)+"\n","utf8");
+        await rename(temporary,statePath);
+      }});
       let result;
       if(command==="models") {
         const view=await backend.models();
@@ -130,7 +151,7 @@ if(args.includes("--help")||!args.length) {
         let state={};
         try {state=JSON.parse(await readFile(statePath,"utf8"));}
         catch(error) {if(error.code!=="ENOENT")throw error;}
-        result=await runNaming({backend,selection:config.selection,state,apply,eventUserId:event.user_message_id});
+        result=await runNaming({backend,selection:config.selection,state,apply,eventUserId:event.user_message_id,timeoutMs:config.timeoutMs});
         result.sessionId=event.session_id;
         result.selection=config.selection;
         await appendFile(join(dataDir,"usage.jsonl"),JSON.stringify({at:new Date().toISOString(),...result})+"\n","utf8");
@@ -140,6 +161,7 @@ if(args.includes("--help")||!args.length) {
     }
   } catch(error) {
     const failure={status:"failed",error:error.name==="SyntaxError"?"JSON 格式无效":error.message};
+    if(error.usage)failure.usage=error.usage;
     // 定位器错误（缺锚点、common 未装、API 不兼容等）透出错误码供诊断，与网关 reasonCode 区分
     if(typeof error.code==="string"&&error.stage)failure.locator=error.code;
     // 本地数据类校验失败无 stage，也须透出 reasonCode 供日志与诊断（不触发远控失败的 Toast 路径）
@@ -166,6 +188,7 @@ if(args.includes("--help")||!args.length) {
       }
     }
     console.log(JSON.stringify(failure));
+    if(dataDir&&command==="run"&&failure.usage)await appendFile(join(dataDir,"usage.jsonl"),JSON.stringify({at:new Date().toISOString(),...failure})+"\n","utf8").catch(()=>{});
     if(dataDir)await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),command,sessionId:event?.session_id??null,status:"failed",stage:failure.stage,diagnostic:failure.diagnostic,reasonCode:failure.reasonCode??null,error:String(failure.error).slice(0,200),durationMs:Date.now()-startedAt})+"\n","utf8").catch(error=>console.error(JSON.stringify({at:new Date().toISOString(),event:"runner_log_failed",command,causeName:error.name,code:error.code})));
     process.exitCode=1;
   } finally {

@@ -147,6 +147,7 @@ test('MCP 握手版本与插件元信息一致，公布十九个工具并保持�
   assert.equal(client.getServerVersion().version, packageMetadata.version);
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map(tool => tool.name), ['list_sessions', 'read_session', 'get_current_session', 'rename_session', 'start_session', 'send_message', 'reset_cron_tools_visibility', 'compact_session', 'archive_session', 'restore_session', 'pin_session', 'unpin_session', 'list_pinned_sessions', 'list_crons', 'get_glm_balance', 'reset_glm_quota', 'set_cron_paused_and_resumed', 'get_artifacts', 'set_artifacts']);
+  assert.match(listed.tools.find(tool => tool.name === 'start_session').description, /lock_title=false.*本地提示词.*true 阻止自动命名/);
   for (const tool of listed.tools) assert.equal(tool.annotations.readOnlyHint, ['list_sessions', 'read_session', 'get_current_session', 'list_pinned_sessions', 'list_crons', 'get_glm_balance'].includes(tool.name));
   assert.equal(listed.tools.find(tool => tool.name === 'reset_glm_quota').annotations.destructiveHint, true);
   assert.equal(listed.tools.find(tool => tool.name === 'reset_glm_quota').annotations.idempotentHint, false);
