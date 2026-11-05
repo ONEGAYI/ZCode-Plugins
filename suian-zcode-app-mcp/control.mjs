@@ -139,8 +139,8 @@ export function createSessionController({ reader, gatewayConfigPath, connect = d
           ...(warnings.length ? { warnings } : {}) };
       });
     },
-    async startSession({ workspace_path, title, message, model, project_id, additional_directories, lock_title = false, creator, originWarning, permissionMode, permissionWarning, onCreated }) {
-      return attached({ workspacePath: workspace_path }, async remote => {
+    async startSession({ workspace_path, title, message, model, project_id, projectNavigation, additional_directories, lock_title = false, creator, originWarning, permissionMode, permissionWarning, onCreated }) {
+      return attached({ workspacePath: workspace_path, ...(projectNavigation ? { projectId: project_id } : {}) }, async remote => {
         if (project_id !== undefined || additional_directories !== undefined) {
           const [major, minor] = (remote.bootstrap.desktopAppVersion ?? '').split('.').map(Number);
           if (!(major > 3 || major === 3 && minor >= 16))

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 const choices = {
-  phase: ['desktop_payload', 'rpc_attach', 'rpc_request', 'bootstrap', 'bridge_initialize', 'session_lookup', 'rpc_message', 'socket', 'health', 'connect', 'rpc_timeout', 'attach_timeout'],
+  phase: ['desktop_payload', 'rpc_attach', 'rpc_request', 'bootstrap', 'bridge_initialize', 'session_lookup', 'project_lookup', 'rpc_message', 'socket', 'health', 'connect', 'rpc_timeout', 'attach_timeout'],
   clientPhase: ['health', 'connect', 'attach', 'channel_initialize', 'rpc'],
   mode: ['relay', 'local-only', 'terminal'],
   source: ['desktop', 'upstream', 'local_rpc'],

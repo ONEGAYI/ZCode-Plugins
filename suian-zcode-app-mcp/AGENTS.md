@@ -15,7 +15,7 @@
 
 ## 边界与维护
 
-- 三个会话读取工具与 list_pinned_sessions、list_crons 只查本机持久化数据，不连接远控。十个写工具按需连接原 Host，不创建 CLI app-server；工作区必须已在网关连接的 Desktop 窗口打开。置顶写走 zcode-task setTaskPinned 并从本地索引读回确认，与归档状态正交；定时任务启停走 zcode-agent setAutomationEnabled，官方 void 且零行更新静默，写后必须同 scope listAutomations 读回确认，未找到或状态不符按结构化错误返回；定时任务工具面唤醒向来源会话投递 queue 自发消息并要求收到回执后立即结束本轮。
+- 三个会话读取工具与 list_pinned_sessions、list_crons 只查本机持久化数据，不连接远控。十个写工具按需连接原 Host，不创建 CLI app-server；按目录附着需要目标工作区已在所连窗口打开，`start_session` 显式项目模式可由原 Host 定位未打开的本地项目。置顶写走 zcode-task setTaskPinned 并从本地索引读回确认，与归档状态正交；定时任务启停走 zcode-agent setAutomationEnabled，官方 void 且零行更新静默，写后必须同 scope listAutomations 读回确认，未找到或状态不符按结构化错误返回；定时任务工具面唤醒向来源会话投递 queue 自发消息并要求收到回执后立即结束本轮。
 - 两个 GLM 工具也连接原 Host。重置每次必须真实用户明确许可和客户端 form elicitation，不接受 Agent 自填 confirmed；不自动重试消耗。只读查询不发卡、不消耗、不标记历史已读。
 - 创建和发信不接受来源 ID 参数；服务读取本次 MCP 请求的 session_id，缺失时按 trace_id 与工具名从本地 tool_usage 唯一定位，在 created-by-other-session 注入 creator、在 delivered-by-other-session 注入 deliverer。冲突或歧义降级为 warnings，notice 标注可能来源并继续执行；完全未知或损坏时在写入前报错。不猜界面选中项或最近会话。客户端元数据不等于身份认证或用户授权。ACK 仅表示提交；读取回复使用 read_session，超时或部分失败不自动重试写操作。
 - 原 Host 调用统一走公共网关；缺少 RPC 时明确要求升级，不回退官方直连。隔离测试与真实手机验收分别记录，paired 不代表手机身份；手机使用远端工作区时本地调用让位。

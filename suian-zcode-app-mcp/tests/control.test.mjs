@@ -9,11 +9,13 @@ const opening = text => `<created-by-other-session>\n<notice>\nYou are a new zco
 
 test('创建把项目与附加目录交给原 Host；旧调用不附加新协议字段', async () => {
   const f = await fixture();
-  await f.controller.startSession({ workspace_path: workspace, message: '开始', project_id: 'project-fixture', additional_directories: ['D:/second'] });
+  await f.controller.startSession({ workspace_path: workspace, message: '开始', project_id: 'project-fixture', projectNavigation: true, additional_directories: ['D:/second'] });
+  assert.equal(f.connections[0].args.projectId, 'project-fixture', '附着请求携带显式项目导航身份');
   assert.equal(f.calls.find(call => call.method === 'createTask').params[0].projectId, 'project-fixture');
   assert.deepEqual(f.calls.find(call => call.method === 'createTask').params[0].additionalDirectories, ['D:/second']);
   const old = await fixture();
   await old.controller.startSession({ workspace_path: workspace, message: '开始' });
+  assert.equal(Object.hasOwn(old.connections[0].args, 'projectId'), false);
   assert.equal(Object.hasOwn(old.calls.find(call => call.method === 'createTask').params[0], 'projectId'), false);
   assert.equal(Object.hasOwn(old.calls.find(call => call.method === 'createTask').params[0], 'additionalDirectories'), false);
   const legacyHost = await fixture({ bootstrap: {} });
