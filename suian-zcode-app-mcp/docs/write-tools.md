@@ -57,6 +57,8 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 项目主根未在 Desktop 上报的工作区列表中时，显式 `project_id` 由网关交给原 Host 定位。网关复用已有连接；原 Host 返回的主目录与本机项目索引不一致时，创建前报 `project_workspace_mismatch`。此路径需要同时更新会话 MCP、公共客户端和运行中的网关。目录模式不会触发项目导航，即使它继承了发起会话的项目归属。
 
+若项目导航被旧附着路径拒绝，MCP 在创建前区分两种升级提示：`project_navigation_common_upgrade_required` 表示已加载的公共客户端低于 0.10.1；`project_navigation_gateway_upgrade_required` 表示公共客户端已支持，但运行网关未接受项目导航。旧组件仍可操作已打开的工作区，其他 Host 错误保留原样。
+
 `permission_mode` 可选 `build`（变更前确认，可能逐次询问）/`plan`/`edit`/`auto`/`yolo` 五档，是权限策略而非开发任务类型。正常派发省略该参数；仅在用户明确指定权限模式时填写，不能因“实施代码”“构建”或“等待首肯合并”选择 `build`。合并授权边界写入开局正文，不用权限模式代替。显式请求 `yolo` 等高权限档位需用户授权，已有明确授权不重复询问。
 
 显式模式透传宿主 `createTask`；缺省仅从发起会话 CLI 库的 `session.permission.mode` 继承。确认新会话权限也读取同一个 CLI 字段，不使用任务索引或创建响应的 `mode`。来源冲突时不继承，由来源警告说明。CLI 会话不存在、权限缺失或非规范值、库缺失或繁忙等继承探测异常时不传 `mode`，新会话使用 Host 默认权限；回执附 `permission_not_inherited` 警告及 `observed_modes` 原始取值（探测异常时无该字段）。
