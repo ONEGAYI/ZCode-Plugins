@@ -37,7 +37,24 @@ export async function loadCommonInstall() {
 }
 
 // 惰性包装：保持既有同步调用签名中的“默认参数可注入”结构，测试与调用方无需感知加载时机。
-export const connectHost = async (...args) => (await loadCommonClient()).connectHost(...args);
+export async function connectHost(options) {
+  const { module, pluginVersion } = await client();
+  try { return await module.connectHost(options); }
+  catch (error) {
+    // 旧组件仍能附着已打开的目录。仅把显式项目在附着阶段遇到的旧网关拒绝改为升级指引。
+    const phase = error?.diagnostic?.phase;
+    if (options.projectId === undefined || error?.reasonCode !== 'gateway_rpc_failed' ||
+        error.message !== 'Requested local workspace is not open in the Desktop window' ||
+        (phase !== undefined && phase !== 'bootstrap')) throw error;
+    const [major, minor, patch] = pluginVersion.split('.').map(part => Number.parseInt(part, 10));
+    if (major === 0 && (minor < 10 || (minor === 10 && patch === 0))) {
+      throw Object.assign(new Error(`已加载的 common ${pluginVersion} 公共客户端不支持项目导航。请更新 common 至 0.10.1 或更新版本，并开启新的 MCP 会话。`, { cause: error }),
+        { stage: 'compat', reasonCode: 'project_navigation_common_upgrade_required' });
+    }
+    throw Object.assign(new Error('运行中的网关未接受项目导航。请按 common setup 核对并升级运行网关至 0.10.1 或更新版本。', { cause: error }),
+      { stage: 'gateway', reasonCode: 'project_navigation_gateway_upgrade_required' });
+  }
+}
 export const writeTitlePolicy = async (...args) => (await loadCommonClient()).writeTitlePolicy(...args);
 export const saveAuthorization = async (...args) => (await loadCommonClient()).saveAuthorization(...args);
 export const readProjectContext = async (...args) => (await loadCommonClient()).readProjectContext(...args);

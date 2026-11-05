@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { fixture } from './fixtures.mjs';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { fixture, testInstalledPluginsPath } from './fixtures.mjs';
 import { createSessionReader } from '../sessions.mjs';
 import { createMcpServer } from '../server.mjs';
 
@@ -239,6 +242,72 @@ test('start_session 项目模式以主根为执行目录并归属项目，互斥
   assert.equal(multi.isError, true, '继承未命中时目录反查多命中同样引导');
   assert.match(multi.structuredContent.error, /project_id_required/);
   assert.ok(multi.structuredContent.error.includes('project-a') && multi.structuredContent.error.includes('project-b'), '多命中列出全部候选');
+});
+
+for (const [commonVersion, gatewayVersion, reasonCode] of [
+  ['0.10.0', '0.10.0', 'project_navigation_common_upgrade_required'],
+  ['0.10.0', '0.10.1', 'project_navigation_common_upgrade_required'],
+  ['0.10.1', '0.10.0', 'project_navigation_gateway_upgrade_required'],
+  ['0.10.1', '0.10.1', undefined],
+]) test(`显式项目导航的兼容提示：common ${commonVersion} / gateway ${gatewayVersion}`, async t => {
+  const f = projectFixture(t);
+  f.session({ id: 'other', directory: 'D:/alpha', permission: { mode: 'plan' } });
+  const root = join(dirname(f.indexDbPath), 'common'), gateway = join(root, 'fixture-gateway.json');
+  mkdirSync(root);
+  const { installPath } = JSON.parse(readFileSync(testInstalledPluginsPath, 'utf8')).plugins[0];
+  const baseClient = pathToFileURL(join(installPath, 'dist/client.mjs')).href;
+  writeFileSync(join(root, 'release.json'), JSON.stringify({ formatVersion: 1, pluginName: 'suian-zcode-common',
+    pluginVersion: commonVersion, buildId: 'fixture', commonApiVersion: 1, entries: { client: 'client.mjs' }, files: [] }));
+  writeFileSync(join(root, 'client.mjs'), `
+    import { readFileSync } from 'node:fs';
+    export * from ${JSON.stringify(baseClient)};
+    export const writeTitlePolicy = async () => {};
+    export async function connectHost({ workspacePath, projectId, gatewayConfigPath }) {
+      const { listed, phase } = JSON.parse(readFileSync(gatewayConfigPath, 'utf8'));
+      const navigates = projectId === 'project-b' && ${commonVersion === '0.10.1' && gatewayVersion === '0.10.1'};
+      if (phase !== 'bootstrap' || !listed && !navigates) {
+        throw Object.assign(new Error('Requested local workspace is not open in the Desktop window'), {
+          stage: 'gateway', reasonCode: 'gateway_rpc_failed',
+          diagnostic: { phase, gatewayVersion: ${JSON.stringify(gatewayVersion)} }
+        });
+      }
+      return { workspacePath, bootstrap: { desktopAppVersion: '3.17.2' }, close() {},
+        async call(channel, method, [params]) {
+          if (channel === 'zcode-task' && method === 'createTask' && params.projectId === 'project-b')
+            return { taskId: 'other', workspacePath, title: '' };
+          if (channel === 'zcode-task' && method === 'sendPrompt' && params.taskId === 'other') return;
+          throw new Error('Unexpected Host call: ' + channel + '.' + method);
+        }
+      };
+    }
+  `);
+  const client = new Client({ name: 'project-navigation-compat', version: '1' });
+  const transport = new StdioClientTransport({ command: process.execPath,
+    args: [fileURLToPath(new URL('../cli.mjs', import.meta.url)), '--common-root', root,
+      '--gateway-config', gateway, '--index-db', f.indexDbPath, '--session-db', f.sessionDbPath, '--artifact-db', f.artifactDbPath],
+    stderr: 'pipe' });
+  t.after(() => client.close());
+  await client.connect(transport);
+  const start = target => client.callTool({ name: 'start_session', arguments: { message: 'fixture', ...target }, _meta: { session_id: 'parent' } });
+  const project = { project_id: 'project-b' };
+  writeFileSync(gateway, JSON.stringify({ listed: false, phase: 'bootstrap' }));
+  const result = await start(project);
+  if (reasonCode) {
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.reasonCode, reasonCode);
+    assert.equal(result.structuredContent.session_id, undefined, '附着失败发生在创建之前');
+    assert.match(result.structuredContent.error, reasonCode.includes('_common_') ? /公共客户端.*0\.10\.1/ : /运行.*网关.*0\.10\.1/);
+    assert.equal(result.structuredContent.diagnostic.phase, 'bootstrap');
+    writeFileSync(gateway, JSON.stringify({ listed: true, phase: 'bootstrap' }));
+    assert.equal((await start(project)).structuredContent.delivery_status, 'accepted', '工作区已打开时旧组件继续可用');
+  } else {
+    assert.equal(result.structuredContent.delivery_status, 'accepted');
+  }
+  writeFileSync(gateway, JSON.stringify({ listed: false, phase: 'bootstrap' }));
+  assert.equal((await start({ workspace_path: 'D:/alpha' })).structuredContent.error,
+    'Requested local workspace is not open in the Desktop window', '目录模式继承项目时不改写错误');
+  writeFileSync(gateway, JSON.stringify({ listed: false, phase: 'bridge_initialize' }));
+  assert.equal((await start(project)).structuredContent.reasonCode, 'gateway_rpc_failed', '同文案的后续建桥错误不冒充版本问题');
 });
 
 test('list_projects 按宿主索引能力差异化公布：新库返回注册表，旧库 schema 不出现 project_id', async t => {
