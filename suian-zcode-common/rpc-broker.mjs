@@ -138,19 +138,28 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
       return await Promise.race([client.getChannel(channel).call(method, args), fault.promise]);
     } finally { clearTimeout(timer); cancelPeer(peer); client.dispose(); emitter.dispose(); }
   };
-  const attach = async (peer, workspacePath, sessionId, suppliedBootstrap) => {
+  const attach = async (peer, { workspacePath, sessionId, projectId, suppliedBootstrap }) => {
     if (phone?.passthrough) throw Object.assign(new Error('手机当前使用远端工作区，本地 RPC 暂时让位'), { code: 'remote_workspace_busy' });
     peer.phase = 'bootstrap';
     const result = suppliedBootstrap ?? await bootstrap();
     if (!result.success) throw new Error('Desktop bootstrap failed');
     const workspace = result.result.workspaces.find(w => w.kind === 'local' && samePath(w.workspacePath, workspacePath));
-    // 无项目会话的归属目录可能从未在窗口登记（draft 工作区）；无会话身份的附着仍以窗口列表为准，
-    // 带会话身份时改由宿主按任务导航建桥，归属最终统一以 getTaskMeta 复核。
-    if (!workspace && sessionId === undefined) throw new Error('Requested local workspace is not open in the Desktop window');
-    const anchorPath = workspace ? workspace.workspacePath : workspacePath;
+    // 目录模式仍以窗口列表为准；未上报的项目或会话交原 Host 按身份解析。
+    const project = !workspace && projectId !== undefined ? { projectId, hostId: 'local' } : undefined;
+    if (!workspace && !project && sessionId === undefined) throw new Error('Requested local workspace is not open in the Desktop window');
+    let anchorPath = workspace ? workspace.workspacePath : workspacePath;
     if (workspace && sessionId !== undefined && result.result.tasks !== undefined && !result.result.tasks.some(t => t.taskId === sessionId && samePath(t.workspacePath, anchorPath))) throw new Error('Session is not present in the requested workspace');
     peer.phase = 'bridge_initialize';
-    const meta = await ensureHost(anchorPath, workspace ? undefined : { taskId: sessionId, taskHostId: 'local' });
+    const reused = Boolean(physical);
+    const meta = await ensureHost(anchorPath, workspace ? undefined : project ? { project } : { taskId: sessionId, taskHostId: 'local' });
+    if (project) {
+      peer.phase = 'project_lookup';
+      // 复用桥时只解析项目目录，不替换当前手机或插件的桥。
+      const target = reused ? await callHost('project', 'prepareSession', [project], 'Host project navigation timed out') : meta;
+      if ((!reused && meta.kind !== 'local') || typeof target.workspacePath !== 'string' || !samePath(target.workspacePath, workspacePath))
+        throw new Error('project_workspace_mismatch: 原 Host 返回的项目主目录与本机索引不一致，未创建会话；请用 list_projects 核对');
+      anchorPath = target.workspacePath;
+    }
     // 3.16 bootstrap 不再返回 tasks；由目标工作区 Host 查询会话归属。
     if (sessionId !== undefined && (result.result.tasks === undefined || !workspace)) {
       peer.phase = 'session_lookup';
@@ -220,7 +229,7 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
           }
           attached = { meta, workspace_path: targetPath };
           peers.add(peer);
-        } else attached = await attach(peer, workspace.workspacePath, undefined, result);
+        } else attached = await attach(peer, { workspacePath: workspace.workspacePath, suppliedBootstrap: result });
         if (phone !== peer) { cancelPeer(peer); return; }
         sendPhone({ zcode_type: 'workspace-bridge-ready', requestId: payload.requestId, ...identity,
           bridge: { ...attached.meta, ...identity, workspaceKey: attached.workspace_path, workspacePath: attached.workspace_path, initialTaskId: payload.taskId } });
@@ -299,8 +308,10 @@ export function createRpcBroker({ bootstrap, sendDesktop, sendPhone, bridgeTimeo
             if (stage !== 'new') throw new Error('Workspace already attached');
             const message = JSON.parse(data.toString());
             if (message.type !== 'attach' || typeof message.workspace_path !== 'string') throw new Error('Invalid workspace attachment');
+            if (message.project_id !== undefined && (typeof message.project_id !== 'string' || !message.project_id.trim() || message.session_id !== undefined))
+              throw new Error('Invalid project attachment');
             stage = 'attaching';
-            const result = await attach(peer, message.workspace_path, message.session_id);
+            const result = await attach(peer, { workspacePath: message.workspace_path, sessionId: message.session_id, projectId: message.project_id });
             if (socket.readyState !== 1) { cancelPeer(peer); return; }
             stage = 'attached';
             socket.send(JSON.stringify({ type: 'attached', bootstrap: result.bootstrap, workspace_path: result.workspace_path }));

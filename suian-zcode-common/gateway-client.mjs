@@ -10,7 +10,7 @@ import { rpcDiagnostic, sanitizeRpcDiagnostic } from './rpc-diagnostics.mjs';
 const failure = (reasonCode, message, stage = 'gateway') => Object.assign(new Error(message), { stage, reasonCode });
 const defaultConfig = join(homedir(), '.zcode', 'tools', 'suian-zcode-gateway', 'config.json');
 
-export async function connectHost({ workspacePath, sessionId, gatewayConfigPath = defaultConfig, timeoutMs = 120000, handshakeTimeoutMs = 8000 }) {
+export async function connectHost({ workspacePath, sessionId, projectId, gatewayConfigPath = defaultConfig, timeoutMs = 120000, handshakeTimeoutMs = 8000 }) {
   const started = Date.now();
   let clientPhase = 'health';
   let config;
@@ -47,7 +47,10 @@ export async function connectHost({ workspacePath, sessionId, gatewayConfigPath 
     diagnostic: { phase: 'attach_timeout' }
   })), handshakeTimeoutMs);
   clientPhase = 'connect';
-  socket.on('open', () => { clientPhase = 'attach'; socket.send(JSON.stringify({ type: 'attach', workspace_path: workspacePath, ...(sessionId === undefined ? {} : { session_id: sessionId }) })); });
+  socket.on('open', () => {
+    clientPhase = 'attach';
+    socket.send(JSON.stringify({ type: 'attach', workspace_path: workspacePath, session_id: sessionId, project_id: projectId }));
+  });
   socket.on('message', (data, binary) => {
     try {
       if (binary) { emitter.fire(VSBuffer.wrap(data)); return; }

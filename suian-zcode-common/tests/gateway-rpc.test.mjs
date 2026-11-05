@@ -687,6 +687,40 @@ test('V2 多执行目录按各自会话归属附着，手机与插件仍共用�
   assert.equal(f.diagnostics[0].reasonCode, 'gateway_error');
 });
 
+for (const sharedBridge of [false, true]) test(`V2 本地显式项目附着不要求主根已打开，复用已有桥=${sharedBridge}`, { timeout: 3000 }, async t => {
+  const { connectHost } = await import('../gateway-client.mjs');
+  const workspacePath = 'D:\\project-not-open', projectId = 'closed-project';
+  const f = await fixture(t, 'matched', { gateway: { relayProtocolVersion: 2 }, v4Host: true,
+    projectDirectories: { [projectId]: { projectId, workspacePath, additionalDirectories: ['D:\\extra'] },
+      'moved-project': { projectId: 'moved-project', workspacePath: 'D:\\new-primary', additionalDirectories: [] } } });
+  const dir = await mkdtemp(join(tmpdir(), 'zcode-local-project-navigation-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const gatewayConfigPath = join(dir, 'config.json');
+  await writeFile(gatewayConfigPath, JSON.stringify({ version: 1, port: Number(new URL(f.gateway.url).port), control_token: 'fixture-rpc-token' }));
+  await assert.rejects(connectHost({ workspacePath, gatewayConfigPath }), /Requested local workspace is not open/);
+  const holder = sharedBridge ? await connectHost({ workspacePath: workspace, gatewayConfigPath }) : undefined;
+  t.after(() => holder?.close());
+  const project = await connectHost({ workspacePath, projectId, gatewayConfigPath });
+  t.after(() => project.close());
+  assert.equal(project.workspacePath, workspacePath);
+  assert.equal(project.bootstrap.workspaces.some(entry => entry.workspacePath === workspacePath), false);
+  assert.equal((await project.call('zcode-agent', 'helloConversationV4')).protocolVersion, 3);
+  assert.equal(f.bridgeOpens.length, 1);
+  const intent = { projectId, hostId: 'local' };
+  if (holder) {
+    assert.deepEqual(f.requests.find(([header]) => header[2] === 'project' && header[3] === 'prepareSession')[1], [intent]);
+    await assert.rejects(connectHost({ workspacePath, projectId: 'moved-project', gatewayConfigPath }), error => {
+      assert.match(error.message, /project_workspace_mismatch/);
+      assert.equal(error.diagnostic.phase, 'project_lookup');
+      return true;
+    });
+    assert.equal((await holder.call('zcode-agent', 'helloConversationV4')).protocolVersion, 3);
+    assert.equal(f.bridgeOpens.length, 1);
+  } else {
+    assert.deepEqual(f.bridgeOpens[0].project, intent);
+  }
+});
+
 for (const rootCount of [1, 3]) test(`V2 ${rootCount} 个根目录项目导航采用 Host 主目录且不打断插件`, { timeout: 4000 }, async t => {
   const { connectHost } = await import('../gateway-client.mjs');
   const directories = { projectId: 'multi-project', workspacePath: 'D:\\project-primary',

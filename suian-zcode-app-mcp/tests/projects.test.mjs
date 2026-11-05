@@ -129,6 +129,7 @@ test('MCP 创建在会话范围内继承项目和目录，跨项目与显式未�
     arguments: { ...(omit_workspace ? {} : { workspace_path: 'D:/alpha' }), message: 'hello', ...arguments_ }, _meta: { session_id: 'parent' } });
   assert.equal((await start({})).isError, undefined);
   assert.equal(calls.at(-1).project_id, 'project-a');
+  assert.equal(calls.at(-1).projectNavigation, undefined, '目录模式继承项目归属，但仍按原执行目录附着');
   assert.deepEqual(calls.at(-1).additional_directories, ['D:/beta']);
   await start({ workspace_path: 'd:/BETA/' });
   assert.equal(calls.at(-1).project_id, 'project-a');
@@ -215,6 +216,7 @@ test('start_session 项目模式以主根为执行目录并归属项目，互斥
   const call = arguments_ => client.callTool({ name: 'start_session', arguments: { message: 'hello', ...arguments_ }, _meta: { session_id: 'parent' } });
   await call({ project_id: 'project-a' });
   assert.equal(calls.at(-1).project_id, 'project-a');
+  assert.equal(calls.at(-1).projectNavigation, true, '显式项目模式允许宿主按项目导航');
   assert.equal(calls.at(-1).workspace_path, 'D:/alpha', '多根项目取 is_primary 主根');
   f.index.exec("UPDATE project_roots SET is_primary=CASE root_path WHEN 'D:/beta' THEN 1 ELSE 0 END WHERE project_id='project-a'");
   await call({ project_id: 'project-a' });

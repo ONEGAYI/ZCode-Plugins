@@ -1,5 +1,18 @@
 # 更新日志
 
+## [0.10.1] - 2026-11-05
+
+修复已登记的本地项目没有出现在 Desktop 工作区列表时，网关拒绝创建会话的问题。
+
+### Bug 修复
+
+**项目会话创建（#197）**
+
+- 收到显式项目 ID 时，网关可请原 Host 定位项目，不再要求目标项目主目录事先出现在工作区列表里。
+- 有已建立的 Host 连接时，复用该连接查询项目目录。主目录与本机索引不一致时，在创建会话前报错。
+
+> **升级注意**：更新 common 后，按其 setup 技能升级运行中的网关，再配合 app-mcp 0.11.6 使用。
+
 ## [0.10.0] - 2026-11-04
 
 共享通知支持定位自动命名插件恢复的提示词文档。
@@ -167,6 +180,7 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.10.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.04...plugins-2026.11.05
 [0.10.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.02.1...plugins-2026.11.04
 [0.9.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.2...plugins-2026.11.02.1
 [0.9.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.1...plugins-2026.10.30.2

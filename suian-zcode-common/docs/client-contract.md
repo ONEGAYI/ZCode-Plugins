@@ -23,6 +23,8 @@
 - `client-install.mjs`（安装期，独立入口避免运行期携带安装器）：checkRuntime、fileShell、buildVbsContent、buildProtocolCommand、ensureToastAppId、installToastAssets、removeToastAssets。
 - 导入入口不触发启动、通知、凭据读取或源码指纹扫描（契约测试实证）。
 
+`connectHost` 仍要求 `workspacePath`。按任务附着可传 `sessionId`；显式项目创建可改传 `projectId`，两种身份互斥。仅当目标路径未出现在 Desktop 上报的本地工作区列表时，网关才请求原 Host 按项目定位，并核对返回的项目主目录与 `workspacePath` 一致。现有目录与任务附着语义不变；项目导航需要支持该字段的运行网关。
+
 ## release.json 与构建
 
 - 字段：`formatVersion: 1`、`pluginName`/`packageName`（区分插件身份与包名）、`pluginVersion`、`buildId`、`commonApiVersion: 1`、`entries`（client / client-install）、`files`（逐文件 sha256，不含 release.json 自身）。
