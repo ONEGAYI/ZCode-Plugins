@@ -2,6 +2,19 @@
 
 本文件记录 suian-zcode-app-mcp 的用户可感知变化，版本独立于 common 和自动命名插件。
 
+## [0.11.6] - 2026-11-05
+
+`start_session` 现在可用项目 ID 在尚未打开主目录的本地项目里创建会话。
+
+### Bug 修复
+
+**按项目创建会话（#197）**
+
+- 传入 `project_id` 后，交由宿主定位目标项目。不需要补传路径，也不用手动打开主目录。
+- `workspace_path` 模式的目录要求与继承规则保持不变。
+
+> **升级注意**：此修复需要 common 0.10.1 及其运行网关。只更新会话 MCP 不会让旧网关支持项目导航。
+
 ## [0.11.5] - 2026-11-04
 
 创建会话工具的标题锁说明与自动命名插件的本地提示词配置同步。
@@ -367,6 +380,7 @@
 较早版本链接保留对应源码提交；采用 Release 分发后的新版本链接指向实际发布标签。
 
 <!-- 变更链接 -->
+[0.11.6]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.04...plugins-2026.11.05
 [0.11.5]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.02.1...plugins-2026.11.04
 [0.11.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.11.02.1
 [0.11.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.23.3...plugins-2026.10.30
