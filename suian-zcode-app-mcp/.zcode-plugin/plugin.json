@@ -1,9 +1,20 @@
 {
   "name": "suian-zcode-app-mcp",
-  "version": "0.11.6",
+  "version": "0.11.7",
   "description": "ZCode 会话、工件与 GLM 额度 MCP，含原生只读工件侧栏与管理技能",
   "license": "MIT",
   "ui": {
-    "surfaces": [{ "id": "artifacts", "title": { "zh-CN": "工件", "en": "Artifacts" }, "server": "suian-zcode-app", "resourceUri": "ui://suian-zcode-app-mcp/artifacts.html", "availability": "session" }]
+    "surfaces": [
+      {
+        "id": "artifacts",
+        "title": {
+          "zh-CN": "工件",
+          "en": "Artifacts"
+        },
+        "server": "suian-zcode-app",
+        "resourceUri": "ui://suian-zcode-app-mcp/artifacts.html",
+        "availability": "session"
+      }
+    ]
   }
 }
