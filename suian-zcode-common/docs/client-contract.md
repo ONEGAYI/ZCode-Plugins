@@ -25,6 +25,8 @@
 
 `connectHost` 仍要求 `workspacePath`。按任务附着可传 `sessionId`；显式项目创建可改传 `projectId`，两种身份互斥。仅当目标路径未出现在 Desktop 上报的本地工作区列表时，网关才请求原 Host 按项目定位，并核对返回的项目主目录与 `workspacePath` 一致。现有目录与任务附着语义不变；项目导航需要支持该字段的运行网关。
 
+对已有原生工作树会话，`readProjectContext` 额外返回 `hostWorkspacePath`，用于 `connectHost` 和会话 RPC；`workspacePath` 与 `additionalDirectories` 仍是执行目录和冻结附加目录，不从原项目扩大文件范围。普通会话的返回不增加该字段。
+
 ## release.json 与构建
 
 - 字段：`formatVersion: 1`、`pluginName`/`packageName`（区分插件身份与包名）、`pluginVersion`、`buildId`、`commonApiVersion: 1`、`entries`（client / client-install）、`files`（逐文件 sha256，不含 release.json 自身）。

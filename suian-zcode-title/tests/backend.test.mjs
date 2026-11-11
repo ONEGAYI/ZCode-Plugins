@@ -24,19 +24,21 @@ test("模型目录查询迟到后不再发元数据或生成请求",async()=>{
   await assert.rejects(pending,{reasonCode:'naming_model_timeout'});
   assert.deepEqual(calls,['getView','close']);
 });
-for (const sessionId of ['sess_fixture', 'session_316_fixture']) test(`命名后端兼容 ${sessionId.split('_')[0]} 前缀，读双库、辅助生成和原 Host 改名核验`,async()=>{
+for (const sessionId of ['sess_fixture', 'session_316_fixture', 'session_worktree_fixture']) test(`命名后端 ${sessionId}：读双库、辅助生成和原 Host 改名核验`,async()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-backend-")),sessionDb=join(root,"session.sqlite"),indexDb=join(root,"index.sqlite");
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3",workspacePath="D:\\fixture";
+  const worktree=sessionId==="session_worktree_fixture",cwd=worktree?"D:/worktrees/isolated":workspacePath;
   execFileSync(sqliteBin,[sessionDb,[
     "CREATE TABLE session(id,title,directory,path,revert,title_source);",
     "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",
     "CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);",
-    "INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');",
+    `INSERT INTO session VALUES('sess_fixture','原名','${cwd}',NULL,NULL,'custom');`,
     "INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);",
     "INSERT INTO part VALUES('p1','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"改进编辑体验"})+"',1);"
   ].join("\n").replaceAll('sess_fixture',sessionId)]);
   execFileSync(sqliteBin,[indexDb,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','原名',0,0,'completed');".replaceAll('sess_fixture',sessionId)]);
   execFileSync(sqliteBin,[indexDb,"ALTER TABLE tasks ADD COLUMN project_id; ALTER TABLE tasks ADD COLUMN execution_directories; UPDATE tasks SET project_id='project_fixture',execution_directories='[\"D:/other\"]';"]);
+  if(worktree)execFileSync(sqliteBin,[indexDb,`ALTER TABLE tasks ADD COLUMN host_id; ALTER TABLE tasks ADD COLUMN root_path; ALTER TABLE tasks ADD COLUMN worktree_root; UPDATE tasks SET host_id='local',root_path='${cwd}',worktree_root='${cwd}';`]);
   const selection={providerId:"fixture-provider",modelId:"fixture-model",options:{reasoningLevel:"low"}},calls=[];
   const remote={
     call:async(channel,method,args)=>{
@@ -58,10 +60,12 @@ for (const sessionId of ['sess_fixture', 'session_316_fixture']) test(`命名后
     },saveState:async()=>{},prompt:"命名规则"});
     const before=await backend.read();
     assert.equal(before.turnCount,1);assert.equal(before.archived,false);
+    if(worktree)assert.equal(before.context.project_hint,"isolated");
     await backend.generate(before.context,selection);
     const gen=calls.find(c=>c.method==="generateWorkspaceText");
     assert.deepEqual(gen.args[0].selection,selection);
     assert.equal(gen.args[0].querySource,"session_title_external");
+    assert.equal(gen.args[0].workspacePath,workspacePath);
     assert.deepEqual(gen.args[0].tools,[]);
     assert.equal(gen.args[0].messages[0].role,"system");
     assert.equal(calls.some(c=>["setModel","sendText","sendSession"].includes(c.method)),false);

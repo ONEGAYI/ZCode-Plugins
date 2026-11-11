@@ -10,8 +10,18 @@ function openReadOnly(path) {
 
 const taskColumns = `task_id AS session_id, title, workspace_path, workspace_key,
   workspace_identity, provider, mode AS permission_mode, task_status AS status, created_at, updated_at, pinned, archived`;
-const taskColumnsFor = db => taskColumns + (db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'project_id') ? ', project_id, host_id' : '');
-const taskItem = row => ({ ...row, pinned: !!row.pinned, archived: !!row.archived });
+const taskColumnsFor = (db, includeWorktree = false) => {
+  const columns = db.prepare('PRAGMA table_info(tasks)').all();
+  return taskColumns + (columns.some(column => column.name === 'project_id') ? ', project_id, host_id' : '')
+    + (includeWorktree && columns.some(column => column.name === 'worktree_root') ? ', worktree_root, root_path' : '');
+};
+const executionDirectorySql = columns => columns.includes('worktree_root')
+  ? "CASE WHEN host_id='local' AND worktree_root IS NOT NULL THEN root_path ELSE workspace_path END"
+  : 'workspace_path';
+const taskItem = ({ worktree_root, root_path, ...row }) => ({
+  ...row, pinned: !!row.pinned, archived: !!row.archived,
+  ...(row.host_id === 'local' && worktree_root != null ? { workspace_path: root_path, host_workspace_path: row.workspace_path } : {}),
+});
 
 // automations 行映射对齐官方 rowToAutomation：布尔真实化、可空字段统一 null；
 // scheduleRule 为 JSON 列，历史脏数据按未配置处理，不让单行拖垮整个列表
@@ -149,6 +159,7 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
       } finally { db.close(); }
       return { session_title: sessionTitle, index_title: indexMatches.length ? indexMatches[0].title : null,
         workspace_path: workspacePath, permission_mode: permissionMode, index_matches: indexMatches,
+        ...(project?.hostWorkspacePath === undefined ? {} : { host_workspace_path: project.hostWorkspacePath }),
         ...(project ? { project_id: project.projectId, project_name: project.projectName,
           project_deleted: project.projectDeleted, additional_directories: project.additionalDirectories } : {}) };
     },
@@ -156,7 +167,8 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
       const db = openReadOnly(indexDbPath);
       try {
         const conditions = ['deleted=0'], args = [];
-        const columns = taskColumnsFor(db);
+        const columns = taskColumnsFor(db, true);
+        const executionDirectory = executionDirectorySql(columns);
         const projectColumns = columns.includes('project_id') ? `, execution_directories,
           (SELECT COUNT(*) FROM project_roots WHERE project_id=tasks.project_id) AS project_root_count,
           (SELECT json_group_array(root_path) FROM (
@@ -169,7 +181,7 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
         if (!include_archived) conditions.push('archived=0');
         if (workspace_path !== undefined || query !== undefined) db.function('normalize_workspace', normalizeWorkspace);
         if (workspace_path !== undefined) {
-          conditions.push('normalize_workspace(workspace_path)=?');
+          conditions.push(`normalize_workspace(${executionDirectory})=?`);
           args.push(normalizeWorkspace(workspace_path));
         }
         if (query !== undefined) {
@@ -183,7 +195,7 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
               SELECT 1 FROM json_each(execution_directories) directory WHERE instr(normalize_workspace(directory.value),?)>0
             ))` : '';
           conditions.push(`(instr(lower(title),lower(?))>0 OR instr(lower(task_id),lower(?))>0
-            OR instr(normalize_workspace(workspace_path),?)>0${projectQuery})`);
+            OR instr(normalize_workspace(${executionDirectory}),?)>0${projectQuery})`);
           args.push(query, query, pathQuery);
           if (projectColumns) args.push(pathQuery, pathQuery, pathQuery);
         }
@@ -208,15 +220,16 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
       const db = openReadOnly(indexDbPath);
       try {
         const conditions = ['deleted=0', 'pinned=1'], args = [];
+        const columns = taskColumnsFor(db, true);
         if (!include_archived) conditions.push('archived=0');
         if (workspace_path !== undefined) {
           db.function('normalize_workspace', normalizeWorkspace);
-          conditions.push('normalize_workspace(workspace_path)=?');
+          conditions.push(`normalize_workspace(${executionDirectorySql(columns)})=?`);
           args.push(normalizeWorkspace(workspace_path));
         }
         const where = conditions.join(' AND ');
         const total = db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${where}`).get(...args).n;
-        const sessions = db.prepare(`SELECT ${taskColumnsFor(db)} FROM tasks WHERE ${where}
+        const sessions = db.prepare(`SELECT ${columns} FROM tasks WHERE ${where}
           ORDER BY updated_at DESC, task_id, workspace_key LIMIT ? OFFSET ?`).all(...args, limit, offset).map(taskItem);
         const next = offset + sessions.length;
         return { source: 'local_tasks_index', sessions, total, next_offset: next < total ? next : null };
@@ -234,7 +247,7 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
           conditions.push('normalize_workspace(workspace_path)=?');
           args.push(normalizeWorkspace(workspace_path));
         }
-        return db.prepare(`SELECT ${taskColumnsFor(db)} FROM tasks WHERE ${conditions.join(' AND ')}`).all(...args).map(taskItem);
+        return db.prepare(`SELECT ${taskColumnsFor(db, true)} FROM tasks WHERE ${conditions.join(' AND ')}`).all(...args).map(taskItem);
       } finally { db.close(); }
     },
     // 定时任务清单：直读 automations 表（官方任务索引同库），只读、离线可用；
@@ -264,7 +277,7 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
       try {
         const keyFilter = workspace_key === undefined ? '' : ' AND workspace_key=?';
         const args = workspace_key === undefined ? [session_id] : [session_id, workspace_key];
-        const rows = index.prepare(`SELECT ${taskColumnsFor(index)} FROM tasks WHERE task_id=? AND deleted=0${keyFilter}`).all(...args);
+        const rows = index.prepare(`SELECT ${taskColumnsFor(index, true)} FROM tasks WHERE task_id=? AND deleted=0${keyFilter}`).all(...args);
         if (!rows.length) throw new Error('session_not_found: 任务索引中没有该会话，或它已删除');
         if (rows.length > 1) throw new Error('ambiguous_session: 此 ID 属于多个工作区，请使用列表返回的 workspace_key');
         task = taskItem(rows[0]);
@@ -274,7 +287,7 @@ export function createSessionReader({ indexDbPath, sessionDbPath }) {
       try {
         const session = db.prepare('SELECT id, title, directory, revert FROM session WHERE id=?').get(session_id);
         if (!session) throw new Error('history_not_found: 指定会话不在本地 CLI 历史库中');
-        if (normalizeWorkspace(session.directory) !== normalizeWorkspace(task.workspace_path))
+        if (typeof task.workspace_path !== 'string' || normalizeWorkspace(session.directory) !== normalizeWorkspace(task.workspace_path))
           throw new Error('workspace_mismatch: 任务索引与本地历史库的工作区不一致');
         const parts = new Map();
         for (const row of db.prepare(`SELECT id, message_id, CASE WHEN json_extract(data,'$.type')='text' THEN data

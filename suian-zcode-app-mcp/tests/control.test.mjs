@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import packageMetadata from '../package.json' with { type: 'json' };
+import './fixtures.mjs';
 
 const workspace = 'D:\\fixture';
 const model = { provider_id: 'fixture', model_id: 'flash', reasoning_level: 'low' };
@@ -55,7 +56,7 @@ async function fixture(overrides = {}) {
       listSessions: args => overrides.listSessions ? overrides.listSessions(args)
         : { sessions: [{ session_id: args.query, archived, pinned }] },
       listSessionStates: args => overrides.listSessionStates ? overrides.listSessionStates(args)
-        : [{ session_id: args.session_id, archived, pinned }],
+        : [{ session_id: args.session_id, archived, pinned, ...(overrides.archiveSnapshot ? { host_workspace_path: workspace } : {}) }],
       sessionMode: args => overrides.sessionMode ? overrides.sessionMode(args) : { mode: persistedMode, observed: [persistedMode] },
       sessionProjectId: args => overrides.sessionProjectId ? overrides.sessionProjectId(args) : undefined },
     loadAuthorization: async () => { throw new Error('网关调用不得读取旧远控凭据'); },
@@ -63,8 +64,12 @@ async function fixture(overrides = {}) {
     delay: async () => {},
     connect: async args => {
       const connection = { args, closed: false }; connections.push(connection);
-      let helloIssued = false, boundClientId;
-      return { workspacePath: workspace, bootstrap: overrides.bootstrap ?? { desktopAppVersion: '3.16.1' }, close: () => { connection.closed = true; }, call: async (channel, method, params) => {
+      let helloIssued = false, boundClientId, archiveListener, subscriptions = 0;
+      return { workspacePath: workspace, bootstrap: overrides.bootstrap ?? { desktopAppVersion: '3.16.1' }, close: () => { connection.closed = true; },
+        listen(channel, event, target) {
+          assert.equal(channel, 'zcode-agent'); assert.equal(event, 'onDynamicConversationFrame'); assert.equal(target.workspacePath, workspace);
+          return listener => { archiveListener = listener; return { dispose() { archiveListener = undefined; } }; };
+        }, call: async (channel, method, params) => {
         calls.push({ channel, method, params });
         if (method === 'helloConversationV4') {
           helloIssued = true;
@@ -86,6 +91,15 @@ async function fixture(overrides = {}) {
         }
         if (method === 'createTask') persistedMode = params[0].mode ?? 'build';
         if (overrides[method]) return overrides[method](params);
+        if (method === 'subscribeConversationV4' && overrides.archiveSnapshot) {
+          assert.ok(boundClientId); assert.equal(params[0].workspacePath, workspace);
+          const { sessionId } = params[0], topic = `conversation/${sessionId}`, subscriptionId = `archive-${++subscriptions}`;
+          const snapshot = overrides.archiveSnapshot(archiveSnapshot(sessionId), subscriptions);
+          const frame = { topic, subscriptionId, fromSeq: 0, toSeq: 4, sentAt: 1, payload: { kind: 'snapshot', snapshot } };
+          archiveListener({ kind: 'complete', wireVersion: 3, deliveryKind: 'initial', logicalFrameId: subscriptionId, logicalFrameOrdinal: 1,
+            topic, subscriptionId, frame });
+          return { ack: { mode: 'snapshot', subscriptionId, logEpoch: 'archive-test' } };
+        }
         if (method === 'getView') return { providers: [{ providerId: 'fixture', models: [{ modelId: 'flash', config: { optionSpecs: { reasoningLevel: { values: ['low'] } } } }] }] };
         if (method === 'createTask') return { taskId: 'sess_new', workspacePath: workspace, title: '默认标题', mode: params[0].mode ?? 'build' };
         if (method === 'getTaskMeta') return { taskId: params[0].taskId, workspacePath: workspace, title: '新标题' };
@@ -99,6 +113,32 @@ async function fixture(overrides = {}) {
     }
   });
   return { controller, calls, connections, policies };
+}
+
+function archiveSnapshot(sessionId) {
+  return { protocolVersion: 1, sessionId, logEpoch: 'archive-test', seq: 4, revision: 4,
+    control: { phase: 'completedSuccess', sessionEnded: true, canStop: false, stopState: 'idle', stopTargetKind: 'unknown', activeWorks: [], lastError: null, apiRetry: null },
+    availability: Object.fromEntries(['fork', 'compact', 'switchModelConfig', 'setFollowupMode', 'queueEdit', 'sendQueuedNow', 'pauseGoal', 'resumeGoal'].map(key => [key, { allowed: true }])),
+    inputRouting: { mode: 'startNow' }, config: { provider: 'fixture', model: 'fixture', thought: 'disabled', thoughtLevels: ['disabled'], followupMode: 'queue', mode: 'build', modelSelection: { providerId: 'fixture', modelId: 'fixture' }, planEnabled: false },
+    usage: { contextWindow: null, cumulative: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+    queue: { items: [], autoDrain: true }, pendingInteractions: [], pendingCommands: [], backgroundWorks: [], goal: null, plan: null,
+    rows: { window: [], totalCount: 0, firstRowId: null } };
+}
+
+for (const [operation, type] of [['sendMessage', 'sendText'], ['compactSession', 'compact']]) {
+  test(`原生工作树 ${type} 直接走 V4，不经旧恢复接口`, async () => {
+    const f = await fixture({
+      getTaskMeta: () => ({ taskId: 'sess_worktree', workspacePath: workspace, worktreeRoot: 'D:/trees/work' }),
+      resumeTask: () => { throw new Error('ZCode Agent runtime is not running.'); },
+      sendConversationCommandV4: ([{ envelope }]) => ({ commandId: envelope.commandId, status: 'accepted',
+        result: { type: 'inputAccepted', inputId: envelope.commandId, delivery: 'startNow' } }),
+    });
+    const result = await f.controller[operation]({ session_id: 'sess_worktree', workspace_path: workspace,
+      ...(type === 'sendText' ? { message: '验证工作树发信' } : {}) });
+    assert.equal(result.delivery_status ?? result.command_status, 'accepted');
+    assert.deepEqual(f.calls.map(call => call.method), ['helloConversationV4', 'initializeConversationV4', 'getTaskMeta', 'sendConversationCommandV4']);
+    assert.equal(f.calls.at(-1).params[0].envelope.type, type);
+  });
 }
 
 test('创建使用指定模型，首发并确认落库后命名；发信与改名可使用返回 ID', async () => {
@@ -371,6 +411,60 @@ test('闲置归档与复原读回索引；二次检查出现活动时拒绝归�
   assert.equal(raced.calls.filter(c => c.method === 'archiveTask').length, 0);
 });
 
+test('原生工作树闲置时经两份 V4 运行态检查再归档，不依赖旧快照', async () => {
+  const f = await fixture({ archiveSnapshot: snapshot => snapshot,
+    getTaskSnapshot() { throw new Error('ZCode Agent runtime is not running.'); } });
+  const result = await f.controller.archiveSession({ session_id: 'sess_worktree', workspace_path: workspace });
+  assert.equal(result.archived, true);
+  assert.deepEqual(result.active_reasons, []);
+  assert.deepEqual(f.calls.slice(-5).map(call => call.method), [
+    'subscribeConversationV4', 'unsubscribeConversationV4', 'subscribeConversationV4', 'unsubscribeConversationV4', 'archiveTask',
+  ]);
+});
+
+test('原生工作树归档复查从空闲变成运行时，返回确认要求且不归档', async () => {
+  const f = await fixture({ archiveSnapshot(snapshot, check) {
+    if (check === 2) Object.assign(snapshot.control, { phase: 'running', sessionEnded: false, canStop: true, stopState: 'stoppable' });
+    return snapshot;
+  } });
+  const result = await f.controller.archiveSession({ session_id: 'sess_worktree' });
+  assert.equal(result.status, 'confirmation_required');
+  assert.equal(result.requires_confirmation, true);
+  assert.deepEqual(result.active_reasons, [{ code: 'main_agent_active' }]);
+  assert.equal(f.calls.filter(call => call.method === 'unsubscribeConversationV4').length, 2);
+  assert.ok(!f.calls.some(call => call.method === 'archiveTask'));
+});
+
+test('原生工作树保留后台、子代理、计划、目标、待执行命令和交互检查', async () => {
+  const f = await fixture({ archiveSnapshot: snapshot => ({ ...snapshot,
+    backgroundWorks: [{ workId: 'job', kind: 'bash', title: 'job', status: 'failed', startedAt: 1, anchorRowId: null }],
+    subagents: { revision: 1, childSessionIds: ['child'], running: [{ childSessionId: 'child', subagentType: 'fixture', title: 'child', status: 'waiting' }], endedTotal: 0 },
+    plan: { items: [{ id: 'todo', content: 'todo', status: 'inProgress' }], updatedAt: 1 },
+    goal: { objective: 'goal', status: 'paused', iteration: 1, verifications: [] },
+    pendingCommands: [{ commandId: 'command', clientId: 'fixture', type: 'compact', state: 'accepted', at: 1 }],
+    pendingInteractions: [{ interactionId: 'request', kind: 'userInput', anchorRowId: null, createdAt: 1,
+      payload: { kind: 'userInput', prompt: 'confirm?', freeText: true } }],
+  }) });
+  const result = await f.controller.archiveSession({ session_id: 'sess_worktree' });
+  assert.equal(result.requires_confirmation, true);
+  assert.deepEqual(result.active_reasons, [
+    { code: 'background_task_attached', job_id: 'job', status: 'failed_or_lost' },
+    { code: 'subagent_attached', job_id: 'child', status: 'waiting' },
+    { code: 'unfinished_task', task_id: 'todo', status: 'in_progress' },
+    { code: 'unfinished_goal', status: 'paused' },
+    { code: 'pending_commands', count: 1 },
+    { code: 'pending_interaction' },
+  ]);
+  assert.ok(!f.calls.some(call => call.method === 'archiveTask'));
+});
+
+test('原生工作树第二份快照归属不符，即使 force 也不归档', async () => {
+  const f = await fixture({ archiveSnapshot: (snapshot, check) => check === 2 ? { ...snapshot, sessionId: 'unrelated' } : snapshot });
+  await assert.rejects(f.controller.archiveSession({ session_id: 'sess_worktree', force: true }), /activity_unknown/);
+  assert.equal(f.calls.filter(call => call.method === 'unsubscribeConversationV4').length, 2);
+  assert.ok(!f.calls.some(call => call.method === 'archiveTask'));
+});
+
 test('置顶与取消置顶经网关写入并从索引读回确认，置顶与归档互不排斥', async () => {
   const f = await fixture();
   const pinned = await f.controller.pinSession({ session_id: 'sess_new' });
@@ -431,7 +525,7 @@ test('归档与置顶读回把 workspace_key 透传到精确查询做跨工作�
   });
   await f.controller.archiveSession({ session_id: 'sess_new', workspace_key: 'D:\\work\\beta' });
   await f.controller.pinSession({ session_id: 'sess_new', workspace_key: 'kb' });
-  assert.deepEqual(requested.map(args => args.workspace_key), ['D:\\work\\beta', 'kb']);
+  assert.deepEqual(requested.map(args => args.workspace_key), ['D:\\work\\beta', 'D:\\work\\beta', 'kb']);
   assert.ok(requested.every(args => args.session_id === 'sess_new' && typeof args.workspace_path === 'string'));
 });
 

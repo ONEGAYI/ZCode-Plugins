@@ -2,6 +2,49 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from './fixtures.mjs';
 
+test('原生工作树历史按执行目录校验，会话控制仍附着原项目', async t => {
+  const f = fixture(t);
+  const host = 'D:/work/alpha', cwd = 'D:/worktrees/alpha/packages/ui', id = 'session_worktree';
+  f.task({ id, workspace: host, pinned: 1 });
+  f.session({ id, directory: cwd });
+  f.index.exec('ALTER TABLE tasks ADD COLUMN project_id TEXT; ALTER TABLE tasks ADD COLUMN host_id TEXT; ALTER TABLE tasks ADD COLUMN root_path TEXT; ALTER TABLE tasks ADD COLUMN worktree_root TEXT; ALTER TABLE tasks ADD COLUMN execution_directories TEXT;');
+  f.index.exec("CREATE TABLE projects (project_id TEXT, host_id TEXT, name TEXT, deleted INTEGER); CREATE TABLE project_roots (project_id TEXT, root_path TEXT, position INTEGER); INSERT INTO projects VALUES ('project','local','Project',0);");
+  f.index.prepare('INSERT INTO project_roots VALUES (?,?,0)').run('project', host);
+  f.index.prepare("UPDATE tasks SET host_id='local', project_id='project', execution_directories='[]', root_path=?, worktree_root=?").run(cwd, 'D:/worktrees/alpha');
+  const { createSessionReader } = await import('../sessions.mjs');
+  const { createSessionController } = await import('../control.mjs');
+  const reader = createSessionReader(f);
+  const page = await reader.readSession({ session_id: id });
+  assert.equal(page.session.workspace_path, cwd);
+  assert.equal(page.session.host_workspace_path, host);
+  assert.equal(reader.listSessionStates({ session_id: id, workspace_path: host })[0].host_workspace_path, host);
+  const overview = await reader.sessionOverview({ session_id: id });
+  assert.equal(overview.workspace_path, cwd);
+  assert.equal(overview.host_workspace_path, host);
+  for (const list of ['listSessions', 'listPinnedSessions']) {
+    const { sessions } = reader[list]({ workspace_path: cwd });
+    assert.deepEqual(sessions.map(s => [s.session_id, s.workspace_path, s.host_workspace_path]), [[id, cwd, host]]);
+    assert.equal(reader[list]({ workspace_path: host }).total, 0, '路径筛选只匹配执行目录，项目归属用 project_id');
+  }
+  assert.equal(reader.listSessions({ project_id: 'project', query: cwd }).total, 1);
+  const controller = createSessionController({ reader, connect: async options => {
+    assert.equal(options.workspacePath, host);
+    assert.equal(options.sessionId, id);
+    return { workspacePath: host, close() {}, async call(channel, method, [args]) {
+      assert.equal(channel, 'zcode-task');
+      assert.equal(method, 'getTaskSnapshot');
+      assert.equal(args.workspacePath, host);
+      return { meta: { taskId: id, status: 'completed' } };
+    } };
+  } });
+  assert.equal((await controller.getSessionStatus({ session_id: id })).status, 'completed');
+  f.history.prepare('UPDATE session SET directory=?').run(host);
+  await assert.rejects(reader.readSession({ session_id: id }), /workspace_mismatch/);
+  f.history.prepare('UPDATE session SET directory=?').run(cwd);
+  f.index.exec('UPDATE tasks SET worktree_root=NULL');
+  await assert.rejects(reader.readSession({ session_id: id }), /workspace_mismatch/);
+});
+
 test('list_sessions 置顶优先，置顶内部与非置顶各自按更新时间排序，排除删除与归档项', async t => {
   const f = fixture(t);
   f.task({ id: 'sess_old', updated: 10 });

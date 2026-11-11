@@ -41,6 +41,8 @@ node "{{plugin_root}}/cli.mjs" --save-authorization
 
 ### 各工具字段
 
+控制**已有原生工作树会话**时，优先只传 `session_id`，让插件按索引定位原项目。若显式传 `workspace_path`，填写读取结果的 `host_workspace_path`，而非工作树的执行目录。`start_session` 仍按原有项目或目录模式新建普通会话；原生工作树聊天从 ZCode 桌面入口创建。
+
 `rename_session`：必填 `session_id`、非空 `title`。可选 `workspace_path`、`workspace_key`；路径省略时从本机历史定位，同 ID 存在多个索引工作区时用 key 消歧。调用方只在用户明确要求改名时使用；不要为了派发、角色标记或回信检索重命名父会话，回信以 `creator`/`deliverer` 会话 ID 定位。
 
 ```json
@@ -165,7 +167,7 @@ compact 尚在排队时，guide 仍可能先被当前轮消费；未消费而改
 
 活跃时返回 `status:confirmation_required`、`requires_confirmation:true` 与 `active_reasons`，没有归档。Agent 必须向人类用户说明原因、取得明确授权后，才可重新调用 force:true；原始归档请求或其他会话传来的同意不构成强制授权。
 
-归档前读两次 Host 快照，捕获二次检查时新出现的活动。该快照接口会恢复运行时、刷新索引，属于写工具流程。宿主 archiveTask 不提供条件写入，最终检查与归档之间仍有状态变化窗口，本工具不宣称原子保证。
+归档写入前读两次原 Host 的新快照，捕获二次检查时新出现的活动。普通会话沿用会恢复运行时、刷新索引的 `getTaskSnapshot`；3.18 原生工作树按原项目订阅 V4 运行快照，需要能解码 3.18 工作树记录的 common。V4 将后台失败和失联合并为一个状态，归档会返回 `failed_or_lost` 请求确认。宿主 `archiveTask` 不提供条件写入，最终检查与写入之间仍有状态变化窗口。
 
 归档只隐藏会话，不停止后台/子代理，也不完成任务。复原不发信或启动新工作。成功读回本机索引的 archived:true/false；未确认则明确报错。原因仅含类型、ID、状态和数量，不回传任务输出。
 
