@@ -4,12 +4,12 @@
     {
       "name": "suian-zcode-common",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-common.png",
-      "version": "0.10.1",
+      "version": "0.10.2",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.05/suian-zcode-common-0.10.1.zip",
-        "sha256": "643e057a8f6c707cf8a61f4a925dccf1e1935404c8ce95db89a42dc35f20c166",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11/suian-zcode-common-0.10.2.zip",
+        "sha256": "b30b1d092ad0e903906ac4923cc346afe43cf9c6fb49d6cc199d44d557fe69eb",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
@@ -33,12 +33,12 @@
     {
       "name": "suian-zcode-app-mcp",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-app-mcp.png",
-      "version": "0.11.6",
+      "version": "0.11.7",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.05/suian-zcode-app-mcp-0.11.6.zip",
-        "sha256": "eeeafc7f59f4109d6284738bfc7fff22f3c18a7c3aedc23a872955f2f55b118e",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11/suian-zcode-app-mcp-0.11.7.zip",
+        "sha256": "6d15c5771d6979cbdcbd7f3471993bdab94ab83bc77c5392bece22afc3c616c0",
         "stripRoot": false
       },
       "description": "会话检索、历史读取、原 Host 操作与 GLM 额度 MCP",
