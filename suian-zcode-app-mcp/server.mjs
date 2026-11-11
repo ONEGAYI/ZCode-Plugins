@@ -62,7 +62,7 @@ export async function createMcpServer(config, { controller, prStatus, reveal } =
   }, respond('list_projects', () => reader.listProjects()));
   server.registerTool('read_session', {
     title: '读取 ZCode 聊天消息',
-    description: '读取本机持久化分支的可见用户与助手消息，含完整正文与附件信息，不含工具输出、思考及隐藏通知。页内按时间顺序；将 next_before_message_id 传入 before_message_id 续读更早历史。非实时流；远端或未入索引的会话报错。',
+    description: '读取本机持久化分支的可见用户与助手消息，含完整正文与附件信息，不含工具输出、思考及隐藏通知。页内按时间顺序；用 next_before_message_id 续读。原生工作树的 workspace_path 是执行目录，host_workspace_path 才用于会话控制。非实时流；远端或未入索引的会话报错。',
     inputSchema: z.object({
       session_id: z.string().min(1),
       workspace_key: z.string().min(1).optional(),
@@ -95,7 +95,7 @@ export async function createMcpServer(config, { controller, prStatus, reveal } =
   };
   const oneMessage = args => (args.message === undefined) !== (args.message_file === undefined);
   const messageSchemaMeta = { oneOf: [{ required: ['message'] }, { required: ['message_file'] }] };
-  const target = { session_id: nonempty, workspace_path: nonempty.optional(), workspace_key: nonempty.optional() };
+  const target = { session_id: nonempty, workspace_path: nonempty.optional().describe('原 Host 归属目录。工作树会话请省略本参数让服务定位，或传读取结果的 host_workspace_path。'), workspace_key: nonempty.optional() };
   server.registerTool('rename_session', {
     title: '重命名 ZCode 会话',
     description: '仅按用户明确要求改名并读回确认；不为派发、角色标记或回信改父会话名称，回信用 creator/deliverer ID。目标工作区须已在网关连接的 Desktop 打开；省略 workspace_path 从本机历史定位。',

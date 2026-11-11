@@ -101,6 +101,6 @@ ZCode-Plugins/
 │   └── skills/             # setup / configuration / debug
 │
 └── sources/                # 上游源码 submodule 引用（只读，见 sources/README.md）
-    ├── official-zcode/     # zai-org/ZCode @ a60ba6a7（2026-10-30 快照，即 tag v3.17.1，包含 Relay V2 与自动轮 CronPauseSelf）
+    ├── official-zcode/     # zai-org/ZCode @ b95ebaf（2026-11-11 的 v3.18.0 公开源码快照，含原生工作树会话）
     └── zcode-open-bridge/  # tizerluo/zcode-open-bridge @ e8bd9bc（社区桥接参考）
 ```

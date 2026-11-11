@@ -39,6 +39,7 @@ async function boundContext(workspaceRoot, meta, indexDbPath, selectedRoot) {
   if (!(await stat(workspacePath)).isDirectory()) throw failure('workspace_binding_unavailable', '所选工作区不是目录');
   const identityPath = process.platform === 'win32' ? workspacePath.toLowerCase() : workspacePath;
   return { sessionId: ids[0], workspacePath, workspaceRoot: chosen, sessionWorkspacePath: project.workspacePath, workspaceRoots, projectId: project.projectId,
+    ...(project.hostWorkspacePath === undefined ? {} : { hostWorkspacePath: project.hostWorkspacePath }),
     workspaceIdentity: `sha256:${createHash('sha256').update(identityPath).digest('hex')}`,
     capabilities: { readText: true, saveText: true } };
 }

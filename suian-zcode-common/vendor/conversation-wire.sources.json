@@ -1,6 +1,6 @@
 {
   "sourceRepository": "https://github.com/zai-org/ZCode",
-  "ref": "aac4755666d09fdcd70272fcf063c077a639015f",
+  "ref": "b95ebaffeab641907b38652f45c1502bd762972d",
   "entryExports": [
     "TopicWireFrameAssembler",
     "PROTOCOL_V4_LIMITS",
@@ -13,7 +13,8 @@
     "esbuild": "0.28.2",
     "target": "node24",
     "format": "esm",
-    "sourceModified": false
+    "sourceModified": false,
+    "minify": true
   },
   "dependencies": [
     {
@@ -29,202 +30,226 @@
   ],
   "inputs": {
     "packages/shared/src/attachment-source.ts": {
-      "bytes": 287,
-      "sha256": "1ab5985a30d2be53e9e3af364e04c8a902ce4a6dc3b9bcc18e8d81c227d37069"
+      "bytes": 292,
+      "sha256": "5baaed66d1a601e516551f9f170a8432efc31d437a24d70bb296382ce9a46a92"
     },
     "packages/shared/src/bash-output-display.ts": {
-      "bytes": 356,
-      "sha256": "3dc88eb1f016259e220be9f02f07c344de51b4fed081a9cd59a40a5cd525cc0a"
+      "bytes": 367,
+      "sha256": "bbca12a367977cba7f80f70c2eef4d05a3352cafd613cf565f0102c2c1662ff9"
     },
     "packages/shared/src/bots.ts": {
-      "bytes": 28902,
-      "sha256": "c9ae67d700e4f744118348e3cb4517968393d9f86fa7d0e8cbf5c957b3ba315d"
+      "bytes": 31110,
+      "sha256": "6dade68293bd7c997b6a731038605568ea0b41da10c569d86e4f872bb97f5ea4"
     },
     "packages/shared/src/channel-mention.ts": {
-      "bytes": 4671,
-      "sha256": "0266aa4b95b1d8d86ac41be66a7ae9e3f9be0a945c11dedba358c5892ab94ebf"
+      "bytes": 4802,
+      "sha256": "6815d18a3e178707e5c09050638c4d208b49c4507153d247cdc383abf6e0b160"
     },
     "packages/shared/src/conversationSelection.ts": {
-      "bytes": 1444,
-      "sha256": "b76e80d143f71afea20dcddee9414324c4964f1d1ef36e836a39a810a6960e75"
+      "bytes": 2118,
+      "sha256": "cde42d3cec2d35b64f605caf37b3798aea80bc722672e3548c44ab5ba3b79de0"
     },
     "packages/shared/src/execution-output-preview.ts": {
-      "bytes": 568,
-      "sha256": "49baa10419388ea695d87458f2c0fa614bdd7cfeb57543cc7f0437403b753282"
+      "bytes": 582,
+      "sha256": "2126a2ac076a6702ce582b2a76dea885d2ecd3a7b19fd4df7802adb2627065bb"
+    },
+    "packages/shared/src/gen-ui/contract.ts": {
+      "bytes": 8489,
+      "sha256": "155f162f1df618984da7c645550d45ebdd081492b520ba70e0d5b9f493555ca1"
+    },
+    "packages/shared/src/gen-ui/tweakProtocol.ts": {
+      "bytes": 4633,
+      "sha256": "e6841fce469235e7e7947b10f79ea855b62d354bacc0a255cef2e4a8fef6f07a"
     },
     "packages/shared/src/highspeed.ts": {
-      "bytes": 9245,
-      "sha256": "29ba3aa286c36751c89cae4a445fb52a0ab9251c5a086ddde2491e11d85b54b2"
+      "bytes": 9633,
+      "sha256": "5a3f19ea76d9fca716d575809919477a231d5ffbc7294b7b0607b9d23a6060dd"
     },
-    "packages/shared/src/localTtft.ts": {
-      "bytes": 6819,
-      "sha256": "b6f6963535fddb455bf6adcf1c82e08dd609fb2f8bf7b6398c16cd164b3b3597"
+    "packages/shared/src/local-ttft/contract.ts": {
+      "bytes": 8598,
+      "sha256": "5918145d5e97c1875af2f32514bf1c9a405961e18f45c3cbf7c2397800180c00"
     },
     "packages/shared/src/mcp-apps/contract.ts": {
-      "bytes": 13446,
-      "sha256": "1bf5fcbea477863d04a5abec601f2d31a598555916916af7e120418daef2329d"
+      "bytes": 15410,
+      "sha256": "5959d91270b7b230f7ec418191b07267be2138b68f5788976bf9f1ee7bad691d"
     },
     "packages/shared/src/mcp-apps/instance.ts": {
-      "bytes": 401,
-      "sha256": "3488a275435494df1bfd3e271086353712e11971f64aa74f54695aef02ea2612"
+      "bytes": 413,
+      "sha256": "37957024c57b233b9382c1b1fb869d6fcde902f97a6085127f181a5d4ba09651"
     },
     "packages/shared/src/mcp-apps/resourceMime.ts": {
-      "bytes": 2302,
-      "sha256": "b21b1ac738deb13ec89ce7ffd88cadb57101f4687ed20b044ff2d7ab2547ce5d"
+      "bytes": 2375,
+      "sha256": "11e8b2621e51e8d39a9ed7a5ae19b785d35faa618d72eaa1a18b0458b6dfe588"
     },
     "packages/shared/src/mcp-apps/schemas.ts": {
-      "bytes": 3544,
-      "sha256": "4966c53d26ff0cfdb7f0d43eaa5bf7e13a3fb2ecba772cc0b0032da2a00f37aa"
+      "bytes": 4143,
+      "sha256": "1b37e74105a8cc0a4a3f2eeebd7a9dbfc87f39ee5f915712860f58d257a02867"
     },
     "packages/shared/src/model-execution.ts": {
-      "bytes": 2922,
-      "sha256": "c9990f7599ab3825f73633826ddf6a0296a87e4de5380848a9cf27bf3f8b8d44"
+      "bytes": 3271,
+      "sha256": "3f0d8527092e3d6a0d64df08024b5e95d2aeb64a606d39e03c0b95f4b26c435e"
     },
     "packages/shared/src/model-provider-types.ts": {
-      "bytes": 3104,
-      "sha256": "7136b3e33dc7274e747e14f6c66cb4acf908dc6f2d8cf2b28adfc569bee218e8"
+      "bytes": 3185,
+      "sha256": "9fed9dc7d760aab59c445061cce16366242a685afacf2711dd9d7cb3599e9444"
     },
     "packages/shared/src/model-selection.ts": {
-      "bytes": 2457,
-      "sha256": "653a4671723d4a3302e84ba13f29d4d55a17e5e8082b44d54ba1f9087dbd3e44"
+      "bytes": 2517,
+      "sha256": "442498766249e4dd5489884a6f734957da86c04ac429d97366ae4f4a9c399115"
     },
     "packages/shared/src/official-mcp-tool-error.ts": {
-      "bytes": 2851,
-      "sha256": "74f966961b89565e035b50b93523cd643c9fe4f61cca4fab70e8c8759ef3fcc8"
+      "bytes": 2919,
+      "sha256": "2063733d91476845b227d3536fe0904d7ae5a848d805526c8ce3be1b56df03cc"
+    },
+    "packages/shared/src/plugin-marketplaces.ts": {
+      "bytes": 3245,
+      "sha256": "148d83ee813615b13b090e5d55e766aefe92b7e3cb07b282683c280dc6a33ca3"
+    },
+    "packages/shared/src/plugin-store-visibility.ts": {
+      "bytes": 864,
+      "sha256": "f0e12676672fb48f836e632d0ba1e8ef96a4fd007b8f237ac311ac4a9b8f6b4d"
+    },
+    "packages/shared/src/protocol.ts": {
+      "bytes": 19806,
+      "sha256": "bdb529a970ea4238500c8e1b961b0e1ea14e946cac1829ebf99aae1b6f566395"
     },
     "packages/shared/src/usage-quota.ts": {
-      "bytes": 2388,
-      "sha256": "d1d24da014972689fedbcb22fd97151ab46ed5462b60f7998e880546eba3fd5d"
+      "bytes": 2462,
+      "sha256": "d579edc51e07055517a24d34cf9387f432878df6efe1a65356f342e4af8cda81"
     },
     "packages/shared/src/usage-stats.ts": {
-      "bytes": 16210,
-      "sha256": "bf0ee2afd42bd9f9dd1e3a44babcd3fc664ad9c572e8d7dfb6e466db2c857c6b"
+      "bytes": 16686,
+      "sha256": "56cff80d182b8f51eb1873be37586be02068120cf131646a0a4f72e4cbd9ef20"
     },
     "packages/shared/src/zcode-agent-policy.ts": {
-      "bytes": 1679,
-      "sha256": "a6ca9b6deaa62ee1930848bb71e08304bb702c7f0da52ace69240d29903b7800"
+      "bytes": 1727,
+      "sha256": "e3d65d0f67a8c06a1386f71d4301bf01cc904ccb3c165d5c10b52f9774286e09"
     },
     "packages/shared/src/zcode-media-policy.ts": {
-      "bytes": 451,
-      "sha256": "47ccb08304cf2a24f4795dc6ded2ef5712d1ee1bad5c8bffb4d6081dc86dcde1"
+      "bytes": 461,
+      "sha256": "e390b29ef5e322bb8247e0146d6a91c6e5ac0baf07bc2a3bb1cd8eefbc6374e1"
     },
     "packages/shared/src/zcode-protocol-legacy-types.ts": {
-      "bytes": 18529,
-      "sha256": "65ccbf8b925bd4cc3c4dbb9429c7c4d47c1e33a377602e690beec77c77dd4a17"
+      "bytes": 20088,
+      "sha256": "5808f72c4d2101afda663f4ea5b4f1bb150f0a6c45376d82580560711e3a2c40"
     },
     "packages/shared/src/zcode-protocol-v4/attachment-ref.ts": {
-      "bytes": 579,
-      "sha256": "aac64e061641380dbfa3df523a9c84eac5c485e6bec770723480e005a7107c52"
+      "bytes": 596,
+      "sha256": "005a90e0db177819171a9d7508b4a78a54d3b6922b3359dcbd4beea9eda3f43b"
     },
     "packages/shared/src/zcode-protocol-v4/core.ts": {
-      "bytes": 3859,
-      "sha256": "97750a7bab0a7580c1d27c8e0155981786fdbfa07373d46c77829f25eb407a39"
+      "bytes": 4557,
+      "sha256": "1827814cc4a0319612ec95495b58cc548d1b62f27f64ff65c5d6fe351c5a97f6"
     },
     "packages/shared/src/zcode-protocol-v4/create-workflow-display.ts": {
-      "bytes": 10358,
-      "sha256": "36b7a25a38bc75708cd4c0017728ce81506a572fa7d1a317ba343d0e32ff246a"
+      "bytes": 10560,
+      "sha256": "f998a456b8261f1b66676d47515eaf3de1b602835dce0721e1d4f61155994b36"
     },
     "packages/shared/src/zcode-protocol-v4/cuaPermission.ts": {
-      "bytes": 1395,
-      "sha256": "b9e3f0aaad5b356f2add8461fe4b3b1813fc3ea7991499df593606429a062d99"
+      "bytes": 1436,
+      "sha256": "2f8e7c6eec4a55d772d62cb40f8ca658394316e6c0bff4b69818adae32cd8b7c"
     },
     "packages/shared/src/zcode-protocol-v4/delta.ts": {
-      "bytes": 9993,
-      "sha256": "f61d3c1f800455c7ed747d463a93ef31a97fd05a429b14a97220cb9c8f18734f"
+      "bytes": 10411,
+      "sha256": "2ecc8ae2973c96be5e44bd86d944f09fb35ca055e7269520fbd535b898335192"
     },
     "packages/shared/src/zcode-protocol-v4/input-intent.ts": {
-      "bytes": 3723,
-      "sha256": "6ee238b780411c6d0364e042d547d98c5efe740ebc84580020e6336016431243"
+      "bytes": 5409,
+      "sha256": "15811c8760d18c064cab6647b9ff6afa3c396803e1995635ae356b53b1905a9d"
+    },
+    "packages/shared/src/zcode-protocol-v4/pluginInstall.ts": {
+      "bytes": 4252,
+      "sha256": "2b33f8465bd6b16580de0144d7f0a633abadac632932ea2f6b41622effaf1268"
     },
     "packages/shared/src/zcode-protocol-v4/rows.ts": {
-      "bytes": 18883,
-      "sha256": "22841e26950621a2c3261b1900c56e1a8e81708b5fd7f5b4c70a088d80ed3d5e"
+      "bytes": 24653,
+      "sha256": "99c5456ad926a54d407e6d357ab4d557dd840daa193819f6c4364d69d3f996e8"
     },
     "packages/shared/src/zcode-protocol-v4/session-config.ts": {
-      "bytes": 1789,
-      "sha256": "9a261de2b2c5bfc7d6cf8dd10598a9dc681bc54dbe1b46e753cf9909fd9b51a0"
+      "bytes": 1832,
+      "sha256": "ab5edc9bef80f598d5101afb943c1c5b4473753eba285b0b98e4c1e82826e6f1"
     },
     "packages/shared/src/zcode-protocol-v4/sessions-index-workflow-activity.ts": {
-      "bytes": 12441,
-      "sha256": "77a1a21c55f0721bccad6c9649230c313f164205a8ffbe3b76859573aa64e4b1"
+      "bytes": 12670,
+      "sha256": "727af5d697c85a2129dd002a503acbef2e0d2210e32dae41f8d6d13289ba33c1"
     },
     "packages/shared/src/zcode-protocol-v4/sessions-index.ts": {
-      "bytes": 3857,
-      "sha256": "494b2007dd8fc3c1f35098bc5778a8fa3d2f66d9183be340b3e21a5c59a86aa7"
+      "bytes": 5356,
+      "sha256": "5851a7c398837ba3cf4b2a746d714b52ad10618a613b241817e1801aae3dd594"
     },
     "packages/shared/src/zcode-protocol-v4/shared-context-import.ts": {
-      "bytes": 1463,
-      "sha256": "fcd422a4cb073af2ed2d4e74862e8360f14a7a94f58a736d7a3e09110f88f5de"
+      "bytes": 1501,
+      "sha256": "71d30aa9be2abcc1cab50f7bf1663e19be8e36845cc19a0b743df7385d7b7cbd"
     },
     "packages/shared/src/zcode-protocol-v4/shared-context-ref.ts": {
-      "bytes": 256,
-      "sha256": "660f6beb529f853660994f22a56149761cb7c775abb3ea047b3fdd5518294c76"
+      "bytes": 266,
+      "sha256": "b1323d33f8aac5a06e7d920c379e98236084d967da6db816b8f3eb2919d2396f"
     },
     "packages/shared/src/zcode-protocol-v4/snapshot.ts": {
-      "bytes": 20770,
-      "sha256": "679eea52a1b1f13ddd853de3d1ccf475a1b178f42905724a1c746089e7971017"
+      "bytes": 24858,
+      "sha256": "24be5871ba83d0a6d2c46159001328371f9fd971a79f27b51c60ecdd12df08a2"
     },
     "packages/shared/src/zcode-protocol-v4/submission.ts": {
-      "bytes": 296,
-      "sha256": "aba9b3d2140065615398429fe1404806b453ae5d854dce05e7c3b4271b0b3c57"
+      "bytes": 301,
+      "sha256": "1d443e80e1df123963fa8857fd73a0afe750f7b7731fd545d850104d55850cd8"
     },
     "packages/shared/src/zcode-protocol-v4/toolDisplay.ts": {
-      "bytes": 11904,
-      "sha256": "190018493c8dbd4641afd7ebb6109c3c01315328961abce6eb3fad900fe509d6"
+      "bytes": 12203,
+      "sha256": "2c05217734d1dfcd789354ef08eee31b946eb1364972bb6f055fbce024e9bbe7"
     },
     "packages/shared/src/zcode-protocol-v4/transport.ts": {
-      "bytes": 49163,
-      "sha256": "0cf319adb00db23360771c367cd853b49f3c69a939b242fb7f326c6cd71c16aa"
+      "bytes": 54245,
+      "sha256": "570b5191b8491a9de329d1770bbbd47b3b788d39bc7275709491fd007fcfcb78"
     },
     "packages/shared/src/zcode-protocol-v4/wire-assembler.ts": {
-      "bytes": 20238,
-      "sha256": "2ec210289bce920de3ebdb2dec324764ecd1b3d2620d185ea484f2ba7a2c6be1"
+      "bytes": 20815,
+      "sha256": "aad1fb3a89baf12059b3674e99f23dcc796e459ba89273517483b1d4abf396dc"
     },
     "packages/shared/src/zcode-protocol-v4/wire-binary.ts": {
-      "bytes": 2542,
-      "sha256": "28f287c5764d3d7afa56b6291e3cc67f4234ccb5749f365a66cc7260ddcfbfee"
+      "bytes": 2607,
+      "sha256": "fa8dc2c7764f16bfaa41f411ada7b7883aad7737122b5f539e3fa173e101b7a8"
     },
     "packages/shared/src/zcode-protocol-v4/wire-codec.ts": {
-      "bytes": 8428,
-      "sha256": "ac2494a3acc795c809c94ee9393f50271a9c2a0fd33813459e5ab93842ceef75"
+      "bytes": 8668,
+      "sha256": "3c089371d1447c2637009221d1270fff74486385488cfafb85693109ad72c314"
     },
     "packages/shared/src/zcode-protocol-v4/wire-fault.ts": {
-      "bytes": 2738,
-      "sha256": "b4e83c916358d395b725c603292ab99cc5e800eb6abbe5cea3f6c1df5f72aa6a"
+      "bytes": 2780,
+      "sha256": "bc2ac3b530bc31a6f6f24c76d14dee47086ceb9bd7c28751fc0b052826136a91"
     },
     "packages/shared/src/zcode-protocol-v4/wire.ts": {
-      "bytes": 5800,
-      "sha256": "b7dbb4556fdf10a3e9cc1dfe81ffe5a74d7dc05904db71efe18ecc7e96ee489a"
+      "bytes": 5959,
+      "sha256": "117255cfcf9e7baaf244cbebb929a5f65092fa5a61a3dff3d67e4d68511e55eb"
     },
     "packages/shared/src/zcode-protocol-v4/workflow-artifacts.ts": {
-      "bytes": 18031,
-      "sha256": "9f7c6d7ab87ba54b36923b1dd6553d0dc5e83c1f27633ff507ec2b3d7d276d31"
+      "bytes": 18544,
+      "sha256": "0c434b7ba9403edad2cb73f6cd96133b6a8d093e331d1508589c3ad30a77708e"
     },
     "packages/shared/src/zcode-protocol-v4/workflow-observation-display.ts": {
-      "bytes": 9740,
-      "sha256": "4b21c1e4cbd10ca616c6a590cf1a44dab773a4458a2ec3e8bafee43dbc3466f5"
+      "bytes": 10392,
+      "sha256": "8e37768819889235ff440b8e29991124a36b1b41663287ad8a870227ddbd0229"
     },
     "packages/shared/src/zcode-protocol-v4/workflow-row-meta.ts": {
-      "bytes": 10777,
-      "sha256": "d6511510d4dfdffa762998c2cf518e52e5579b99fd39dd3116aff42c3b8c4bea"
+      "bytes": 12845,
+      "sha256": "ed880eb77b86cf42911f3afa8d8b2b9144ba9e293de953a6abf79d7eefe6ceca"
     },
     "packages/shared/src/zcode-protocol-v4/workflow-runs.ts": {
-      "bytes": 37015,
-      "sha256": "f4cdba0b631468efaeba11f8f1a9dec03d7ff7896d00f145f68ea88812d7f9b5"
+      "bytes": 37604,
+      "sha256": "ea73e8f27e6156efc08c2297b1f66b629aebf970caa7c5177fc3112402b2946a"
     },
     "packages/shared/src/zcode-protocol-v4/workspace-config.ts": {
-      "bytes": 4283,
-      "sha256": "18052d64bbdfe4d575f8997b0ed7b5dbefb4d6a73bdd2483f876ff5b67d200a7"
+      "bytes": 4364,
+      "sha256": "5401cf0bbf316fda5d869ffb8873854233f76f3feb60d9c3a7b0776f22e1f2cf"
     },
     "packages/shared/src/zcode-protocol-v4/workspace-hook-review.ts": {
-      "bytes": 7026,
-      "sha256": "ff8b264a361862e5575145e635c0fa108a2ac7d82091764713e0a40b17a36ce7"
+      "bytes": 7236,
+      "sha256": "8338217899f97a04e24b9b1bea70c7f009ce2923956a3fe01cae95058b0faabf"
     },
     "packages/shared/src/zcode-protocol/trace.ts": {
-      "bytes": 349,
-      "sha256": "8d91e253aab67fed52e5b0e628126afad50a7ccdccc03a738c2c89f7460c417b"
+      "bytes": 360,
+      "sha256": "48d0faac152660cc21a94bd81ceb811d61af993391464e18c1944530cea93901"
     }
   },
-  "outputBytes": 562436,
-  "outputSha256": "7b74ae707b21ef9c59952bb9aac9e833f4345c25ac31908b7ccfa2b51319a0f1"
+  "outputBytes": 573693,
+  "outputSha256": "9d28309479fa8663da9d69b79b2b50566ada64772a7d0ebc0e88cb6ad64071bd"
 }

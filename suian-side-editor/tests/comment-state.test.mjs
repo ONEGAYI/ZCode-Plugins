@@ -1,10 +1,58 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from './fixtures.mjs';
 import { commentHost, channelCommentHost, v4Snapshot, userRow, queueItem } from './comment-host-fixture.mjs';
+
+test('原生工作树侧栏只写检出目录，评论按原项目路由并接受 3.18 工作树标记', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'comment-worktree-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const host = join(dir, 'project'), cwd = join(dir, 'worktree'), sessionId = 'session_worktree';
+  for (const path of [host, cwd]) { await mkdir(path); await writeFile(join(path, 'same.txt'), path); }
+  const indexDbPath = join(dir, 'index.sqlite'), db = new DatabaseSync(indexDbPath);
+  db.exec(`CREATE TABLE tasks (task_id TEXT, workspace_key TEXT, workspace_path TEXT, workspace_identity TEXT, root_path TEXT, worktree_root TEXT, host_id TEXT, project_id TEXT, execution_directories TEXT, deleted INTEGER);
+    CREATE TABLE projects (project_id TEXT, host_id TEXT, name TEXT, deleted INTEGER);
+    CREATE TABLE project_roots (project_id TEXT, root_path TEXT, position INTEGER);
+    INSERT INTO projects VALUES ('p', 'local', 'Project', 0);`);
+  db.prepare('INSERT INTO project_roots VALUES (?,?,?)').run('p', host, 0);
+  db.prepare("INSERT INTO tasks VALUES (?,?,?,NULL,?,?,'local','p','[]',0)").run(sessionId, host, host, cwd, cwd);
+  db.close();
+  const batch = JSON.stringify({ schemaVersion: 1, batchId: 'worktree-batch', comments: [{ sessionId, workspacePath: cwd }] });
+  const { text: _text, origin: _origin, ...base } = userRow('worktree');
+  const marker = { ...base, kind: 'timelineMarker', marker: { type: 'worktreeCreated', path: cwd, sha: 'a'.repeat(40), ref: null, output: '' } };
+  const rows = [marker, userRow(`文本编辑器选区评论（1 条）\n${batch}`, 2)];
+  let phase = 'completedSuccess';
+  const client = await connect(t, { workspaceRoot: cwd, indexDbPath, hostConnector: async options => {
+    assert.equal(options.workspacePath, host);
+    assert.equal(options.sessionId, sessionId);
+    return commentHost({ options, rows: () => rows, snapshot() {
+      const snapshot = v4Snapshot({ sessionId, rows });
+      return { ...snapshot, control: { ...snapshot.control, phase, sessionEnded: phase === 'completedSuccess' } };
+    }, onCall({ method, args }) {
+      if (method === 'getTaskSnapshot') throw new Error('ZCode Agent runtime is not running.');
+      if (['subscribeConversationV4', 'unsubscribeConversationV4', 'conversationRowsRangeV4'].includes(method))
+        assert.equal(args[0].workspacePath, host);
+    } });
+  } });
+  const call = (name, args = {}) => client.callTool({ name, arguments: args, _meta: { session_id: sessionId } });
+  const context = (await call('get_editor_context')).structuredContent;
+  assert.deepEqual(context.workspaceRoots, [cwd]);
+  assert.equal((await call('read_editor_text', { path: 'same.txt', workspace_root: host })).structuredContent.code, 'workspace_not_allowed');
+  const file = (await call('read_editor_text', { path: 'same.txt' })).structuredContent;
+  assert.equal(file.text, cwd);
+  assert.equal((await call('save_editor_text', { path: 'same.txt', text: 'edited', baseVersion: file.version })).isError, undefined);
+  assert.equal(await readFile(join(cwd, 'same.txt'), 'utf8'), 'edited');
+  assert.equal(await readFile(join(host, 'same.txt'), 'utf8'), host);
+  const state = (await call('get_editor_comment_state')).structuredContent;
+  assert.equal(state.state, 'idle', state.reason);
+  assert.deepEqual(state.acceptedBatches, [{ batchId: 'worktree-batch', serialized: batch }]);
+  phase = 'running';
+  const busy = JSON.parse((await client.readResource({ uri: state.resourceUri })).contents[0].text);
+  assert.equal(busy.state, 'busy', busy.reason);
+});
 
 test('评论状态通过公开V4读取ACK前自有快照，严格旧事件失败不妨碍完整受理', async t => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'comment-v4-')); t.after(() => rm(workspaceRoot, { recursive: true, force: true }));

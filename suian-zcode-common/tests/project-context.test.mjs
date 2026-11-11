@@ -21,6 +21,17 @@ function fixture(t) {
   return { db, indexDbPath, read: () => readProjectContext({ indexDbPath, sessionId: 'session' }) };
 }
 
+test('受管工作树保留冻结执行范围，并单独给出原 Host 归属目录', t => {
+  const f = fixture(t);
+  f.db.exec("ALTER TABLE tasks ADD COLUMN worktree_root TEXT; UPDATE tasks SET worktree_root='D:/worktrees/alpha', root_path='D:/worktrees/alpha/src', execution_directories='[]'");
+  const context = f.read();
+  assert.equal(context.workspacePath, 'D:/worktrees/alpha/src');
+  assert.equal(context.hostWorkspacePath, 'D:/alpha');
+  assert.deepEqual(context.additionalDirectories, []);
+  f.db.exec('UPDATE tasks SET execution_directories=NULL');
+  assert.throws(f.read, { code: 'project_storage_invalid' }, '冻结范围缺失时不能把主目录加入编辑范围');
+});
+
 test('按会话冻结目录优先于项目 roots，空数组不扩大权限，读取不写索引', t => {
   const f = fixture(t);
   assert.deepEqual(f.read().additionalDirectories, ['D:/beta']);

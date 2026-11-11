@@ -34,6 +34,8 @@
 
 3.16 列表行另带 `project_id` 和 `host_id`。同一路径可以属于不同项目，目录过滤不能代替项目过滤。
 
+3.18 原生工作树会话的 `workspace_path` 是工作树内的执行目录，`host_workspace_path` 是原项目的宿主路由目录。列表与置顶列表按执行目录筛选；要找整个项目的聊天，用 `list_sessions` 的 `project_id`。
+
 `query` 搜索执行目录；3.16 还搜索项目登记目录，以及未删除会话的冻结附加目录。目录命中项目时，列出该项目内符合其他筛选条件的会话；未归类会话的附加目录只匹配该会话。目录匹配统一 Windows 分隔符、大小写与尾部分隔符，搜索覆盖完整目录集合，不受摘要截断影响。`workspace_path` 仍只精确筛选执行目录。
 
 3.16 每项附带以下摘要：
@@ -60,6 +62,8 @@
 
 返回 `source: local_cli_sqlite`、`branch`、会话元数据、`messages`、当前分支可见消息 `total` 和 `next_before_message_id`。`branch` 为 `persisted` 或 `persisted_revert`。
 
+原生工作树的历史按索引登记的执行目录与 CLI 会话目录核对；二者不一致仍报 `workspace_mismatch`。会话元数据同时提供 `host_workspace_path`，供显式指定宿主路由。
+
 会话元数据中的 `permission_mode` 来自任务索引的 `mode` 列，通常为 `build`（变更前确认，索引层默认值）、`plan`、`edit`、`auto`、`yolo` 五档之一，异常存量值如实透传、不做枚举校验。索引可能滞后，不能据此决定新会话权限；`start_session` 的缺省继承另读 CLI 库的 `session.permission.mode`。
 
 消息包含 ID、角色、父消息 ID、创建时间、完整 `text` 与附件文件名/类型。保留全部正文，不做单条文本截断。默认不返回工具执行内容、模型思考、隐藏通知、压缩摘要、附件二进制或 URL。超长聊天应使用较小 `limit` 翻页。
@@ -77,6 +81,8 @@
 只读本机双库，不连接网关，也不查询原 Host 实时状态。会话尚未落库（子代理上下文、`deferPersistence` 未落）时对应字段为 `null`、`index_matches` 为空数组，不当作错误。
 
 3.16 且本地索引唯一匹配时，另返回 `project_id`、`project_name`、`project_deleted` 和 `additional_directories`。附加目录优先读取会话已冻结的 `execution_directories`，包括空数组；仅未冻结时才使用所属项目的 roots。旧版、远端或归属不唯一时不补推本机目录范围。
+
+原生工作树会话额外返回 `host_workspace_path`；`workspace_path` 仍是 CLI 的执行目录。
 
 ## 列出定时任务
 
