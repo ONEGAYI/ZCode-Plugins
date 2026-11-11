@@ -61,7 +61,7 @@ ZCode-Plugins/
 │   ├── skills/             # setup / configuration / sessions / automations / artifacts / glm / debug
 │   └── docs/               # 研究、规格、ADR、开票与脱敏验证证据（含 local-only 产品接入规划）
 │
-├── suian-side-editor/     # 本机文本编辑器 0.4.0；多目录切换，选区评论尽力保护，LO-07 原生评论链路已验，原#47缺口保留
+├── suian-side-editor/     # 本机文本编辑器；多目录切换、3.18 原生工作树保存与选区评论，原#47缺口保留
 │   ├── AGENTS.md          # 本插件规则与文档入口
 │   ├── CLAUDE.md          # 导入 AGENTS.md
 │   ├── .zcode-plugin/     # 原生侧栏元信息与市场版本
@@ -101,6 +101,6 @@ ZCode-Plugins/
 │   └── skills/             # setup / configuration / debug
 │
 └── sources/                # 上游源码 submodule 引用（只读，见 sources/README.md）
-    ├── official-zcode/     # zai-org/ZCode @ a60ba6a7（2026-10-30 快照，即 tag v3.17.1，包含 Relay V2 与自动轮 CronPauseSelf）
+    ├── official-zcode/     # zai-org/ZCode @ b95ebaf（2026-11-11 的 v3.18.0 公开源码快照，含原生工作树会话）
     └── zcode-open-bridge/  # tizerluo/zcode-open-bridge @ e8bd9bc（社区桥接参考）
 ```

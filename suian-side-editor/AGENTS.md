@@ -1,6 +1,6 @@
 # suian-side-editor — 独立侧栏文本编辑器
 
-当前版本 0.4.0 提供本机 UTF-8 文本编辑、保存、恢复、会话多目录切换与选区评论，登记原生市场并提供 `skills/setup/SKILL.md` 的安装核对入口。PKG-04（#116）后正式发布包自带 MCP SDK、zod 与实际构建页面：stdio CLI 经 `build-release.mjs` 打包，公共实现按 PKG-01 契约由 `common-client.mjs`／`locate.mjs` 薄适配经已安装 common 0.5.0+ 定位加载，原生安装不再需要 npm、链接或 UI 构建（市场切换 Release ZIP 仍属后续发布票）。共12张票；#42／46／47／48及完整并发#57保持open。H1/H2、目录／页签／保存、外部冲突和H4已有文本功能限定验证；评论原#47缺口、最终缓存／可见guest、完整首版及用户验收未通过。用户已接受的是发送边界尽力禁用风险，见`docs/adr/0005-temporary-comment-send-guard.md`，不等于豁免未观察受理后取消导致的A+B复活。
+当前版本 0.4.1 支持本机 UTF-8 文本编辑、保存、恢复、会话多目录切换与选区评论；ZCode 3.18 原生工作树的保存和评论已在隔离宿主验证。市场 Release ZIP 自带 MCP SDK、zod 和构建页面，安装核对见 `skills/setup/SKILL.md`，无需 npm、链接或 UI 构建。公共实现经 `common-client.mjs`／`locate.mjs` 定位；原生工作树评论需要 common 0.10.3。原 #47 缺口、#57 完整并发及用户验收仍独立跟踪；发送边界的尽力保护见 `docs/adr/0005-temporary-comment-send-guard.md`。
 
 2026-10-14 最终评论代码源`e77520d`／统一`f6b4257`复用SDK55、实际构建浏览器65及common98限定证据，两项可修P2（已观测证明保留、真实ChannelClient订阅释放）闭合。旧严格schema的Native失败保留，公开V4 A普通/B排队全文JSON与API审批通过仅属接口probe；最终f6新缓存／可见guest尚未执行。当前边界见[评论验证](docs/comment-guard-verification.md)顶部新记录；旧正文、JSON与首次失败不回写。
 

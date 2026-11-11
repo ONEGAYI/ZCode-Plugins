@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { connectHost as defaultConnect, writeTitlePolicy as defaultTitlePolicy } from './common-client.mjs';
+import { connectHost as defaultConnect, loadCommonClient, writeTitlePolicy as defaultTitlePolicy } from './common-client.mjs';
 import { getGlmBalance, resetGlmQuota } from './glm.mjs';
 import packageMetadata from './package.json' with { type: 'json' };
 
@@ -51,13 +51,88 @@ function archiveActivity(snapshot, sessionId) {
   return reasons;
 }
 
+function worktreeArchiveActivity({ control, runtimeInitialization, backgroundWorks, subagents, plan, goal, pendingInteractions, pendingCommands, queue }) {
+  if (control.phase === 'draft' || (runtimeInitialization && runtimeInitialization.status !== 'ready'))
+    throw new Error('activity_unknown: 原生工作树的运行态尚未就绪，未归档');
+  const reasons = [];
+  if (['running', 'prewarming'].includes(control.phase) || control.stopState === 'stopping' || control.activeWorks.length || control.apiRetry)
+    reasons.push({ code: 'main_agent_active' });
+  for (const work of backgroundWorks) {
+    if (!['running', 'resultPending', 'failed'].includes(work.status)) continue;
+    // 官方 V4 将 lost 和 failed 合并为 failed，无法证明已结束时仍需确认。
+    reasons.push({ code: work.kind === 'subagent' ? 'subagent_attached' : 'background_task_attached',
+      job_id: work.workId, status: work.status === 'failed' ? 'failed_or_lost' : work.status });
+  }
+  for (const agent of subagents?.running ?? []) {
+    if (!backgroundWorks.some(work => work.childSessionId === agent.childSessionId && work.status === 'running'))
+      reasons.push({ code: 'subagent_attached', job_id: agent.childSessionId, status: agent.status });
+  }
+  for (const todo of plan?.items ?? []) {
+    if (todo.status !== 'completed') reasons.push({ code: 'unfinished_task', task_id: todo.id, status: todo.status === 'inProgress' ? 'in_progress' : todo.status });
+  }
+  if (goal && goal.status !== 'verified') reasons.push({ code: 'unfinished_goal', status: goal.status });
+  const pendingCount = pendingCommands.length + queue.items.length;
+  if (pendingCount) reasons.push({ code: 'pending_commands', count: pendingCount });
+  if (pendingInteractions.length) reasons.push({ code: 'pending_interaction' });
+  return reasons;
+}
+
+// 原生工作树按原项目订阅一次新快照；只接受本次订阅的完整帧，不用列表缓存推断忙闲。
+async function readWorktreeArchiveSnapshot(remote, target, { TopicWireFrameAssembler, conversationTopicFrameSchema, PROTOCOL_V4_LIMITS, measureTopicNotificationEnvelopeBytes }) {
+  const topic = `conversation/${target.sessionId}`;
+  const assembler = new TopicWireFrameAssembler(conversationTopicFrameSchema);
+  const frame = Promise.withResolvers(), early = [];
+  let ack, stagedBytes = 0, timer;
+  const unavailable = reason => ({ error: new Error(`activity_unknown: ${reason}，未归档`) });
+  const accept = wire => {
+    if (wire?.topic !== topic) return;
+    try {
+      if (!ack) {
+        stagedBytes += measureTopicNotificationEnvelopeBytes(wire).maxBytes;
+        if (early.length >= PROTOCOL_V4_LIMITS.logicalFrameAssemblyMaxFragments || stagedBytes > PROTOCOL_V4_LIMITS.logicalFrameAssemblyMaxStagedBytes)
+          frame.resolve(unavailable('运行态快照超过协议预算'));
+        else early.push(wire);
+        return;
+      }
+      if (wire.subscriptionId !== ack.subscriptionId) return;
+      for (const event of assembler.accept(wire)) {
+        if (event.kind === 'fault') frame.resolve(unavailable(`运行态快照校验失败：${event.fault.reasonCode}`));
+        else if (event.frame.payload.kind === 'snapshot') {
+          const { snapshot } = event.frame.payload;
+          frame.resolve(event.frame.fromSeq === 0 && event.frame.toSeq === snapshot.seq && snapshot.sessionId === target.sessionId && snapshot.logEpoch === ack.logEpoch
+            ? { snapshot } : unavailable('运行态快照归属或水位不一致'));
+        }
+      }
+    } catch (error) { frame.resolve(unavailable(`无法读取运行态快照：${error.message}`)); }
+  };
+  const listener = remote.listen('zcode-agent', 'onDynamicConversationFrame', { workspacePath: target.workspacePath })(accept);
+  try {
+    ({ ack } = await remote.call('zcode-agent', 'subscribeConversationV4', [{ ...target, visibility: 'background' }]));
+    if (ack?.mode !== 'snapshot' || typeof ack.subscriptionId !== 'string' || !ack.subscriptionId) throw unavailable('运行态快照回执无效').error;
+    for (const wire of early) accept(wire);
+    timer = setTimeout(() => frame.resolve(unavailable('读取运行态快照超时')), 5000);
+    const { snapshot, error } = await frame.promise;
+    if (error) throw error;
+    return snapshot;
+  } finally {
+    clearTimeout(timer);
+    listener.dispose();
+    assembler.clear();
+    if (ack?.subscriptionId) await remote.call('zcode-agent', 'unsubscribeConversationV4', [{ workspacePath: target.workspacePath,
+      subscriptionId: ack.subscriptionId, runtimePolicy: 'existing-only' }]);
+  }
+}
+
 export function createSessionController({ reader, gatewayConfigPath, connect = defaultConnect, setTitlePolicy = defaultTitlePolicy, now = Date.now,
   delay = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let resetting = false;
   const glmAttempts = new Map();
   const deliveryClientId = `suian-zcode-app-mcp-${randomUUID()}`;
-  const targetOf = async args => ({ sessionId: args.session_id,
-    workspacePath: args.workspace_path ?? (await reader.readSession({ session_id: args.session_id, workspace_key: args.workspace_key, limit: 1 })).session.workspace_path });
+  const targetOf = async args => {
+    if (args.workspace_path != null) return { sessionId: args.session_id, workspacePath: args.workspace_path };
+    const { session } = await reader.readSession({ session_id: args.session_id, workspace_key: args.workspace_key, limit: 1 });
+    return { sessionId: args.session_id, workspacePath: session.host_workspace_path ?? session.workspace_path };
+  };
   // 写调用允许并发：网关为每个本地连接维护独立 RPC ID 空间并共享同一 Host 桥，
   // 一步工具轮的批量归档等写操作各自建立连接，不再互相拒绝。
   const attached = async (target, run, timeoutMs = 120000) => {
@@ -221,7 +296,8 @@ export function createSessionController({ reader, gatewayConfigPath, connect = d
         const params = { taskId: args.session_id, workspacePath: remote.workspacePath };
         const meta = await remote.call('zcode-task', 'getTaskMeta', [params]);
         if (!meta || meta.taskId !== args.session_id) throw new Error('session_not_found: 原 Host 未确认目标会话');
-        await remote.call('zcode-task', 'resumeTask', [params]);
+        // 3.18 受管工作树由 V4 按原项目恢复；旧 resumeTask 的索引回源会按工作树 cwd 找 CLI。
+        if (!meta.worktreeRoot) await remote.call('zcode-task', 'resumeTask', [params]);
         const input_id = randomUUID();
         const result = { source: 'original_host', session_id: args.session_id, workspace_path: remote.workspacePath, input_id,
           requested_delivery_mode: args.delivery_mode ?? 'host_default',
@@ -266,7 +342,7 @@ export function createSessionController({ reader, gatewayConfigPath, connect = d
         const params = { taskId: args.session_id, workspacePath: remote.workspacePath };
         const meta = await remote.call('zcode-task', 'getTaskMeta', [params]);
         if (!meta || meta.taskId !== args.session_id) throw new Error('session_not_found: 原 Host 未确认目标会话');
-        await remote.call('zcode-task', 'resumeTask', [params]);
+        if (!meta.worktreeRoot) await remote.call('zcode-task', 'resumeTask', [params]);
         const command_id = randomUUID();
         const result = { source: 'original_host', session_id: args.session_id, workspace_path: remote.workspacePath, command_id };
         let ack;
@@ -289,7 +365,21 @@ export function createSessionController({ reader, gatewayConfigPath, connect = d
     async archiveSession(args) {
       return attached(await targetOf(args), async remote => {
         const params = { taskId: args.session_id, workspacePath: remote.workspacePath };
-        const check = async () => archiveActivity(await remote.call('zcode-task', 'getTaskSnapshot', [{ ...params, messageLimit: 1 }]), args.session_id);
+        const states = reader.listSessionStates({ session_id: args.session_id, workspace_path: remote.workspacePath, workspace_key: args.workspace_key });
+        const nativeWorktree = states.some(state => state.host_workspace_path !== undefined);
+        let common;
+        if (nativeWorktree) {
+          common = await loadCommonClient();
+          const hello = await remote.call('zcode-agent', 'helloConversationV4');
+          if (hello.protocolVersion !== 3 || typeof common.TopicWireFrameAssembler !== 'function')
+            throw new Error('activity_unknown: 工作树运行态需要支持 V4 快照的 Host 和 common，未归档');
+          await remote.call('zcode-agent', 'initializeConversationV4', [{ kind: 'clientHello', protocolVersion: 3,
+            clientId: deliveryClientId, clientKind: hello.clientMode === 'desktop-continuous' ? 'desktop' : 'web', appVersion: packageMetadata.version,
+            ...(hello.capabilities?.workflowRunDeltas === true ? { capabilities: { workflowRunDeltas: true } } : {}) }]);
+        }
+        const check = async () => nativeWorktree
+          ? worktreeArchiveActivity(await readWorktreeArchiveSnapshot(remote, { workspacePath: remote.workspacePath, sessionId: args.session_id }, common))
+          : archiveActivity(await remote.call('zcode-task', 'getTaskSnapshot', [{ ...params, messageLimit: 1 }]), args.session_id);
         const blocked = reasons => ({ source: 'original_host', session_id: args.session_id, status: 'confirmation_required', requires_confirmation: true, active_reasons: reasons });
         let reasons = await check();
         if (reasons.length && !args.force) return blocked(reasons);

@@ -1,5 +1,16 @@
 # 更新日志
 
+## [0.10.3] - 2026-11-11
+
+公共插件可以识别 ZCode 3.18 的原生工作树会话，让业务插件按正确的目录读文件和调用宿主。
+
+### Bug 修复
+
+**原生工作树会话的目录与协议（#204）**
+
+- 区分原项目的宿主路由和工作树里的执行目录；不扩大原会话获准访问的文件范围。
+- 同步 3.18 官方 V4 解码契约，识别「已创建 worktree」时间线标记及新版会话快照。
+
 ## [0.10.2] - 2026-11-11
 
 新增 Windows 3.18.0.10300 运行包的 local-only 适配档案，安装与诊断按原版摘要自动路由新版本。
@@ -195,6 +206,7 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.10.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11...plugins-2026.11.11.1
 [0.10.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.04...plugins-2026.11.05
 [0.10.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.02.1...plugins-2026.11.04
 [0.9.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.2...plugins-2026.11.02.1

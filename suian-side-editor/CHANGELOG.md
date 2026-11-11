@@ -4,6 +4,19 @@
 
 ## 未发布
 
+## [0.4.1] - 2026-11-11
+
+在 ZCode 3.18 原生工作树聊天中，侧栏可以编辑工作树文件，并把选区评论送入当前主对话。
+
+### Bug 修复
+
+**原生工作树文件与评论（#204）**
+
+- 保存只修改工作树中的目标文件，不写回原项目的同名文件。
+- 通过原项目宿主核对主对话状态；历史确认收到选区评论后，更新待发送计数。
+
+> **升级说明**：工作树评论需要 common 0.10.3；主对话状态仍采用尽力保护，不改变既有发送边界。
+
 ## [0.4.0] - 2026-10-20
 
 正式发布包改为自带运行依赖与实际构建页面：安装后无需 npm 安装、公共包链接或本地构建。
@@ -96,6 +109,7 @@
 > **验证边界**：核心实现原 SDK 基线为 37 项；加入市场登记契约后，本轮完整 SDK 回归 39 项通过。浏览器 55 项／组及三种限定原生生命周期验证沿用核心实现的通过记录。临时隔离入口的结果不等于正式缓存安装与用户产品验收；详细范围见 [实施总记录](docs/development-verification.md)。
 
 <!-- 变更链接 -->
+[0.4.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.11.11.1
 [0.4.0]: https://github.com/ONEGAYI/ZCode-Plugins/pull/124
 [0.3.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/13cd1fcf4f24c9d968f1e4235d299ea11ada4f14...761d06764c7fbdcc36f2c30a4b178af44d7b1d40
 [0.2.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/261bcdedf65c2d0f9a138cfb8c07d7e37998ac72...f6b4257ab9a4de14cfaf41c3eaf93433872a5dde

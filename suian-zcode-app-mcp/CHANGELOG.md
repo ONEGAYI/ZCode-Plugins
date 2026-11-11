@@ -2,6 +2,20 @@
 
 本文件记录 suian-zcode-app-mcp 的用户可感知变化，版本独立于 common 和自动命名插件。
 
+## [0.11.8] - 2026-11-11
+
+会话 MCP 可以接手用户在 ZCode 3.18 桌面创建的原生工作树聊天。
+
+### Bug 修复
+
+**原生工作树会话控制（#204）**
+
+- 可以列出并读取工作树会话历史；需要时可分别取得执行目录和宿主归属目录。
+- 可以向工作树会话发信、改名和压缩上下文，无需把工作树目录注册为项目。
+- 空闲会话可以归档；运行中返回确认要求。归档写入前仍核对两次运行态，无法确认时不写入。
+
+> **升级说明**：工作树归档需要 common 0.10.3 的 3.18 解码能力。`start_session` 仍创建普通聊天。
+
 ## [0.11.7] - 2026-11-11
 
 项目导航的组件升级提示按实际加载的 common 版本区分，指向真正需要升级的那一侧。
@@ -393,6 +407,7 @@
 较早版本链接保留对应源码提交；采用 Release 分发后的新版本链接指向实际发布标签。
 
 <!-- 变更链接 -->
+[0.11.8]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11...plugins-2026.11.11.1
 [0.11.6]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.04...plugins-2026.11.05
 [0.11.5]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.02.1...plugins-2026.11.04
 [0.11.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30...plugins-2026.11.02.1

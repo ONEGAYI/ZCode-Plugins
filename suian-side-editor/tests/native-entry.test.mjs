@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { validateMarketplaceEntry } from '../../release-marketplace.mjs';
 import { connect } from './fixtures.mjs';
 
 test('独立原生入口绑定宿主工作区，元信息使用 session 侧栏和 common 依赖', () => {
@@ -17,7 +18,7 @@ test('独立原生入口绑定宿主工作区，元信息使用 session 侧栏�
   assert.deepEqual(mcp.args, ['${ZCODE_PLUGIN_ROOT}/cli.mjs']);
 });
 
-test('原生市场登记唯一编辑器条目，并保持源码、公共依赖和版本一致', () => {
+test('原生市场登记唯一编辑器条目，并保持固定 ZIP、公共依赖和版本一致', () => {
   const root = new URL('../', import.meta.url);
   const marketplace = JSON.parse(readFileSync(new URL('../marketplace.json', root)));
   const entries = marketplace.plugins.filter(item => item.name === 'suian-side-editor');
@@ -25,7 +26,8 @@ test('原生市场登记唯一编辑器条目，并保持源码、公共依赖�
   const plugin = JSON.parse(readFileSync(new URL('.zcode-plugin/plugin.json', root)));
   const pkg = JSON.parse(readFileSync(new URL('package.json', root)));
   const lock = JSON.parse(readFileSync(new URL('package-lock.json', root)));
-  assert.equal(entries[0].source, './suian-side-editor');
+  assert.deepEqual(validateMarketplaceEntry(entries[0]).problems, []);
+  assert.equal(new URL(entries[0].source.url).pathname.split('/').at(-1), `${plugin.name}-${plugin.version}.zip`);
   assert.deepEqual(entries[0].dependencies, plugin.dependencies);
   assert.ok(marketplace.plugins.some(item => item.name === 'suian-zcode-common'));
   assert.equal(entries[0].version, plugin.version);

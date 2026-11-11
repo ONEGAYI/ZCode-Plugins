@@ -1,6 +1,6 @@
 {
   "name": "suian-side-editor",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "本机 UTF-8 文本侧栏编辑器：目录与页签、保存与恢复、选区评论和发送状态尽力保护",
   "license": "MIT",
   "dependencies": ["suian-zcode-common"],

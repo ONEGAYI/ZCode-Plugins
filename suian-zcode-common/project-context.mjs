@@ -29,6 +29,9 @@ export function readProjectContext({ indexDbPath, sessionId, workspacePath, work
     if (row.host_id !== 'local') throw fail('remote_workspace_unavailable', '本机插件不能把远端目录作为本机目录');
     const cwd = row.root_path;
     if (typeof cwd !== 'string' || !isAbsolute(cwd)) throw fail('project_storage_invalid', '会话执行目录必须是绝对路径');
+    const managed = row.worktree_root != null;
+    if (managed && (typeof row.workspace_path !== 'string' || !isAbsolute(row.workspace_path) || typeof row.execution_directories !== 'string'))
+      throw fail('project_storage_invalid', '受管工作树缺少原 Host 归属或冻结目录');
     let project = null, roots = [];
     if (row.project_id !== null) {
       project = db.prepare('SELECT project_id,host_id,name,deleted FROM projects WHERE project_id=?').get(row.project_id);
@@ -38,6 +41,6 @@ export function readProjectContext({ indexDbPath, sessionId, workspacePath, work
     const additionalDirectories = typeof row.execution_directories === 'string' ? JSON.parse(row.execution_directories) : roots.filter(path => path !== cwd);
     if (!Array.isArray(additionalDirectories) || additionalDirectories.some(path => typeof path !== 'string' || !isAbsolute(path))) throw fail('project_storage_invalid', '会话附加目录必须是绝对路径');
     return { projectId: row.project_id, projectName: project?.name ?? null, projectDeleted: project?.deleted === 1,
-      workspacePath: cwd, additionalDirectories };
+      workspacePath: cwd, additionalDirectories, ...(managed ? { hostWorkspacePath: row.workspace_path } : {}) };
   } finally { db.close(); }
 }

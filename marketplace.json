@@ -4,12 +4,12 @@
     {
       "name": "suian-zcode-common",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-common.png",
-      "version": "0.10.2",
+      "version": "0.10.3",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11/suian-zcode-common-0.10.2.zip",
-        "sha256": "b30b1d092ad0e903906ac4923cc346afe43cf9c6fb49d6cc199d44d557fe69eb",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11.1/suian-zcode-common-0.10.3.zip",
+        "sha256": "cf8cdfae29168d22f476cd341855a7942dc1305f4a70062cb0c5521dc78ca3ae",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
@@ -17,12 +17,12 @@
     {
       "name": "suian-zcode-title",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-title.png",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.04/suian-zcode-title-0.4.0.zip",
-        "sha256": "42cd3dcccebe5433fd24e68d53bf6715fdccb6f51bb0320e264974bb5a80851f",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11.1/suian-zcode-title-0.4.1.zip",
+        "sha256": "de43530acae867099ce05809379bab0b89ebc6fc54e2acacdfda263ae3b25120",
         "stripRoot": false
       },
       "description": "会话 Stop 后自动命名、模型配置与标题保护",
@@ -33,12 +33,12 @@
     {
       "name": "suian-zcode-app-mcp",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-app-mcp.png",
-      "version": "0.11.7",
+      "version": "0.11.8",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11/suian-zcode-app-mcp-0.11.7.zip",
-        "sha256": "6d15c5771d6979cbdcbd7f3471993bdab94ab83bc77c5392bece22afc3c616c0",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11.1/suian-zcode-app-mcp-0.11.8.zip",
+        "sha256": "ea75e4a14d59dbdbb0da3ae715f43f99cf5276e134641aabac6e1211df09d1f7",
         "stripRoot": false
       },
       "description": "会话检索、历史读取、原 Host 操作与 GLM 额度 MCP",
@@ -49,12 +49,12 @@
     {
       "name": "suian-side-editor",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-side-editor.png",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.10.30/suian-side-editor-0.4.0.zip",
-        "sha256": "c0d24aaf0d10acdc49cb338932e37859f5bbb40a64b846ceea08843ec3e04579",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11.1/suian-side-editor-0.4.1.zip",
+        "sha256": "12a06a3ce0a00785ad1a9608e7f1b32c7ac1b895b0bc516e86cf23fbf201c796",
         "stripRoot": false
       },
       "description": "本机 UTF-8 文本侧栏编辑、自动保存、会话恢复与选区评论；发送状态采用尽力保护",
