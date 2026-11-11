@@ -50,7 +50,7 @@ export function createMcpServer({ workspaceRoot = process.env.SUIAN_SIDE_EDITOR_
   // 未加载即创建服务属于入口装配错误，显式失败而不是静默降级注册能力。
   const common = commonClientSync();
   if (!common) throw new Error('公共客户端尚未加载：入口须先 await commonClient() 再创建 MCP 服务');
-  const server = new McpServer({ name: 'suian-side-editor', version: '0.4.0' });
+  const server = new McpServer({ name: 'suian-side-editor', version: '0.4.1' });
   const commentState = installCommentState(server, { hostConnector, gatewayConfigPath });
   const textResources = installTextResources(server, commentState, context =>
     boundContext(workspaceRoot, { session_id: context.sessionId }, indexDbPath, context.workspaceRoot));

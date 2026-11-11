@@ -61,7 +61,7 @@ ZCode-Plugins/
 │   ├── skills/             # setup / configuration / sessions / automations / artifacts / glm / debug
 │   └── docs/               # 研究、规格、ADR、开票与脱敏验证证据（含 local-only 产品接入规划）
 │
-├── suian-side-editor/     # 本机文本编辑器 0.4.0；多目录切换，选区评论尽力保护，LO-07 原生评论链路已验，原#47缺口保留
+├── suian-side-editor/     # 本机文本编辑器；多目录切换、3.18 原生工作树保存与选区评论，原#47缺口保留
 │   ├── AGENTS.md          # 本插件规则与文档入口
 │   ├── CLAUDE.md          # 导入 AGENTS.md
 │   ├── .zcode-plugin/     # 原生侧栏元信息与市场版本
