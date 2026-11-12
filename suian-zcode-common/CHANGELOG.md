@@ -1,5 +1,20 @@
 # 更新日志
 
+## [0.10.4] - 2026-11-12
+
+local-only 新增 Windows ZCode `3.18.1.10376` 适配，setup 可为这一发行包自动选档。
+
+### 新增
+
+**Windows 3.18.1.10376 适配（#206）**
+
+- 按 exe 完整版本和原版 `app.asar` 摘要精确识别运行包，并在本机生成补丁候选。
+- 保留五份旧档案，继续支持既有包的识别、应用和还原。
+
+> **使用说明**：更新 common 不会改写 ZCode 安装包。需要启用时按 setup 生成命令，退出目标 Desktop 后再应用。
+
+> **验证范围**：已在隔离宿主验证无登录启动、本地网关连接、MCP 创建和发信以及历史读回；已核对副本还原。网关重启恢复与在线 relay 未验。
+
 ## [0.10.3] - 2026-11-11
 
 公共插件可以识别 ZCode 3.18 的原生工作树会话，让业务插件按正确的目录读文件和调用宿主。
@@ -206,6 +221,7 @@
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.10.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11.1...plugins-2026.11.12
 [0.10.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11...plugins-2026.11.11.1
 [0.10.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.04...plugins-2026.11.05
 [0.10.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.02.1...plugins-2026.11.04
