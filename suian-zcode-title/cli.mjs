@@ -192,8 +192,8 @@ if(args.includes("--help")||!args.length) {
     if(dataDir)await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),command,sessionId:event?.session_id??null,status:"failed",stage:failure.stage,diagnostic:failure.diagnostic,reasonCode:failure.reasonCode??null,error:String(failure.error).slice(0,200),durationMs:Date.now()-startedAt})+"\n","utf8").catch(error=>console.error(JSON.stringify({at:new Date().toISOString(),event:"runner_log_failed",command,causeName:error.name,code:error.code})));
     process.exitCode=1;
   } finally {
-    backend?.close();
-    if(lease) {await lease.close();await unlink(leasePath);}
+    try {await backend?.close();}
+    finally {if(lease) {await lease.close();await unlink(leasePath);}}
   }
 }
 

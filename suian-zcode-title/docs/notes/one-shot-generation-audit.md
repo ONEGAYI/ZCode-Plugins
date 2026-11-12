@@ -1,5 +1,15 @@
 # ZCode 一次性指定模型生成标题：只读源码核查
 
+## #208：隔离辅助生成的活动归属
+
+2026-11-12，在 Windows ZCode 3.18.1.10376 隔离宿主中，先完成同一工作区的两个测试会话，再用命名后端给 B 改名。修复前，B 改名成功，但宿主把 `session_title_external` 的模型及事件持久化日志记在空闲的 A 名下；A 在会话库中的标题和更新时间不变。
+
+CLI 侧的 [`workspace/generateText` 实现](https://github.com/zai-org/ZCode/blob/b95ebaffeab641907b38652f45c1502bd762972d/apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server-operations.ts#L3176-L3227) 按工作区键取第一个匹配的会话运行时，不以网关附着的会话为目标。插件改为只给生成请求传独立工作区身份，继续使用原 Host 的真实目录和模型选择；元数据和改名仍按目标会话执行。独立运行时在生成结束或中止后释放。
+
+修复后，B 仍能正常改名，模型记录只属于辅助运行时，A 和 B 均未新增该来源的活动日志。让回环模型故意不返回，命名在预算到期后失败，标题未变，Host 确认释放了辅助进程。title 132 项契约测试通过，包括普通和受管工作树会话的路由，以及先释放再断开。原始日志保留在忽略目录 `.scratch/issue208/`。
+
+## 初始源码核查
+
 > 后续实测：2026-10-06 21:31，原 Host 的 `zcode-agent.generateWorkspaceText` 已成功调用 GLM-5.3-Flash / low，用最近三轮材料生成标题并完成改名。输入 3,468、输出 133 tokens；详情见 [命名后端](../title-runner/README.md) 及 [脱敏证据](stop-title-runner-evidence.json)。下文保留最初只读审计的版本与范围。
 
 核查日期：2026-10-06。官方源码固定在 `zai-org/ZCode` 的 commit `29628c9acdb81b703bbd4080c207a0e7ce5e276e`，提交时间为 2026-09-24 14:49:06 +08:00，提交标题 `feat: update v3.14.3`。本机发行版由主代理核实为 Desktop 3.14.4 / bundled CLI 0.16.9；本文描述公开快照，未发起真实模型请求。
