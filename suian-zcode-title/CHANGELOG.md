@@ -1,5 +1,13 @@
 # 更新记录
 
+## [0.4.3] - 2026-11-12
+
+自动命名不再把无关的空闲会话顶到列表前排。
+
+### Bug 修复
+
+- 命名模型在独立运行时生成标题，模型活动不再记到同一工作区的其他会话。生成完成或超时后释放辅助进程，改名仍只写回目标会话（#208）。
+
 ## [0.4.2] - 2026-11-12
 
 命名提示词在首次部署、升级或恢复时，不再覆盖编辑器并发保存的稿件。
@@ -67,6 +75,7 @@ ZCode 3.18 原生工作树会话在回复完成后也能自动命名。
 > **验证范围**：历史裁剪契约已验证，真实手机普通会话已完成命名验证；真实手机回退后继续输入的完整场景仍待验收。模型目录可用但运行时请求失败的情况沿用已有网关错误分类。
 
 <!-- 变更链接 -->
+[0.4.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12...plugins-2026.11.12.1
 [0.4.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11.1...plugins-2026.11.12
 [0.4.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.04...plugins-2026.11.11.1
 [0.4.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.10.30.1...plugins-2026.11.04

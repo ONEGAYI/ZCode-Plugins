@@ -17,12 +17,12 @@
     {
       "name": "suian-zcode-title",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-title.png",
-      "version": "0.4.2",
+      "version": "0.4.3",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.12/suian-zcode-title-0.4.2.zip",
-        "sha256": "a63f068279d4ba2b8e616fab8a3a6beef3e43b4a9ea7c13519aa14ee18b6b76b",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.12.1/suian-zcode-title-0.4.3.zip",
+        "sha256": "f5f65f281bd97196679785826831a0b2b0e92194751cde7238a87ff8a30b6723",
         "stripRoot": false
       },
       "description": "会话 Stop 后自动命名、模型配置与标题保护",
