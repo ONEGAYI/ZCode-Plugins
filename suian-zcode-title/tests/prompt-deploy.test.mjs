@@ -45,6 +45,78 @@ test("恢复前要求通知能力，拒绝时保留原文件；引号 version �
   await assert.rejects(deployNamingPrompt({dataDir,mirror,requireRecoveryCapability:async()=>{throw Error("请升级 common");}}),/请升级 common/);
   assert.match(await readFile(first.path,"utf8"),/"version": 1/);
 });
+
+for(const [stage,prior] of [["首次部署",null],["升级","---\nversion: 1\n---\n旧提示词\n"],["恢复","损坏旧稿"]]) {
+  test(`${stage}在最后一次校验后并发保存，不覆盖用户稿和已有滚动备份`,async t=>{
+    const root=await mkdtemp(join(tmpdir(),"z-title-prompt-race-"));t.after(()=>rm(root,{recursive:true}));
+    const mirror=join(root,"mirror.md"),dataDir=join(root,"data"),path=join(dataDir,"naming-prompt.md"),backup=path+".backup";
+    const userSaved="---\nversion: -1\n---\n用户刚保存的正文\n";
+    await fs.mkdir(dataDir);
+    await writeFile(mirror,"---\nversion: 2\n---\n默认正文\n");
+    await writeFile(backup,"此前的滚动备份");
+    if(prior!==null)await writeFile(path,prior);
+    let saved=false;
+    const saveOnce=async()=>{
+      if(saved)return;
+      saved=true;
+      const edited=join(dataDir,"editor-save.tmp");
+      await writeFile(edited,userSaved);
+      await fs.rename(edited,path);
+    };
+    const io={...fs,
+      rename:async(from,to)=>{if(from===path||to===path)await saveOnce();return fs.rename(from,to);},
+      link:async(from,to)=>{if(to===path)await saveOnce();return fs.link(from,to);},
+    };
+    await assert.rejects(deployNamingPrompt({dataDir,mirror,io}),{reasonCode:"prompt_changed"});
+    assert.equal(saved,true);
+    assert.equal(await readFile(path,"utf8"),userSaved);
+    assert.equal(await readFile(backup,"utf8"),"此前的滚动备份");
+    assert.deepEqual((await readdir(dataDir)).sort(),["naming-prompt.md","naming-prompt.md.backup"]);
+  });
+}
+
+test("原稿已移走后编辑器抢先写入时不覆盖，冲突错误指出保留下来的原稿位置",async t=>{
+  const root=await mkdtemp(join(tmpdir(),"z-title-prompt-collision-"));t.after(()=>rm(root,{recursive:true}));
+  const mirror=join(root,"mirror.md"),dataDir=join(root,"data"),path=join(dataDir,"naming-prompt.md");
+  await fs.mkdir(dataDir);
+  await writeFile(mirror,"---\nversion: 2\n---\n默认正文\n");
+  await writeFile(path,"被移走的损坏稿");
+  await writeFile(path+".backup","更早的备份");
+  const userSaved="---\nversion: -1\n---\n用户在换入前保存\n";
+  const io={...fs,link:async(from,to)=>{
+    if(to===path&&!(await readdir(dataDir)).includes("naming-prompt.md"))await writeFile(path,userSaved,{flag:"wx"});
+    return fs.link(from,to);
+  }};
+  await assert.rejects(deployNamingPrompt({dataDir,mirror,io}),asyncError=>
+    asyncError.reasonCode==="prompt_changed"&&typeof asyncError.recoveryPath==="string"&&asyncError.message.includes(asyncError.recoveryPath));
+  assert.equal(await readFile(path,"utf8"),userSaved);
+  assert.equal(await readFile(path+".backup","utf8"),"更早的备份");
+  const saved=(await readdir(dataDir)).filter(name=>name.startsWith(".naming-prompt-backup-"));
+  assert.equal(saved.length,1);
+  assert.equal(await readFile(join(dataDir,saved[0]),"utf8"),"被移走的损坏稿");
+});
+
+test("编辑器的已打开句柄在换入前写完时，实际保存内容进入滚动备份并报告冲突",async t=>{
+  const root=await mkdtemp(join(tmpdir(),"z-title-prompt-open-writer-"));t.after(()=>rm(root,{recursive:true}));
+  const mirror=join(root,"mirror.md"),dataDir=join(root,"data"),path=join(dataDir,"naming-prompt.md");
+  await fs.mkdir(dataDir);
+  await writeFile(mirror,"---\nversion: 2\n---\n默认正文\n");
+  await writeFile(path,"损坏旧稿");
+  const userSaved="---\nversion: -1\n---\n编辑器句柄写入\n";
+  const editor=await fs.open(path,"r+");
+  try {
+    const io={...fs,link:async(from,to)=>{
+      if(to===path&&!from.includes(".naming-prompt-backup-")){
+        await editor.truncate();
+        await editor.writeFile(userSaved);
+      }
+      return fs.link(from,to);
+    }};
+    await assert.rejects(deployNamingPrompt({dataDir,mirror,io}),error=>error.reasonCode==="prompt_changed"&&error.recoveryPath===path+".backup");
+  } finally {await editor.close();}
+  assert.equal(await readFile(path+".backup","utf8"),userSaved);
+});
+
 test("旧 common 或错误通知身份均阻止恢复覆盖",async()=>{
   const {requirePromptRecoveryToast}=await import('../prompt-deploy.mjs');
   assert.equal(typeof requirePromptRecoveryToast,'function');
@@ -61,7 +133,10 @@ test("恢复预检期间本地稿变化时不覆盖，换入失败保留旧滚�
   assert.match(await readFile(first.path,"utf8"),/用户修复/);
   await writeFile(first.path,"损坏当前稿");
   const backupPath=join(dataDir,"naming-prompt.md.backup");await writeFile(backupPath,"更早的备份");
-  const io={...fs,rename:async(from,to)=>{if(to===first.path)throw Object.assign(Error('模拟换入失败'),{code:'EACCES'});return fs.rename(from,to);}};
+  const io={...fs,link:async(from,to)=>{
+    if(to===first.path&&!from.includes(".naming-prompt-backup-"))throw Object.assign(Error('模拟换入失败'),{code:'EACCES'});
+    return fs.link(from,to);
+  }};
   await assert.rejects(deployNamingPrompt({dataDir,mirror,io}),/模拟换入失败/);
   assert.equal(await readFile(first.path,"utf8"),"损坏当前稿");assert.equal(await readFile(backupPath,"utf8"),"更早的备份");
   const backupIo={...fs,rename:async(from,to)=>{if(to===backupPath)throw Object.assign(Error('模拟备份失败'),{code:'EACCES'});return fs.rename(from,to);}};
