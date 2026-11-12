@@ -24,6 +24,33 @@ test("模型目录查询迟到后不再发元数据或生成请求",async()=>{
   await assert.rejects(pending,{reasonCode:'naming_model_timeout'});
   assert.deepEqual(calls,['getView','close']);
 });
+test("中止在途命名先释放独立模型运行时，再断开 Host",async()=>{
+  const selection={providerId:"fixture-provider",modelId:"fixture-model",options:{reasoningLevel:"low"}};
+  const started=Promise.withResolvers(),disposalStarted=Promise.withResolvers(),disposed=Promise.withResolvers();
+  const calls=[];
+  const backend=createBackend({event:{session_id:"sess_abort",cwd:"D:\\fixture"},config:{sessionDb:"missing",indexDb:"missing",sqliteBin:"missing-sqlite"},
+    connect:async()=>({
+      call:async(_channel,method,[target]=[])=>{
+        calls.push(method);
+        if(method==="getView")return{providers:[{providerId:selection.providerId,models:[{modelId:selection.modelId,config:{optionSpecs:{reasoningLevel:{values:["low"]}}}}]}]};
+        if(method==="getTaskMeta")return{title:"原名"};
+        if(method==="generateWorkspaceText"){started.resolve(target);return new Promise(()=>{});}
+        if(method==="disposeWorkspace"){disposalStarted.resolve(target);return disposed.promise;}
+        throw Error("unexpected fixture method");
+      },close:()=>calls.push("close")
+    })
+  });
+  const controller=new AbortController(),pending=backend.generate({current_title:"原名"},selection,{signal:controller.signal});
+  const generation=await started.promise;
+  controller.abort();
+  assert.equal(calls.includes("close"),false,"释放模型运行时前不能关闭唯一可用的连接");
+  const closing=backend.close();
+  assert.deepEqual(await disposalStarted.promise,{workspacePath:generation.workspacePath,workspaceIdentity:generation.workspaceIdentity});
+  disposed.resolve();
+  await assert.rejects(pending,{reasonCode:"naming_model_timeout"});
+  await closing;
+  assert.deepEqual(calls.slice(-2),["disposeWorkspace","close"]);
+});
 for (const sessionId of ['sess_fixture', 'session_316_fixture', 'session_worktree_fixture']) test(`命名后端 ${sessionId}：读双库、辅助生成和原 Host 改名核验`,async()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-backend-")),sessionDb=join(root,"session.sqlite"),indexDb=join(root,"index.sqlite");
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3",workspacePath="D:\\fixture";
@@ -39,13 +66,19 @@ for (const sessionId of ['sess_fixture', 'session_316_fixture', 'session_worktre
   execFileSync(sqliteBin,[indexDb,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','原名',0,0,'completed');".replaceAll('sess_fixture',sessionId)]);
   execFileSync(sqliteBin,[indexDb,"ALTER TABLE tasks ADD COLUMN project_id; ALTER TABLE tasks ADD COLUMN execution_directories; UPDATE tasks SET project_id='project_fixture',execution_directories='[\"D:/other\"]';"]);
   if(worktree)execFileSync(sqliteBin,[indexDb,`ALTER TABLE tasks ADD COLUMN host_id; ALTER TABLE tasks ADD COLUMN root_path; ALTER TABLE tasks ADD COLUMN worktree_root; UPDATE tasks SET host_id='local',root_path='${cwd}',worktree_root='${cwd}';`]);
-  const selection={providerId:"fixture-provider",modelId:"fixture-model",options:{reasoningLevel:"low"}},calls=[];
+  const selection={providerId:"fixture-provider",modelId:"fixture-model",options:{reasoningLevel:"low"}},calls=[],idleSessionActivity=[];
   const remote={
     call:async(channel,method,args)=>{
       calls.push({channel,method,args});
       if(method==="getView")return{providers:[{providerId:"fixture-provider",models:[{modelId:"fixture-model",config:{optionSpecs:{reasoningLevel:{values:["low"]}}}}]}]};
       if(method==="getTaskMeta")return{taskId:sessionId,workspacePath,title:execFileSync(sqliteBin,["-readonly",indexDb,"SELECT title FROM tasks;"],{encoding:"utf8"}).trim()};
-      if(method==="generateWorkspaceText")return{text:"{}",finishReason:"stop"};
+      if(method==="generateWorkspaceText") {
+        // 宿主以 workspaceIdentity ?? workspacePath 匹配首个活跃 runtime。
+        const target=args[0];
+        if((target.workspaceIdentity??target.workspacePath)===workspacePath)idleSessionActivity.push(target.querySource);
+        return{text:"{}",finishReason:"stop"};
+      }
+      if(method==="disposeWorkspace")return;
       if(method==="renameTask") {
         execFileSync(sqliteBin,[sessionDb,"UPDATE session SET title='新名称';"]);
         execFileSync(sqliteBin,[indexDb,"UPDATE tasks SET title='新名称';"]);
@@ -62,10 +95,14 @@ for (const sessionId of ['sess_fixture', 'session_316_fixture', 'session_worktre
     assert.equal(before.turnCount,1);assert.equal(before.archived,false);
     if(worktree)assert.equal(before.context.project_hint,"isolated");
     await backend.generate(before.context,selection);
+    assert.deepEqual(idleSessionActivity,[],"辅助命名不得记到同工作区的无关会话");
     const gen=calls.find(c=>c.method==="generateWorkspaceText");
     assert.deepEqual(gen.args[0].selection,selection);
     assert.equal(gen.args[0].querySource,"session_title_external");
     assert.equal(gen.args[0].workspacePath,workspacePath);
+    assert.deepEqual(calls.find(c=>c.method==="disposeWorkspace")?.args,[{
+      workspacePath,workspaceIdentity:gen.args[0].workspaceIdentity
+    }]);
     assert.deepEqual(gen.args[0].tools,[]);
     assert.equal(gen.args[0].messages[0].role,"system");
     assert.equal(calls.some(c=>["setModel","sendText","sendSession"].includes(c.method)),false);
@@ -119,6 +156,7 @@ test("索引标题分裂时按会话内 CronCreate 冻结证据放行，无证�
         // 宿主任务元仍挂索引旧标题：freeze 路径不更新索引/overlay，分裂是预期状态
         if(method==="getTaskMeta")return{taskId:"sess_frozen",workspacePath:"D:\\belongs\\frozen",title:"🧩 旧标题｜索引残留"};
         if(method==="generateWorkspaceText")return{text:"{}",finishReason:"stop"};
+        if(method==="disposeWorkspace")return;
         throw Error("unexpected fixture method");
       },close:()=>{}
     }),saveState:async()=>{},prompt:"规则"});
