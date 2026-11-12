@@ -57,3 +57,16 @@
 | 普通 | 同样拦截，索引仍未归档 | 生成结束后可归档，索引确认，随后可复原 |
 
 [归档契约测试](../tests/control.test.mjs)另验证了二次检查从空闲转为运行时拦截，以及第二份快照归属不符时即使 `force` 也不写入。
+
+## 3.18.1 增量核查
+
+2026-11-12 对照 [`b95ebaf` → `c590468` 的公开源码差异](https://github.com/zai-org/ZCode/compare/b95ebaffeab641907b38652f45c1502bd762972d...c5904686ea8341826b3affe5d993d06a134fa779)。这是一个直接后继提交。现有插件所用的接口未发现需要跟改的变化：
+
+| 组件 | 与插件有关的结论 |
+| --- | --- |
+| **app-mcp** | 项目与工作树归属、会话控制和运行态读取的服务实现未变；V4 gateway 的修改只增加诊断计数，消息、历史和快照的协议定义不变。保留原生工作树归档的两次运行态检查，`start_session` 仍创建普通会话。 |
+| **title** | Stop Hook 事件、宿主的 `generateWorkspaceText` 路由和标题写回未变。宿主仍可能为同一工作区复用现有会话运行时，[#208 的隔离修复](../../suian-zcode-title/docs/notes/one-shot-generation-audit.md)仍有必要。 |
+| **side-editor** | MCP App 桥、评论链路和工作树文件目录来源未变。可见变化是宿主允许把侧栏拖得更宽，以及浏览器设计面板不再自动请求全屏；编辑器不依赖被删除的设计面板事件。 |
+| **common** | Desktop 远控管理器、Host 附着白名单和 V4 消息定义未变；手机远控的改动在浏览器前进、后退和刷新恢复。Windows 安装器变更涉及旧进程检查和升级备份，不改变 local-only 按安装包身份选补丁的契约。 |
+
+以上是源码差异核对。已归档的 3.18.1 隔离宿主证据覆盖 [local-only 启动与 MCP 创建、发信、读回](local-only/15-windows-3.18.1-candidate.md)及 [#208 自动命名与超时回收](../../suian-zcode-title/docs/notes/one-shot-generation-audit.md#208隔离辅助生成的活动归属)；未用这些结果代替 3.18.1 的完整桌面回归。

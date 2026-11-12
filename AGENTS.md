@@ -101,6 +101,6 @@ ZCode-Plugins/
 │   └── skills/             # setup / configuration / debug
 │
 └── sources/                # 上游源码 submodule 引用（只读，见 sources/README.md）
-    ├── official-zcode/     # zai-org/ZCode @ b95ebaf（2026-11-11 的 v3.18.0 公开源码快照，含原生工作树会话）
+    ├── official-zcode/     # zai-org/ZCode @ c590468（2026-11-12 的 v3.18.1 公开源码快照）
     └── zcode-open-bridge/  # tizerluo/zcode-open-bridge @ e8bd9bc（社区桥接参考）
 ```
