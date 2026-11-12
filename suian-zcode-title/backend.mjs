@@ -5,6 +5,8 @@ import {commonRuntime} from "./common-access.mjs";
 import {readHistory,recentSnapshot} from "./history.mjs";
 
 const SESSION_ID_RE=/^sess(?:ion)?_[A-Za-z0-9_-]+$/;
+// Windows Host 回收进程树最多用 3.25 秒，给释放回执留余量，不增加模型预算。
+const GENERATION_DISPOSAL_GRACE_MS=5000;
 
 let cachedCommon;
 // 公共网关连接与标题策略默认经客户端契约解析；测试与宿主桩注入的参数仍然优先。
@@ -14,7 +16,8 @@ const defaultReadTitlePolicy=async options=>((cachedCommon??=await commonRuntime
 export function createBackend({event,config,saveState,prompt,connect=defaultConnect,readTitlePolicy=defaultReadTitlePolicy}) {
   const sessionId=event.session_id;
   if(!SESSION_ID_RE.test(sessionId??""))throw new Error("输入需要有效 session_id");
-  let remote,closed=false;
+  let remote,closed=false,releaseGeneration;
+  const disconnect=()=>{remote?.close();remote=null;};
   const timeoutError=()=>Object.assign(new Error("命名模型生成预算已耗尽，本轮失败"),{stage:"model_generation",reasonCode:"naming_model_timeout"});
   const checkGeneration=(signal,deadline)=>{if(closed||signal?.aborted||deadline!==undefined&&Date.now()>=deadline)throw timeoutError();};
   // 普通会话沿用 CLI 目录；3.18 受管工作树才按索引 workspace_path 路由 Host。
@@ -56,7 +59,10 @@ export function createBackend({event,config,saveState,prompt,connect=defaultConn
     if(!remote) {
       const {host:ws}=await resolveWorkspace();
       checkGeneration(signal,deadline);
-      const connection=await connect({workspacePath:ws,sessionId,gatewayConfigPath:config.gatewayConfigPath,timeoutMs:config.timeoutMs??120000,handshakeTimeoutMs:config.probeTimeoutMs??Math.min(config.timeoutMs??120000,8000)});
+      const timeoutMs=config.timeoutMs??120000;
+      const connection=await connect({workspacePath:ws,sessionId,gatewayConfigPath:config.gatewayConfigPath,
+        timeoutMs:timeoutMs+(deadline===undefined?0:GENERATION_DISPOSAL_GRACE_MS),
+        handshakeTimeoutMs:config.probeTimeoutMs??Math.min(timeoutMs,8000)});
       if(closed||signal?.aborted||deadline!==undefined&&Date.now()>=deadline) {connection.close();throw timeoutError();}
       remote=connection;
     }
@@ -88,7 +94,8 @@ export function createBackend({event,config,saveState,prompt,connect=defaultConn
     },
     async models() {return(await attach()).call("model-selection","getView",[]);},
     async generate(context,selection,{timeoutMs=config.timeoutMs??120000,deadline=Date.now()+timeoutMs,signal}={}) {
-      const onAbort=()=>{closed=true;remote?.close();remote=null;};
+      const abort=Promise.withResolvers();
+      const onAbort=()=>{closed=true;if(releaseGeneration)abort.reject(timeoutError());else disconnect();};
       signal?.addEventListener("abort",onAbort,{once:true});
       try {
       const connection=await attach(signal,deadline);
@@ -107,11 +114,20 @@ export function createBackend({event,config,saveState,prompt,connect=defaultConn
       // 冻结分裂下宿主任务元（索引/overlay）仍是旧标题属预期状态；非冻结场景维持漂移护栏
       if(meta.title!==context.current_title&&!(await loadFreezeTitles()).includes(context.current_title))throw new Error("模型请求前目标标题已经变化");
       checkGeneration(signal,deadline);
-      return await connection.call("zcode-agent","generateWorkspaceText",[{
-        workspacePath:ws,selection,messages:[{role:"system",content:prompt},{role:"user",content:JSON.stringify(context)}],
-        tools:[],querySource:"session_title_external",maxOutputTokens:config.maxOutputTokens??2048,
-        requestTimeoutMs:Math.max(1,Math.min(timeoutMs,deadline-Date.now()))
-      }]);
+      // 宿主按 workspace key 复用首个会话 runtime。命名使用独立 key，保留真实目录与 Host。
+      const target={workspacePath:ws,workspaceIdentity:`suian-zcode-title:${ws}`};
+      let disposal;
+      releaseGeneration=()=>disposal??=connection.call("zcode-agent","disposeWorkspace",[target]);
+      try {
+        return await Promise.race([connection.call("zcode-agent","generateWorkspaceText",[{
+          ...target,selection,messages:[{role:"system",content:prompt},{role:"user",content:JSON.stringify(context)}],
+          tools:[],querySource:"session_title_external",maxOutputTokens:config.maxOutputTokens??2048,
+          requestTimeoutMs:Math.max(1,Math.min(timeoutMs,deadline-Date.now()))
+        }]),abort.promise]);
+      } finally {
+        try {await releaseGeneration();}
+        finally {releaseGeneration=undefined;if(signal?.aborted)disconnect();}
+      }
       } finally {signal?.removeEventListener("abort",onAbort);}
     },
     async rename(title) {
@@ -123,7 +139,11 @@ export function createBackend({event,config,saveState,prompt,connect=defaultConn
     // 锁定前二次查证（#125）：不依赖两库分裂条件，现查会话历史 CronCreate 记录判断标题是否冻结
     async confirmFreezeTitle(title) {return (await loadFreezeTitles()).includes(title);},
     saveState,
-    close() {closed=true;remote?.close();remote=null;}
+    async close() {
+      closed=true;
+      // runNaming 超时后可能先返回，给释放请求留出应答时间再关连接。
+      try {await releaseGeneration?.();} finally {disconnect();}
+    }
   };
 }
 
