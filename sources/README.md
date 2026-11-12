@@ -18,4 +18,4 @@ git submodule update --init sources/zcode-open-bridge
 
 2026-11-12 更新到官方主分支的 [v3.18.1 源码同步提交 `c590468`](https://github.com/zai-org/ZCode/commit/c5904686ea8341826b3affe5d993d06a134fa779)，直接承接 `b95ebaf`。已核对[插件业务影响](../suian-zcode-app-mcp/docs/zcode-3.18-source-audit.md#3181-增量核查)。
 
-Windows 安装包与公开源码分别核对。local-only 补丁以安装包自身的编译产物为准，见 [3.18.1.10376 适配记录](../suian-zcode-app-mcp/docs/local-only/15-windows-3.18.1-candidate.md)和 [3.18.0.10300 适配记录](../suian-zcode-app-mcp/docs/local-only/14-windows-3.18.0-candidate.md)。历史网关与侧栏 #73 的证据见 [3.16 网关验证记录](../suian-zcode-app-mcp/docs/zcode-3.16-gateway-validation.md)；其他历史源码依据见 [研究记录](../suian-zcode-app-mcp/docs/research-findings.md)。
+Windows 安装包与公开源码分别核对。local-only 补丁以安装包自身的编译产物为准，见 [3.18.2.10443 适配记录](../suian-zcode-app-mcp/docs/local-only/16-windows-3.18.2-candidate.md)、[3.18.1.10376 适配记录](../suian-zcode-app-mcp/docs/local-only/15-windows-3.18.1-candidate.md)和 [3.18.0.10300 适配记录](../suian-zcode-app-mcp/docs/local-only/14-windows-3.18.0-candidate.md)。历史网关与侧栏 #73 的证据见 [3.16 网关验证记录](../suian-zcode-app-mcp/docs/zcode-3.16-gateway-validation.md)；其他历史源码依据见 [研究记录](../suian-zcode-app-mcp/docs/research-findings.md)。
