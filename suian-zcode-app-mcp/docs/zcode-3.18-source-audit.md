@@ -1,4 +1,4 @@
-# ZCode 3.18.0：原生工作树与插件兼容性
+# ZCode 3.18：原生工作树、插件兼容与规则加载
 
 **支持接手已有原生工作树会话**：用户在 ZCode 桌面创建后，插件按实际执行目录读取历史、操作文件，按原项目目录调用宿主。远控仍不提供原生创建入口。
 
@@ -70,3 +70,58 @@
 | **common** | Desktop 远控管理器、Host 附着白名单和 V4 消息定义未变；手机远控的改动在浏览器前进、后退和刷新恢复。Windows 安装器变更涉及旧进程检查和升级备份，不改变 local-only 按安装包身份选补丁的契约。 |
 
 以上是源码差异核对。已归档的 3.18.1 隔离宿主证据覆盖 [local-only 启动与 MCP 创建、发信、读回](local-only/15-windows-3.18.1-candidate.md)及 [#208 自动命名与超时回收](../../suian-zcode-title/docs/notes/one-shot-generation-audit.md#208隔离辅助生成的活动归属)；未用这些结果代替 3.18.1 的完整桌面回归。
+
+## 3.18.2 增量核查
+
+**本次增量未发现四个插件需要新增兼容修复。**
+
+2026-11-16 以业务提交 `fe803161189a64d0465d7c3ee4786eaf12b613dc` 为基线，对照官方 [`c5904686` → `fec97590`](https://github.com/zai-org/ZCode/compare/c5904686ea8341826b3affe5d993d06a134fa779...fec975905a2abd4c07e35c40d51fa097a2258ec9) 的 46 个变更文件。
+
+原生工作树兼容已在 [#204](https://github.com/ONEGAYI/ZCode-Plugins/pull/204) 修复并经 [#205](https://github.com/ONEGAYI/ZCode-Plugins/pull/205) 正式集成；命名辅助活动隔离和对应 Windows 发行包的 local-only 档案也已包含在业务基线中。
+
+### 新增变化主要在官方凭据与模型账号
+
+- **数据目录迁移补齐凭据密钥登记**。官方复制数据后，由 Host 请求 Main 将系统凭据密钥登记到目标数据根，再继续切换。我们的旧授权库使用独立的当前用户 DPAPI，默认网关不读取官方凭据文件，无需跟随复制密钥。见[迁移接线](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/services/src/setting/settingService.ts#L415-L428)、[密钥登记实现](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/shared/src/credential-security/systemCredentialCipher.ts#L334-L396)与[公共授权存储](../../suian-zcode-common/auth-store.mjs#L6-L29)。
+- **Linux 增加凭据密钥后备路径**。这条分支不改变 Windows 插件与补丁的调用方式。见[平台条件](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/desktop/src/main/index.ts#L303-L314)。
+- **Start Plan 修复国内未关联账号的模型目录与鉴权**。命名插件继续通过 Host 查询模型目录、发起辅助生成，不增加自己的账号判断。见[官方鉴权分支](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/services/src/model-provider/accountProviderRequestAuthService.ts#L83-L92)与[命名调用方](../../suian-zcode-title/backend.mjs#L103-L145)。
+
+### 插件直接依赖的契约保持
+
+在此次增量中，RPC、远控管理器、会话与项目存储、会话操作、V4 schema、CLI 生命周期 Hook、插件加载器以及 MCP App 桥的相关实现均无差异。会话读取、控制、工件、命名和侧栏继续使用已有接口；无需因研究快照更新而修改业务版本或重建 vendor。已修复的工作树路径契约见[公共上下文](../../suian-zcode-common/project-context.mjs#L30-L44)、[历史读取](../sessions.mjs#L277-L290)、[命名路由](../../suian-zcode-title/backend.mjs#L41-L87)和[编辑器上下文](../../suian-side-editor/server.mjs#L32-L43)。
+
+local-only 复用[对应发行包的既有档案与隔离验证](local-only/16-windows-3.18.2-candidate.md)，包括无登录启动、真实 stdio 会话往返与网关重启恢复。本次只更新源码快照，不重新应用补丁或扩大该记录的验收范围。
+
+### 既有归档说明有一处遗漏
+
+**归档还会暂停绑定的活动定时任务，复原不会自动恢复这些任务。** 官方在首次“未归档 → 已归档”转换时，同事务暂停 `enabled=1` 且 `lifecycle_status=active` 的绑定任务；已认领的轮次不会被撤销，重复归档也不覆盖用户后来重新开启的选择。见[归档转换](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/services/src/session/taskIndexRepo.ts#L1157-L1159)和[自动任务更新](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/services/src/session/automationRepo.ts#L38-L51)。
+
+这是本次增量之前已有的行为。我们的[工具说明](../server.mjs#L216)及[写工具契约](write-tools.md#L170)仍使用“归档只隐藏会话”，需要在后续归档说明修订中补齐此副作用；本轮仅记录影响，没有修改工具实现或发布内容。
+
+### 定向验证结果
+
+使用目标快照的两份原始 `schema.baseline.sql` 建立临时 SQLite，调用当前业务模块，7 项检查通过：普通会话读取、工作树双路径读取、执行目录筛选、隐式发信的 Host 目标、公共上下文双路径、编辑器双路径绑定、当前 V4 decoder 接受 `worktreeCreated` 行。网络连接以记录参数的桩替代，编辑器绑定检查执行现有 `boundContext` 函数体；结果为模块级验证，未启动实际 Desktop。
+
+已有桌面证据继续按各自输入和范围复用；没有重跑全量回归。以下 AGENTS 检查使用同一目标源码，与业务基线独立。
+
+## 多工作区不会自动汇总全部 AGENTS
+
+**启动主对话时，默认只组合用户级 AGENTS 与一个项目级 AGENTS。**
+
+1. 用户级文件是 `~/.zcode/AGENTS.md`。
+2. 项目级文件从会话实际执行目录 `cwd` 向上寻找，找到首个 `AGENTS.md` 即停止；搜索边界为最近 Git 根或文件系统根。
+3. 其余项目目录进入 `additionalDirectories`，但不参与指令文件发现。主目录 A、附加目录 B 各有规则时，默认注入“全局 + A”，不会自动加入 B。如果执行目录下有更近的 AGENTS，则不会再累加各级祖先的规则。
+
+依据：[项目主目录与附加目录分解](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/services/src/project/index.ts#L317-L341)、[runtime 的独立配置字段](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/bootstrap/src/app/runtime-config.ts#L149-L157)、[规则解析入口](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/adapters/src/context/index.ts#L123-L158)及[首个命中即返回](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/adapters/src/context/index.ts#L236-L275)。
+
+这些正文经上下文构建器组成 `meta_user` 指令公告，再在模型请求前进入消息列表，确实影响模型输入；附加目录的环境说明则是另一项内容。见[指令装配](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/context/sections/request-user-context.ts#L23-L61)与[模型请求前接线](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/turn-loop.ts#L182-L197)。
+
+### 文件名与读取边界
+
+- **默认只识别 AGENTS.md**。没有 `ZCODE.md`、`CLAUDE.md` 的自动回退，也不默认搜索项目内 `.agents/AGENTS.md` 或 `.zcode/AGENTS.md`；用户级 `~/.zcode/AGENTS.md` 是单独处理的特例。见[默认文件名](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/adapters/src/context/index.ts#L26-L27)。
+- **裸 `@文件路径` 不会自动展开**。加载器读取正文并按字节上限截取，不解释引用。Hook 注入或 Agent 主动读取属于其它机制。见[正文读取](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/adapters/src/context/index.ts#L188-L205)。
+- **压缩重读仍使用单个执行目录**。未发现普通 Read 工具在进入其它目录时调用这套规则解析器。见[初始化](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/context.ts#L48-L79)与[压缩重读](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/context.ts#L299-L336)。
+- **子代理按 profile 继承父级快照**，不重新扫描所有目录。内置 general-purpose 开启 AGENTS 注入，Explore 关闭。见[继承接线](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/runtime/methods/subagent.ts#L133-L139)与[内置 profile](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/apps/zcode-cli/packages/core/src/subagent/profile.ts#L23-L86)。
+
+**建议把跨目录必需的短规则放在主目录 AGENTS.md**，并明确要求 Agent 在处理附加目录前读取其规则文件。这依赖 Agent 执行读取，不依赖裸 `@路径`，也不把“能访问附加目录”当成“规则已自动注入”。
+
+本轮使用目标提交的实际 resolver 函数、Node 内置 TypeScript 去类型及显式 `projectRoot` 做了 5 项断言：全局 + 主目录、最近祖先不累加、默认文件名、`@` 保持字面文本、无其它文件名或隐藏目录回退，全部通过。临时目录已清理；未安装上游依赖，未运行真实模型。此加载范围在本次快照更新前已存在。

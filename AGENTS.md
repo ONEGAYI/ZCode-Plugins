@@ -9,7 +9,7 @@
 - `marketplace.json` 是原生市场入口，指向固定 Release ZIP URL，登记 SHA-256 与 stripRoot:false；三个业务条目的 dependencies 都包含 common，各条目版本与插件清单同步。原生插件分别缓存，不硬拼同级缓存路径；四包发布目录构建与安装记录定位（PKG-01 契约）已交付，安装、配置、诊断与旧安装迁移按发布入口收敛（PKG-08）：发布缓存不 npm ci、不 link.mjs、不修包链接，npm 与 link.mjs 仅剩源码开发用途。skills/ 按职责拆分，根 SKILL.md 仅作源码兼容路由。
 - 开源发布前完成个人信息脱敏（用户名、会话标识、本机路径、授权凭据），由插件各自 `.gitignore` 挡住运行时数据。
 - 提交信息用中文，`类型: 简述` 格式，正文分条说明做了什么、为什么做。
-- `sources/` 下的 submodule 是研究用的第三方上游快照：只读、不 fork、不修改、不安装依赖；升级钉定提交须在 `sources/README.md` 同步登记。
+- `sources/` 下的 submodule 是研究用的第三方上游快照：只读、不 fork、不修改、不安装依赖；升级钉定提交须在 `sources/README.md` 同步登记。导航文档不记录本机安装版本或“上游尚未公开”等易过时状态；具体版本只用于标识快照、兼容契约与历史验证证据。
 - 研究与验证笔记统一放 `suian-zcode-title/docs/notes/`（与命名相关）、`suian-zcode-app-mcp/docs/`（与会话操控 MCP 相关）或 `suian-side-editor/docs/`（与侧栏编辑器相关），入库存脱敏版。
 
 ## 开发与正式集成纪律
@@ -101,6 +101,6 @@ ZCode-Plugins/
 │   └── skills/             # setup / configuration / debug
 │
 └── sources/                # 上游源码 submodule 引用（只读，见 sources/README.md）
-    ├── official-zcode/     # zai-org/ZCode @ c590468（2026-11-12 的 v3.18.1 公开源码快照）
+    ├── official-zcode/     # zai-org/ZCode 只读源码快照；钉定提交与研究记录见 sources/README.md
     └── zcode-open-bridge/  # tizerluo/zcode-open-bridge @ e8bd9bc（社区桥接参考）
 ```
