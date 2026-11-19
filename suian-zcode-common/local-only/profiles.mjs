@@ -6,6 +6,7 @@ import * as windows3172 from './profiles/windows-3.17.2.9661.mjs';
 import * as windows3180 from './profiles/windows-3.18.0.10300.mjs';
 import * as windows3181 from './profiles/windows-3.18.1.10376.mjs';
 import * as windows3182 from './profiles/windows-3.18.2.10443.mjs';
+import * as windows3190 from './profiles/windows-3.19.0.10774.mjs';
 
 export const TARGET_LAYOUT = Object.freeze({ exeName: 'ZCode.exe', appAsarRelativePath: 'resources/app.asar' });
 export const PATCH_PROFILES = Object.freeze([
@@ -16,6 +17,7 @@ export const PATCH_PROFILES = Object.freeze([
   Object.freeze({ id: 'windows-3.18.0.10300-dea4826e', platform: 'win32', packageIdentity: windows3180.SUPPORTED_PACKAGE, patchVersion: windows3180.PATCH_VERSION, mainEntry: windows3180.MAIN_ENTRY, applyInjections: windows3180.applyInjections }),
   Object.freeze({ id: 'windows-3.18.1.10376-1af9cdd8', platform: 'win32', packageIdentity: windows3181.SUPPORTED_PACKAGE, patchVersion: windows3181.PATCH_VERSION, mainEntry: windows3181.MAIN_ENTRY, applyInjections: windows3181.applyInjections }),
   Object.freeze({ id: 'windows-3.18.2.10443-4c0b8510', platform: 'win32', packageIdentity: windows3182.SUPPORTED_PACKAGE, patchVersion: windows3182.PATCH_VERSION, mainEntry: windows3182.MAIN_ENTRY, applyInjections: windows3182.applyInjections }),
+  Object.freeze({ id: 'windows-3.19.0.10774-24218509', platform: 'win32', packageIdentity: windows3190.SUPPORTED_PACKAGE, patchVersion: windows3190.PATCH_VERSION, mainEntry: windows3190.MAIN_ENTRY, applyInjections: windows3190.applyInjections }),
 ]);
 
 export function selectProfile({ actual, state = null, profiles = PATCH_PROFILES, platform = process.platform }) {
