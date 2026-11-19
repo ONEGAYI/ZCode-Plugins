@@ -1,5 +1,22 @@
 # 更新日志
 
+## [0.10.6] - 2026-11-19
+
+local-only 新增 Windows x64 ZCode `3.19.0.10774` 适配。setup 可识别该发行包并在本机生成补丁候选。
+
+### 新增
+
+**Windows 3.19.0.10774 适配（[#215](https://github.com/ONEGAYI/ZCode-Plugins/pull/215)）**
+
+- 按 exe 完整版本与原版 `app.asar` 摘要自动选档，保留七份旧档案。
+- 隔离副本已验证无登录冷启动、网关重启后自动重连、只读 MCP 查询与副本还原。MCP 写操作与在线 relay 未验。
+
+### 其他改进
+
+- 研究用官方源码快照更新到 ZCode 3.18.2，并记录多工作区的 AGENTS 加载规则（[#214](https://github.com/ONEGAYI/ZCode-Plugins/pull/214)）。3.19 的适配依据是 Windows 发行包。
+
+> **使用说明**：更新 common 不会改写 ZCode。需要启用 local-only 时，用 setup 生成命令，退出目标 Desktop 后再应用。
+
 ## [0.10.5] - 2026-11-12
 
 local-only 新增 Windows ZCode `3.18.2.10443` 适配，setup 可按实际安装包自动选档。
@@ -52,7 +69,7 @@ local-only 新增 Windows ZCode `3.18.1.10376` 适配，setup 可为这一发行
 **Windows 3.18.0.10300 适配档案（#202）**
 
 - 新增原版运行包档案 `windows-3.18.0.10300-dea4826e`（独立修订号 1）：status / prepare / apply / restore 按本机 exe 版本与原版 asar 摘要自动识别并选择该档案，现场生成补丁候选。
-- 上游源码尚未公开同步 3.18.0，锚点语义基于 v3.17.1 源码与 3.18.0 编译产物逐锚点核对：relay WS 覆盖等六处变量映射更新（`kx→I_`、`Ix→E_`、`Bt→Gt`、`rg→xg`、`Ne→Ge` 等）；开关载体与注入行为语义不变。
+- 本次适配以 v3.17.1 源码与 3.18.0 编译产物逐锚点核对语义：relay WS 覆盖等六处变量映射更新（`kx→I_`、`Ix→E_`、`Bt→Gt`、`rg→xg`、`Ne→Ge` 等）；开关载体与注入行为语义不变。
 - relay URL 解析器的内部实现换文件，但覆盖非空即整体直用的语义一致；关闭开关时原覆盖值保留，开启时改写为回环网关 WS。
 - 旧档案（3.16.2 / 3.16.3 / 3.17.1 / 3.17.2）字节不变，历史状态识别、同包升级与还原不受影响。
 
@@ -92,7 +109,7 @@ local-only 新增 Windows ZCode `3.18.1.10376` 适配，setup 可为这一发行
 **Windows 3.17.2.9661 适配档案（#187）**
 
 - 新增原版运行包档案 `windows-3.17.2.9661-b11a6bc5`（独立修订号 1）：status / prepare / apply / restore 按本机 exe 版本与原版 asar 摘要自动识别并选择该档案，现场生成补丁候选。
-- 上游源码尚未公开同步 3.17.2，锚点语义基于 v3.17.1 源码与 3.17.2 编译产物逐锚点核对：relay WS 覆盖等六处变量映射更新，manager、窗口函数与 P5/P6 锚点原样；开关载体与注入行为语义不变。
+- 本次适配以 v3.17.1 源码与 3.17.2 编译产物逐锚点核对语义：relay WS 覆盖等六处变量映射更新，manager、窗口函数与 P5/P6 锚点原样；开关载体与注入行为语义不变。
 - 旧档案（3.16.2 / 3.16.3 / 3.17.1）字节不变，历史状态识别、同包升级与还原不受影响。
 
 > **验证范围**：local-only 71 项、setup / release-build 65 项测试通过；真实包两次 prepare 候选字节一致，副本 apply → restore 恢复摘要与原包逐字节一致。新版无登录冷启动、官方远控不可达、网关重启恢复与 MCP 闭环等原生运行验收未执行，该档案状态为适配候选。
@@ -238,6 +255,7 @@ local-only 新增 Windows ZCode `3.18.1.10376` 适配，setup 可为这一发行
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.10.6]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.2...plugins-2026.11.19
 [0.10.5]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.1...plugins-2026.11.12.2
 [0.10.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11.1...plugins-2026.11.12
 [0.10.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11...plugins-2026.11.11.1
