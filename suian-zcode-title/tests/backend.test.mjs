@@ -56,10 +56,10 @@ for (const sessionId of ['sess_fixture', 'session_316_fixture', 'session_worktre
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3",workspacePath="D:\\fixture";
   const worktree=sessionId==="session_worktree_fixture",cwd=worktree?"D:/worktrees/isolated":workspacePath;
   execFileSync(sqliteBin,[sessionDb,[
-    "CREATE TABLE session(id,title,directory,path,revert,title_source);",
+    "CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);",
     "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",
     "CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);",
-    `INSERT INTO session VALUES('sess_fixture','原名','${cwd}',NULL,NULL,'custom');`,
+    `INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_fixture','原名','${cwd}',NULL,NULL,'custom');`,
     "INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);",
     "INSERT INTO part VALUES('p1','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"改进编辑体验"})+"',1);"
   ].join("\n").replaceAll('sess_fixture',sessionId)]);
@@ -121,25 +121,25 @@ test("索引标题分裂时按会话内 CronCreate 冻结证据放行，无证�
   const cronCall=JSON.stringify({type:"tool",callID:"call_fixture",tool:"CronCreate",state:{status:"completed",input:{cron:"*/5 * * * *",title:frozenTitle,prompt:"轮询"}}});
   const cronUpdate=JSON.stringify({type:"tool",callID:"call_fixture2",tool:"CronUpdate",state:{status:"completed",input:{id:"automation-fixture",title:"更新后的任务标题"}}});
   execFileSync(sqliteBin,[sessionDb,[
-    "CREATE TABLE session(id,title,directory,path,revert,title_source);",
+    "CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);",
     "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",
     "CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);",
-    "INSERT INTO session VALUES('sess_frozen','"+frozenTitle+"','D:\\belongs\\frozen',NULL,NULL,'custom');",
+    "INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_frozen','"+frozenTitle+"','D:\\belongs\\frozen',NULL,NULL,'custom');",
     "INSERT INTO message VALUES('u1','sess_frozen',1,1,'"+JSON.stringify({role:"user"})+"',1);",
     "INSERT INTO part VALUES('p1','u1','sess_frozen',1,1,'"+cronCall+"',1);",
     "INSERT INTO part VALUES('p2','u1','sess_frozen',1,1,'"+cronUpdate+"',2);",
     "INSERT INTO part VALUES('p3','u1','sess_frozen',1,1,'"+JSON.stringify({type:"text",text:"改进编辑体验"})+"',3);",
-    "INSERT INTO session VALUES('sess_plain','他方改写','D:\\\\belongs\\\\plain',NULL,NULL,'custom');",
+    "INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_plain','他方改写','D:\\\\belongs\\\\plain',NULL,NULL,'custom');",
     "INSERT INTO message VALUES('u2','sess_plain',1,1,'"+JSON.stringify({role:"user"})+"',1);",
     "INSERT INTO part VALUES('p4','u2','sess_plain',1,1,'"+JSON.stringify({type:"text",text:"普通会话内容"})+"',1);",
     // 失败的 CronCreate 不构成冻结证据（宿主只在创建成功后冻结）
     "INSERT INTO part VALUES('p5','u2','sess_plain',1,1,'"+JSON.stringify({type:"tool",callID:"call_failed",tool:"CronCreate",state:{status:"failed",input:{cron:"*/5 * * * *",title:"他方改写",prompt:"x"}}})+"',2);",
-    "INSERT INTO session VALUES('sess_noindex','"+frozenTitle+"','D:\\\\belongs\\\\noindex',NULL,NULL,'custom');",
+    "INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_noindex','"+frozenTitle+"','D:\\\\belongs\\\\noindex',NULL,NULL,'custom');",
     "INSERT INTO message VALUES('u3','sess_noindex',1,1,'"+JSON.stringify({role:"user"})+"',1);",
     "INSERT INTO part VALUES('p6','u3','sess_noindex',1,1,'"+cronCall+"',1);",
     "INSERT INTO part VALUES('p7','u3','sess_noindex',1,1,'"+JSON.stringify({type:"text",text:"索引行缺失的冻结会话"})+"',2);",
     // 双库一致 + custom：改名通道产物，不是冻结分裂，不得加载证据（否则用户手动改回历史 cron 标题时锁被误豁免）
-    "INSERT INTO session VALUES('sess_synced','"+frozenTitle+"','D:\\\\belongs\\\\synced',NULL,NULL,'custom');",
+    "INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_synced','"+frozenTitle+"','D:\\\\belongs\\\\synced',NULL,NULL,'custom');",
     "INSERT INTO message VALUES('u4','sess_synced',1,1,'"+JSON.stringify({role:"user"})+"',1);",
     "INSERT INTO part VALUES('p8','u4','sess_synced',1,1,'"+cronCall+"',1);",
     "INSERT INTO part VALUES('p9','u4','sess_synced',1,1,'"+JSON.stringify({type:"text",text:"双库一致的改名会话"})+"',2);"
@@ -191,13 +191,13 @@ test("payload cwd 与会话归属不一致时以 session.directory 为准；索�
   const root=mkdtempSync(join(tmpdir(),"z-title-backend2-")),sessionDb=join(root,"session.sqlite"),indexDb=join(root,"index.sqlite");
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
   execFileSync(sqliteBin,[sessionDb,[
-    "CREATE TABLE session(id,title,directory,path,revert,title_source);",
+    "CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);",
     "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",
     "CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);",
-    "INSERT INTO session VALUES('sess_moved','宿主新标题','D:\\\\belongs\\\\here',NULL,NULL,'generated');",
+    "INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_moved','宿主新标题','D:\\\\belongs\\\\here',NULL,NULL,'generated');",
     "INSERT INTO message VALUES('u1','sess_moved',1,1,'"+JSON.stringify({role:"user"})+"',1);",
     "INSERT INTO part VALUES('p1','u1','sess_moved',1,1,'"+JSON.stringify({type:"text",text:"更新仓库标签"})+"',1);",
-    "INSERT INTO session VALUES('sess_fresh','原名','D:\\\\belongs\\\\fresh',NULL,NULL,'custom');",
+    "INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_fresh','原名','D:\\\\belongs\\\\fresh',NULL,NULL,'custom');",
     "INSERT INTO message VALUES('u2','sess_fresh',1,1,'"+JSON.stringify({role:"user"})+"',1);",
     "INSERT INTO part VALUES('p2','u2','sess_fresh',1,1,'"+JSON.stringify({type:"text",text:"首轮内容"})+"',1);"
   ].join("\n")]);
