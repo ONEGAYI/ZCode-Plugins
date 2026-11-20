@@ -14,7 +14,7 @@ test("非命名命令不读取损坏提示词，run 在锁内恢复并保留备�
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3",env={...process.env,OIL_ZCODE_TITLE_DISABLE_TOAST:"1"},input=JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"});
   try {
     mkdirSync(state);writeFileSync(join(state,"naming-prompt.md"),"损坏原文");
-    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');"]);
+    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');"]);
     execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','原名',0,0,'completed');"]);
     writeFileSync(config,JSON.stringify({dataDir:state,sessionDb:db,indexDb:index,sqliteBin,assistantMaxChars:null}));
     const status=spawnSync(process.execPath,[cli,"status","--config",config],{encoding:"utf8",input,windowsHide:true,env});
@@ -41,7 +41,7 @@ test("CLI 接收会话事件，无正文时跳过；非法事件不回显凭据"
   const root=mkdtempSync(join(tmpdir(),"z-title-cli-")),db=join(root,"session.sqlite"),index=join(root,"index.sqlite"),config=join(root,"config.json");
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
   try {
-    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');"]);
+    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');"]);
     execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','原名',0,0,'completed');"]);
     writeFileSync(config,JSON.stringify({sessionDb:db,indexDb:index,sqliteBin,dataDir:join(root,"state")}));
     const run=spawnSync(process.execPath,[cli,"run","--apply","--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"}),windowsHide:true});
@@ -132,7 +132,7 @@ test("run 网关未配置时给出分层原因且可静音 Toast",()=>{
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
   const env={...process.env};delete env.OIL_ZCODE_REMOTE_URL;env.OIL_ZCODE_TITLE_DISABLE_TOAST="1";
   try {
-    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);INSERT INTO part VALUES('p1','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"改进编辑体验"})+"',1);"]);
+    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);INSERT INTO part VALUES('p1','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"改进编辑体验"})+"',1);"]);
     execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','原名',0,0,'completed');"]);
     writeFileSync(config,JSON.stringify({sessionDb:db,indexDb:index,sqliteBin,dataDir:join(root,"state"),probeTimeoutMs:2000,gatewayConfigPath:join(root,"missing-gateway.json")}));
     const run=spawnSync(process.execPath,[cli,"run","--apply","--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"}),windowsHide:true,env});
@@ -152,6 +152,48 @@ test("run 网关未配置时给出分层原因且可静音 Toast",()=>{
     const titles=execFileSync(sqliteBin,["-readonly",index,"SELECT title FROM tasks;"],{encoding:"utf8"});
     assert.ok(titles.includes("原名"),"失败时不得改动标题");
   } finally {rmSync(root,{recursive:true});}
+});
+test("run 仅跳过侧边聊天，未入索引的普通分叉仍保留 RPC 告警",async t=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-side-chat-")),state=join(root,"state"),db=join(root,"session.sqlite"),index=join(root,"index.sqlite"),config=join(root,"config.json"),gatewayConfigPath=join(root,"gateway.json");
+  t.after(()=>rmSync(root,{recursive:true}));
+  const sqliteBin=process.env.SQLITE_BIN||"sqlite3",cwd="D:\\fixture";
+  execFileSync(sqliteBin,[db,[
+    "CREATE TABLE session(id,title,directory,path,revert,title_source,task_type,parent_id);",
+    "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",
+    "CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);",
+    ...[["sess_side","selection_side_chat"],["sess_fork","fork"]].flatMap(([id,kind])=>[
+      "INSERT INTO session VALUES('"+id+"','原名','"+cwd+"',NULL,NULL,'generated','"+kind+"','sess_parent');",
+      "INSERT INTO message VALUES('u_"+id+"','"+id+"',1,1,json_object('role','user'),1);",
+      "INSERT INTO part VALUES('p_"+id+"','u_"+id+"','"+id+"',1,1,json_object('type','text','text','讨论编辑体验'),1);"
+    ])
+  ].join("\n")]);
+  execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);"]);
+  let probes=0;
+  const http=createServer((_req,res)=>{probes++;res.end(JSON.stringify({service:"suian-zcode-gateway",rpc_protocol_version:1,desktop_connected:true,upstream_connected:true}));});
+  const ws=new WebSocketServer({server:http});
+  ws.on("connection",socket=>socket.once("message",()=>socket.send(JSON.stringify({type:"error",code:"gateway_rpc_failed",message:"Session is not present in the requested workspace"}))));
+  http.listen(0,"127.0.0.1");await once(http,"listening");
+  t.after(()=>{for(const socket of ws.clients)socket.terminate();ws.close();http.close();});
+  writeFileSync(gatewayConfigPath,JSON.stringify({version:1,port:http.address().port,control_token:"fixture"}));
+  writeFileSync(config,JSON.stringify({dataDir:state,sessionDb:db,indexDb:index,sqliteBin,gatewayConfigPath}));
+  const invoke=async sessionId=>{
+    const child=spawn(process.execPath,[cli,"run","--apply","--config",config],{windowsHide:true,stdio:["pipe","pipe","pipe"],env:{...process.env,OIL_ZCODE_TITLE_DISABLE_TOAST:"1"}});
+    let stdout="",stderr="";
+    child.stdout.on("data",bytes=>stdout+=bytes);child.stderr.on("data",bytes=>stderr+=bytes);
+    child.stdin.end(JSON.stringify({session_id:sessionId,cwd}));
+    const [code]=await once(child,"close");
+    return {code,result:JSON.parse(stdout),stderr};
+  };
+  const side=await invoke("sess_side");
+  assert.equal(side.result.status,"skipped_side_chat");
+  assert.equal(side.code,0,side.stderr);
+  assert.equal(side.result.title,"原名");
+  assert.equal(Object.hasOwn(side.result,"toast"),false);
+  assert.equal(probes,0,"侧边聊天不访问网关");
+  const fork=await invoke("sess_fork");
+  assert.equal(fork.code,1,fork.stderr);
+  assert.equal(fork.result.reasonCode,"gateway_rpc_failed");
+  assert.equal(fork.result.toast,"disabled","非侧边聊天仍走原告警路径，只受显式静音变量控制");
 });
 test("probe 的 runner 日志保留安全诊断 ID 和阶段，不落盘对端正文",async t=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-rpc-diagnostic-")),config=join(root,"config.json"),gatewayConfigPath=join(root,"gateway.json");
@@ -277,7 +319,7 @@ test("run 双库标题不一致时以 index_title_mismatch 显式失败，不弹
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3";
   const env={...process.env,OIL_ZCODE_TITLE_DISABLE_TOAST:"1"};delete env.OIL_ZCODE_REMOTE_URL;
   try {
-    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session VALUES('sess_fixture','CLI 库标题','D:\\fixture',NULL,NULL,'generated');INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);INSERT INTO part VALUES('p1','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"调研内容"})+"',1);"]);
+    execFileSync(sqliteBin,[db,"CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_fixture','CLI 库标题','D:\\fixture',NULL,NULL,'generated');INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);INSERT INTO part VALUES('p1','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"调研内容"})+"',1);"]);
     execFileSync(sqliteBin,[index,"CREATE TABLE tasks(task_id,workspace_path,title,archived,deleted,task_status);INSERT INTO tasks VALUES('sess_fixture','D:\\fixture','索引标题',0,0,'completed');"]);
     writeFileSync(config,JSON.stringify({sessionDb:db,indexDb:index,sqliteBin,dataDir:join(root,"state"),gatewayConfigPath:join(root,"missing-gateway.json")}));
     const run=spawnSync(process.execPath,[cli,"run","--apply","--config",config],{encoding:"utf8",input:JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"}),windowsHide:true,env});

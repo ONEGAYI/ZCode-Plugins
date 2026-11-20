@@ -16,6 +16,8 @@ function candidateFrom(result,currentTitle) {
 
 export async function runNaming({backend,selection,state={},apply=false,eventUserId,timeoutMs=120000}) {
   const before=await backend.read();
+  // 辅助对话有 Stop 和会话记录，但不进宿主任务索引；不发起命名 RPC。
+  if(before.taskType==="selection_side_chat")return{status:"skipped_side_chat",title:before.title};
   if(before.archived||before.deleted)return{status:"archived",title:before.title};
   if(before.running)return{status:"running",title:before.title};
   if(!before.turnCount)return{status:"empty",title:before.title};

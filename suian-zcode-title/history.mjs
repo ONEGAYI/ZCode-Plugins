@@ -18,7 +18,7 @@ export async function readHistory({dbPath,sessionId,workspacePath,sqliteBin="sql
   const quoted="'"+sessionId+"'";
   const sql=[
     "PRAGMA query_only=ON; BEGIN;",
-    "SELECT 'session' kind,id,'' message_id,0 missing_seq,0 sequence,0 time_created,id sort_key,json_object('id',id,'title',title,'directory',coalesce(path,directory),'revert',json(revert),'titleSource',title_source) data FROM session WHERE id="+quoted,
+    "SELECT 'session' kind,id,'' message_id,0 missing_seq,0 sequence,0 time_created,id sort_key,json_object('id',id,'title',title,'directory',coalesce(path,directory),'revert',json(revert),'titleSource',title_source,'taskType',task_type) data FROM session WHERE id="+quoted,
     "UNION ALL SELECT 'message',id,'',sequence IS NULL,sequence,time_created,rowid,json_remove(data,'$.contextSnapshot') FROM message WHERE session_id="+quoted,
     "UNION ALL SELECT 'part',id,message_id,sequence IS NULL,sequence,time_created,id,CASE WHEN json_extract(data,'$.type')='text' THEN data ELSE json_object('type',json_extract(data,'$.type'),'synthetic',json_extract(data,'$.synthetic'),'metadata',json_extract(data,'$.metadata')) END FROM part WHERE session_id="+quoted,
     "ORDER BY kind,message_id,missing_seq,sequence,time_created,sort_key; COMMIT;"
@@ -96,6 +96,7 @@ export function recentSnapshot({session,messages},workspacePath,config={}) {
   const signature={policy:1,activeIds:active.map(m=>m.info.id),originalGoal:effective[0]?.user??"",recent:selected};
   return {
     title:session.title,
+    taskType:session.taskType,
     fingerprint:createHash("sha256").update(JSON.stringify(signature)).digest("hex"),
     latestUserId:effective.at(-1)?.id,
     turnCount:effective.length,
