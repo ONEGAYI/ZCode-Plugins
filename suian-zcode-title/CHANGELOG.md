@@ -1,5 +1,13 @@
 # 更新记录
 
+## [0.4.4] - 2026-11-20
+
+侧边聊天正常回复后不再弹出自动命名的 RPC 警告。主聊天仍会自动改名。
+
+### Bug 修复
+
+- 自动命名跳过 ZCode 的侧边辅助对话，保留其他会话的命名流程和 RPC 告警（#217）。
+
 ## [0.4.3] - 2026-11-12
 
 自动命名不再把无关的空闲会话顶到列表前排。
@@ -75,6 +83,7 @@ ZCode 3.18 原生工作树会话在回复完成后也能自动命名。
 > **验证范围**：历史裁剪契约已验证，真实手机普通会话已完成命名验证；真实手机回退后继续输入的完整场景仍待验收。模型目录可用但运行时请求失败的情况沿用已有网关错误分类。
 
 <!-- 变更链接 -->
+[0.4.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.1...plugins-2026.11.20
 [0.4.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12...plugins-2026.11.12.1
 [0.4.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11.1...plugins-2026.11.12
 [0.4.1]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.04...plugins-2026.11.11.1
