@@ -81,10 +81,10 @@ test("超过 32 MiB 的真实 SQLite 历史完整读取，命名摘要仍截取�
   t.after(()=>rmSync(root,{recursive:true}));
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3",sessionId="session_large_fixture",workspacePath="D:\\fixture",textLength=36*1024*1024;
   execFileSync(sqliteBin,[sessionDb,[
-    "CREATE TABLE session(id,title,directory,path,revert,title_source);",
+    "CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);",
     "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",
     "CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);",
-    `INSERT INTO session VALUES('${sessionId}','原名','${workspacePath}',NULL,NULL,'generated');`,
+    `INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('${sessionId}','原名','${workspacePath}',NULL,NULL,'generated');`,
     `INSERT INTO message VALUES('u1','${sessionId}',1,1,json_object('role','user'),1);`,
     // 在 SQLite 内生成长正文，避免将大字符串传给进程命令行。
     `INSERT INTO part VALUES('p1','u1','${sessionId}',1,1,json_object('type','text','text','BEGIN:'||replace(hex(zeroblob(${textLength/2})),'0','x')||':END'),1);`
@@ -109,10 +109,10 @@ for (const sessionId of ['sess_fixture', 'session_316_fixture']) test(`SQLite �
   const root=mkdtempSync(join(tmpdir(),"z-title-fixture-")),db=join(root,"fixture.sqlite"),sqliteBin=process.env.SQLITE_BIN||"sqlite3";
   try {
     const sql=[
-      "CREATE TABLE session(id,title,directory,path,revert,title_source);",
+      "CREATE TABLE session(id,title,directory,path,revert,title_source,task_type TEXT);",
       "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",
       "CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);",
-      "INSERT INTO session VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');",
+      "INSERT INTO session(id,title,directory,path,revert,title_source) VALUES('sess_fixture','原名','D:\\fixture',NULL,NULL,'custom');",
       "INSERT INTO message VALUES('u1','sess_fixture',1,1,'"+JSON.stringify({role:"user"})+"',1);",
       "INSERT INTO part VALUES('p2','u1','sess_fixture',1,1,'"+JSON.stringify({type:"text",text:"第二段"})+"',2);",
       "INSERT INTO part VALUES('p1','u1','sess_fixture',2,2,'"+JSON.stringify({type:"text",text:"第一段"})+"',1);"

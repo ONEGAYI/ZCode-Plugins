@@ -63,6 +63,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 | manual_title / locked | 无公共策略时，成功命名后非 generated 标题变化则保护；宿主 CronCreate 冻结的标题除外（命中会话内成功 CronCreate 的 input.title 时接管重命名，不锁，见 docs/freeze-takeover-evidence.json）；MCP 的公共 locked:true 优先阻止生成，false 明确不锁。公共锁经 cli.mjs lock/unlock 修改，删除旧状态仅解除旧锁 |
 | stale_result / outdated_event | 内容已更新或事件过期，丢弃结果 |
 | archived / running / empty / disabled / busy | 不适合命名或已暂停，不调用模型 |
+| skipped_side_chat | 侧边辅助对话，不连接原 Host、不改名、不发 RPC 告警 |
 | failed | 连接、模型或核验失败，退出码 1（附 `stage/reasonCode/toast`）。本地双库标题不一致为 `index_title_mismatch`、原 Host 与持久化不一致为 `host_title_mismatch`：均不弹 Toast、不改标题，需经官方改名链路对齐两库后自愈；冻结证据（会话内成功 CronCreate 的 input.title）命中时放行并由命名层接管 rename 同步两库 |
 
 ### 文件职责
