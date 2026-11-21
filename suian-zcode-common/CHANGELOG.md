@@ -1,5 +1,20 @@
 # 更新日志
 
+## [0.10.7] - 2026-11-21
+
+local-only 新增 Windows x64 ZCode `3.19.1.10833` 的补丁档案。setup 可识别该发行包并在本机生成补丁候选。
+
+### 新增
+
+**Windows 3.19.1.10833 适配（[#219](https://github.com/ONEGAYI/ZCode-Plugins/pull/219)）**
+
+- 按 exe 完整版本与原版 `app.asar` 摘要自动选档，保留八份旧档案。
+- 两次候选生成结果一致；在真实包副本上验证了应用与逐字节还原。
+
+> **验证范围**：新版隔离宿主的无登录冷启动、网关重连、MCP 往返与在线 relay 尚未实测。
+
+> **使用说明**：更新 common 不会改写 ZCode。需要启用 local-only 时，用 setup 生成命令，退出目标 Desktop 后再应用。
+
 ## [0.10.6] - 2026-11-19
 
 local-only 新增 Windows x64 ZCode `3.19.0.10774` 适配。setup 可识别该发行包并在本机生成补丁候选。
@@ -255,6 +270,7 @@ local-only 新增 Windows ZCode `3.18.1.10376` 适配，setup 可为这一发行
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.10.7]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.19...plugins-2026.11.21
 [0.10.6]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.2...plugins-2026.11.19
 [0.10.5]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.1...plugins-2026.11.12.2
 [0.10.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11.1...plugins-2026.11.12

@@ -4,12 +4,12 @@
     {
       "name": "suian-zcode-common",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-common.png",
-      "version": "0.10.6",
+      "version": "0.10.7",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.19/suian-zcode-common-0.10.6.zip",
-        "sha256": "6fe2ca9b053ec160da70362fe16b18e8a7df1952b375ab095788841f1903cbd3",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.21/suian-zcode-common-0.10.7.zip",
+        "sha256": "6c44777372e4710bffa0dfee01a055680e63a715e292a6b931798631834c4909",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
