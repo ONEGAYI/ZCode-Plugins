@@ -1,5 +1,25 @@
 # 更新日志
 
+## [0.10.8] - 2026-11-23
+
+local-only 新增 Windows x64 ZCode `4.0.0.10870` 适配，并在隔离宿主验证了无登录本地链路和网关重连。
+
+### 新增
+
+**Windows 4.0.0.10870 适配（[#222](https://github.com/ONEGAYI/ZCode-Plugins/pull/222)）**
+
+- setup 按 exe 完整版本和原版 `app.asar` 摘要自动选档，九份旧档案保持可用。
+- 真实副本通过补丁应用和逐字节还原；隔离宿主通过无登录冷启动、原 Host 附着、网关重连和 stdio 只读查询。
+- 关闭 local-only 后，隔离副本不再接入回环网关。
+
+### 其他改进
+
+- 研究用官方源码锚点同步到 4.0.0。源码核查未发现需要修改现有插件接口的变化；桌面首轮可能先于 MCP 工具就绪（[#222](https://github.com/ONEGAYI/ZCode-Plugins/pull/222)）。
+
+> **联网边界**：local-only 的远控链路走回环，ZCode 更新检查仍可直连。本轮未验证完全离线、在线 relay 或 MCP 写工具。
+
+> **使用说明**：升级 common 不会改写 ZCode。启用 local-only 时，先用 setup 生成命令，退出目标 Desktop 后再应用。
+
 ## [0.10.7] - 2026-11-21
 
 local-only 新增 Windows x64 ZCode `3.19.1.10833` 的补丁档案。setup 可识别该发行包并在本机生成补丁候选。
@@ -270,6 +290,7 @@ local-only 新增 Windows ZCode `3.18.1.10376` 适配，setup 可为这一发行
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.10.8]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.21...plugins-2026.11.23
 [0.10.7]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.19...plugins-2026.11.21
 [0.10.6]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.2...plugins-2026.11.19
 [0.10.5]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.1...plugins-2026.11.12.2

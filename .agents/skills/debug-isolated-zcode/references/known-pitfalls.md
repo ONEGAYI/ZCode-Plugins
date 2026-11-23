@@ -1,4 +1,4 @@
-# 隔离 ZCode 环境踩坑详录（K1-K31）
+# 隔离 ZCode 环境踩坑详录
 
 每条按 症状 / 根因 / 解法 / 来源 记录。来源指向 `suian-zcode-app-mcp/docs/local-only/` 的脱敏证据文档；编号在合并或删除时保持连续。
 未定位的事项如实标注"根因未定位"，与已证实事实分开。
@@ -43,6 +43,7 @@
 
 - 构造：启动时给 exe 传 `--proxy-server=http://127.0.0.1:<死端口>`，Chromium 栈请求全部失败（日志可见 `net::ERR_PROXY_CONNECTION_FAILED`）。
 - **注意**：机器上有 TUN 代理时，仍会观察到 `198.18.x.x:443` 之类外部连接（TUN 虚拟网段）——这是经系统代理的连接，不等于官方远控直连。证据里区分"经 TUN 的连接"与"对官方端点的直连尝试"，双方都记录。
+- Windows 4.0.0 验证到更新器不受这条启动参数阻断；不能用它证明整机离线，见 K32。
 - **来源**：LO-01（[基线证据](../../../../suian-zcode-app-mcp/docs/local-only/01-original-baseline-evidence.md)）。
 
 ## K7 网关端口：lab 用 17331，日常占 17329
@@ -229,3 +230,10 @@
 - **根因**：凭据默认使用 AES-256-GCM，密钥由平台、`homedir()` 与系统用户名派生，或由显式 `ZCODE_CREDENTIAL_SECRET` 提供。隔离 HOME 改变默认密钥；第一次解密失败后，宿主会清除副本中的 OAuth 登录字段，剩余缓存已不完整。
 - **解法**：先停止自己的隔离副本，再从原目录重新取得完整的登录字段，按已核实的加密算法在内存中解密并用隔离目录的密钥重新加密，最后启动副本。原凭据不修改，明文不落盘、不进日志；不要从首次失败后已清理的副本继续重加密。手机远控验收不复制 `webRemoteControlRelayV2Device`，由副本登记独立设备。
 - **来源与边界**：Windows 3.17.1.9553 隔离复现；[凭据加密实现](../../../../sources/official-zcode/packages/services/src/credential/providers/credentialCipherProvider.ts)；原始失败与重启日志位于 `.scratch/rewind-remote-lab/lab/logs/`，不入库。
+
+## K32 Windows 4.0.0 的死代理挡不住更新器直连
+
+- **症状**：以 `lab.mjs launch --proxy-dead-port` 启动 Windows `4.0.0.10870`，仍看到更新检查成功和外部 443 连接。
+- **证据**：宿主日志记录 `auto-updater proxy mode=direct`，并读到远端版本。外部连接与更新检查时间线吻合，未经逐包确认；远控 TCP 和网关健康数据显示，远控仍只使用回环，网关未连接上游。
+- **解法**：分别记录远控与应用更新的网络证据。用回环连接和网关 `upstream_connected` 核对本地链路；若要验证完全离线，需要在隔离环境单独限制外网并核对更新请求确实失败。
+- **来源**：[Windows 4.0.0 隔离原生验收](../../../../suian-zcode-app-mcp/docs/local-only/19-windows-4.0.0-candidate.md#隔离原生验收)。
