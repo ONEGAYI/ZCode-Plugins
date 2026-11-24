@@ -65,7 +65,9 @@ node release-publish.mjs --out .scratch/release --title "{{Release 标题}}" --n
 
 命令读取 `release-record.json` 中的目标仓库、tag 与本轮 ZIP，核对门禁并从最终候选提交读取市场基线和离线指南，不重跑构建或测试。标题和说明由发布人提供，仅用于新建草稿。
 
-获得公开授权后，以原参数加 `--publish` 续作。命令把已上传全部资产的同一条 Release 公开为**预发布**，匿名下载核对本轮资产，再复查 tag 是否仍指向候选提交。两项均通过才返回 `market-ready`，并通过 `report.marketCandidate` 交付 `marketplace.verified-<tag>.json`。下载失败时保留已公开资产，续作只重验未通过的下载；tag 改指时停止交接。此阶段不转正，也不修改正式市场清单。
+获得公开授权后，以原参数加 `--publish` 续作。命令把已上传全部资产的同一条 Release 公开为**预发布**，匿名下载核对本轮资产，再复查 tag 是否仍指向候选提交。两项均通过才返回 `market-ready`，并通过 `report.marketCandidate` 交付 `marketplace.verified-<tag>.json`。此阶段不转正，也不修改正式市场清单。
+
+续作时保留已公开资产，并复用绑定到当前 Release ID 的下载凭证。若同一 tag 的 Release 被重建，或旧凭证未记录 Release ID，命令复用已制好的离线包，重新匿名下载本轮资产。任何下载失败或 tag 改指都会阻止市场交接和转正。
 
 ### 宿主验收并核对 master 后转正
 
@@ -77,7 +79,7 @@ node release-publish.mjs --out .scratch/release --title "{{Release 标题}}" --n
 node release-publish.mjs --out .scratch/release --finalize --host-verified
 ```
 
-`--host-verified` 是对已完成宿主验收的人工确认。命令复用同一候选的匿名下载凭证，通过 GitHub 读取 `master` 市场清单并核对本轮条目的版本、URL 和 SHA-256，再确认公开资产与 tag 未变。通过后只解除同一条 Release 的预发布标记，不重新制包、下载或上传资产。`--publish` 与 `--finalize` 不可同时执行。
+`--host-verified` 是对已完成宿主验收的人工确认。命令要求匿名下载凭证属于同一候选和当前 Release ID，通过 GitHub 读取 `master` 市场清单并核对本轮条目的版本、URL 和 SHA-256，再确认公开资产与 tag 未变。通过后只解除同一条 Release 的预发布标记，不重新制包、下载或上传资产。`--publish` 与 `--finalize` 不可同时执行。
 
 ### 每轮发布都生成 Windows x64 离线包
 

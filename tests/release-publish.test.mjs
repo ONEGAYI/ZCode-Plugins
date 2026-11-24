@@ -61,8 +61,9 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
   }));
   const args = ['--out', outDir, '--title', title, '--notes-file', join(outDir, 'notes.md')];
   const finalize = ['--out', outDir, '--finalize'];
+  const stateFile = join(outDir, `publish-${tag}.json`);
   const offlineName = 'zcode-plugins-offline-windows-x64.zip';
-  let release, prepared = 0, draftCheckpoint;
+  let release, prepared = 0, draftCheckpoint, anonymousUnavailable = false;
   let tagTarget = commit, moveTagDuringDownload = false;
   let masterMarketplace = marketplace, moveTagDuringMasterCheck = false;
   const stored = new Map();
@@ -75,6 +76,7 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     requests.push([method, path]);
     if (parsed.hostname === 'github.com') {
       assert.equal(options.headers, undefined, '公开下载不能附加 Token');
+      if (anonymousUnavailable) return response('not found', 404);
       if (moveTagDuringDownload) tagTarget = 'b'.repeat(40);
       return { ok: true, arrayBuffer: async () => stored.get(path.split('/').at(-1)) };
     }
@@ -92,22 +94,23 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     if (path.endsWith('/releases') && method === 'GET') return response(release ? [release] : []);
     if (path.endsWith('/releases') && method === 'POST') {
       assert.equal(release, undefined, '续作已有草稿不得重建');
-      try { draftCheckpoint = JSON.parse(await readFile(join(outDir, `publish-${tag}.json`), 'utf8')); }
+      try { draftCheckpoint = JSON.parse(await readFile(stateFile, 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       const input = JSON.parse(options.body);
       assert.deepEqual(input, { tag_name: tag, target_commitish: commit, name: title, body: notes, draft: true, prerelease: true });
       release = { id: 1, ...input };
       return response(release, 201);
     }
-    if (path.endsWith('/releases/1/assets') && method === 'GET') {
+    const releasePath = `/releases/${release.id}`;
+    if (path.endsWith(`${releasePath}/assets`) && method === 'GET') {
       return response([...stored.entries()].map(([name, bytes]) => ({ name, digest: 'sha256:' + digest(bytes) })));
     }
-    if (path.endsWith('/releases/1/assets') && method === 'POST') {
+    if (path.endsWith(`${releasePath}/assets`) && method === 'POST') {
       assert.equal(release.draft, true);
       stored.set(parsed.searchParams.get('name'), Buffer.from(options.body));
       return response({}, 201);
     }
-    if (path.endsWith('/releases/1') && method === 'PATCH') {
+    if (path.endsWith(releasePath) && method === 'PATCH') {
       const patch = JSON.parse(options.body);
       releasePatches.push(patch);
       Object.assign(release, patch);
@@ -189,7 +192,48 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     await assert.rejects(main([...finalize, '--host-verified'], options), /master.*common/);
     assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }]);
   });
+  await t.test('旧凭证未绑定 Release ID 时不能转正，续作补做匿名下载', async () => {
+    const state = JSON.parse(await readFile(stateFile, 'utf8'));
+    for (const record of state.downloads) delete record.releaseId;
+    await writeFile(stateFile, JSON.stringify(state));
+    await assert.rejects(main([...finalize, '--host-verified'], options), /未完成公开下载核验/);
+    const start = requests.length;
+    const retry = await main([...args, '--publish'], options);
+    assert.equal(retry.error, undefined);
+    assert.equal(retry.state.stage, 'market-ready');
+    const downloaded = requests.slice(start).filter(([, path]) => path.includes('/releases/download/'));
+    assert.deepEqual(downloaded.map(([, path]) => path.split('/').at(-1)), [fileName, offlineName]);
+    assert.equal(prepared, 1);
+  });
   masterMarketplace = JSON.parse(await readFile(published.report.marketCandidate, 'utf8'));
+  await t.test('同 tag 的 Release 重建后必须重新匿名下载，404 阻止交接与转正', async () => {
+    release = { ...release, id: 2 };
+    await assert.rejects(main([...finalize, '--host-verified'], options), /当前 Release.*不符/);
+    const start = requests.length;
+    anonymousUnavailable = true;
+    try {
+      const blocked = await main([...args, '--publish'], options);
+      assert.equal(blocked.error?.code, 'download_failed');
+      assert.equal(blocked.state.releaseId, 2);
+      assert.equal(blocked.state.stage, 'verify-download');
+      assert.equal(blocked.report.marketCandidate, undefined);
+      assert.equal(blocked.state.marketSwitchPending, undefined);
+      assert.equal(blocked.state.finalizePending, undefined);
+      assert.deepEqual(blocked.state.downloads.map(record => [record.fileName, record.releaseId, record.reason]),
+        [[fileName, 2, 'HTTP 404'], [offlineName, 2, 'HTTP 404']]);
+      await assert.rejects(main([...finalize, '--host-verified'], options), /未完成.*下载核验/);
+      assert.equal(release.prerelease, true);
+    } finally {
+      anonymousUnavailable = false;
+    }
+    const retry = await main([...args, '--publish'], options);
+    assert.equal(retry.error, undefined);
+    assert.equal(retry.state.stage, 'market-ready');
+    assert.deepEqual(retry.state.downloads.map(record => [record.fileName, record.releaseId]),
+      [[fileName, 2], [offlineName, 2]]);
+    assert.equal(prepared, 1);
+    assert.ok(requests.slice(start).every(([method]) => method === 'GET'), '不重传资产或修改 Release');
+  });
   await t.test('master 版本和 URL 相同但摘要不符，仍不得转正', async () => {
     const source = masterMarketplace.plugins[0].source;
     const correct = source.sha256;

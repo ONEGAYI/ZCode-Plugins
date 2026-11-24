@@ -14,6 +14,11 @@ export const PIPELINE_STAGES = ['draft', 'upload', 'publish', 'verify-download',
 const stageOrder = new Map(PIPELINE_STAGES.map((stage, index) => [stage, index]));
 const reached = stage => stageOrder.get(stage) ?? -1;
 
+export function hasVerifiedDownload(downloads, releaseId, zip, url) {
+  return downloads.some(record => record.ok && record.releaseId === releaseId
+    && record.fileName === zip.fileName && record.sha256 === zip.sha256 && record.url === url);
+}
+
 /**
  * zips：[{ name, fileName, zipPath, sha256, bytes }]
  * candidateCommit：已验候选的完整提交 SHA（新 tag 和已有 tag 均须绑定）。
@@ -67,6 +72,15 @@ export async function runReleasePipeline({
   if (writeTagCommit && writeTagCommit !== candidateCommit) return fail('tag_commit_mismatch');
   if (!release) release = await githubApi.createDraftRelease({ ...releaseMetadata, tag: releaseTag, commit: candidateCommit });
   if (!writeTagCommit && release.target_commitish !== candidateCommit) return fail('draft_commit_mismatch');
+  // 同 tag 可能重建 Release；制包凭证仍属于候选提交，发布进度与下载凭证属于旧 Release。
+  if (run.releaseId != null && run.releaseId !== release.id) {
+    run.stage = 'draft';
+    run.assets = {};
+    run.downloads = [];
+    delete run.publishPending;
+    delete run.finalizePending;
+    delete run.marketSwitchPending;
+  }
   run.releaseId = release.id;
   if (reached(run.stage ?? 'draft') < reached('draft')) run.stage = 'draft';
 
@@ -122,33 +136,36 @@ export async function runReleasePipeline({
   }
   if (await githubApi.getTagCommit(releaseTag) !== candidateCommit) return fail('tag_commit_mismatch');
   delete run.publishPending;
+  delete run.finalizePending;
+  delete run.marketSwitchPending;
   run.stage = 'publish';
 
   // 阶段四：公开后匿名下载；任何失败阻断市场就绪，不删除或替换已公开资产。
-  const pendingDownloads = assets.filter(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok
-    && record.sha256 === zip.sha256 && record.url === githubApi.assetDownloadUrl(release, { name: zip.fileName })));
-  for (const zip of pendingDownloads) {
-    const url = githubApi.assetDownloadUrl(release, { name: zip.fileName });
-    run.downloads = run.downloads.filter(record => record.fileName !== zip.fileName);
+  const publicUrl = zip => githubApi.assetDownloadUrl(release, { name: zip.fileName });
+  const verifiedDownload = zip => hasVerifiedDownload(run.downloads, release.id, zip, publicUrl(zip));
+  for (const zip of assets) {
+    if (verifiedDownload(zip)) continue;
+    const url = publicUrl(zip);
+    const record = { fileName: zip.fileName, releaseId: release.id };
+    run.downloads = run.downloads.filter(item => item.fileName !== zip.fileName);
     try {
       const bytes = await download(url);
       const digest = createHash('sha256').update(bytes).digest('hex');
       if (digest !== zip.sha256) {
-        run.downloads.push({ fileName: zip.fileName, ok: false, reason: 'digest_mismatch' });
+        run.downloads.push({ ...record, ok: false, reason: 'digest_mismatch' });
       } else {
-        run.downloads.push({ fileName: zip.fileName, ok: true, url, sha256: digest });
+        run.downloads.push({ ...record, ok: true, url, sha256: digest });
       }
     } catch (error) {
-      run.downloads.push({ fileName: zip.fileName, ok: false, reason: error.httpStatus ? `HTTP ${error.httpStatus}` : String(error.message ?? error) });
+      run.downloads.push({ ...record, ok: false, reason: error.httpStatus ? `HTTP ${error.httpStatus}` : String(error.message ?? error) });
     }
     await persistState?.(run);
   }
   if (reached(run.stage) < reached('verify-download')) run.stage = 'verify-download';
-  if (assets.some(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok && record.sha256 === zip.sha256))) return fail('download_failed');
+  if (!assets.every(verifiedDownload)) return fail('download_failed');
 
   // 离线发行的公开下载可能耗时；摘要一致不能代替交接前重新核对 tag。
   if (offlineAsset && await githubApi.getTagCommit(releaseTag) !== candidateCommit) {
-    delete run.marketSwitchPending;
     return fail('tag_commit_mismatch');
   }
 
@@ -157,15 +174,12 @@ export async function runReleasePipeline({
   if (release.prerelease) {
     if (authorize.publish && !offlineAsset) {
       release = await githubApi.updateRelease(release, { prerelease: false });
-      delete run.finalizePending;
     } else {
       run.finalizePending = true;
       report.pending = offlineAsset
         ? '下载核验通过：Release 保持预发布，待宿主验收、master 集成和转正授权'
         : '下载核验通过/待授权转正式：Release 保持预发布，市场清单保持原正式版本';
     }
-  } else {
-    delete run.finalizePending;
   }
 
   // 阶段五：市场就绪——核对候选条目 URL/摘要与已公开资产一致；切换须另行授权。
@@ -176,7 +190,7 @@ export async function runReleasePipeline({
       if (!shape.ok) return fail('market_candidate_invalid');
       const zip = zips.find(item => item.name === entry.name);
       if (!zip) continue; // 未变条目保留其已发布 URL 和摘要。
-      const expectedUrl = githubApi.assetDownloadUrl(release, { name: zip.fileName });
+      const expectedUrl = publicUrl(zip);
       if (entry.source.url !== expectedUrl) return fail('market_url_mismatch');
       if (zip.sha256 !== entry.source.sha256) return fail('market_digest_mismatch');
     }

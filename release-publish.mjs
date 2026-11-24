@@ -4,7 +4,7 @@ import { readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
-import { createGithubRestApi, runReleasePipeline } from './release-github.mjs';
+import { createGithubRestApi, hasVerifiedDownload, runReleasePipeline } from './release-github.mjs';
 import { checkVersionConsistency, generateMarketplaceCandidate, validateMarketplaceEntry } from './release-marketplace.mjs';
 import { buildOfflineReleaseAsset, OFFLINE_MARKETPLACE } from './release-offline.mjs';
 import { gateCommitInputs, PLUGIN_ORDER, RECORD_NAME } from './release-orchestrate.mjs';
@@ -97,8 +97,8 @@ export async function main(argv = process.argv.slice(2), {
     const assets = [...zips, state.offline.asset];
     for (const zip of assets) {
       const url = githubApi.assetDownloadUrl(release, { name: zip.fileName });
-      if (!state.downloads.some(record => record.ok && record.fileName === zip.fileName && record.sha256 === zip.sha256 && record.url === url)) {
-        throw new Error(`未完成公开下载核验：${zip.fileName}`);
+      if (!hasVerifiedDownload(state.downloads, release.id, zip, url)) {
+        throw new Error(`未完成公开下载核验：${zip.fileName}。请先用 --publish 续作`);
       }
     }
 
