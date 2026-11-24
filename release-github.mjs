@@ -4,8 +4,10 @@
 // 顺序强制（规格 9.3）：草稿资产齐全 -> 授权公开（先预发布）-> 匿名公开下载核验 ->
 // 核验全部通过按授权转正式版 -> 市场就绪报告；下载核验失败不得转正，也不得切换市场。已发布资产不删除重传；
 // 上传结果未知时先读取远端现状再续作，不盲重传；不能覆盖现有未知内容。
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { validateMarketplaceEntry } from './release-marketplace.mjs';
+import { OFFLINE_MARKETPLACE } from './release-offline.mjs';
 
 export const PIPELINE_STAGES = ['draft', 'upload', 'publish', 'verify-download', 'market-ready'];
 
@@ -19,10 +21,17 @@ const reached = stage => stageOrder.get(stage) ?? -1;
  *              uploadAsset, updateRelease, assetDownloadUrl }
  * download(url)：匿名下载，成功返回 Buffer，失败抛错
  * authorize：{ publish: boolean }——publish 为 false 时停留在核验完成态
- * marketCandidate：候选市场清单（可选）；publish 后核对其 URL/摘要与资产一致
+ * marketCandidate：候选市场清单；本仓正式发布须传全量候选，用于生成离线资产，
+ *                  publish 后核对本轮插件条目的 URL/摘要（离线资产不进入市场清单）
+ * prepareOffline：本仓正式入口提供已绑定候选提交的离线制包函数；通用调用方不需要
+ * persistState：可选的持久化回调，确保已制包和下载核验结果可在进程中断后复用
+ * releaseMetadata：新草稿的 { name, body }（可选），不改已有 Release 的标题或说明
  * state：跨调用持久化（{stage, releaseId, assets, downloads, publishPending, finalizePending, marketSwitchPending}）
  */
-export async function runReleasePipeline({ state, githubApi, download, zips, releaseTag, candidateCommit, authorize = {}, marketCandidate }) {
+export async function runReleasePipeline({
+  state, githubApi, download, zips, releaseTag, candidateCommit, authorize = {}, marketCandidate,
+  prepareOffline, persistState, releaseMetadata,
+}) {
   const run = state ?? {};
   run.assets = run.assets ?? {};
   run.downloads = run.downloads ?? [];
@@ -35,16 +44,42 @@ export async function runReleasePipeline({ state, githubApi, download, zips, rel
   run.releaseTag = releaseTag;
   run.candidateCommit = candidateCommit;
 
+  // 先制包，再动 GitHub 草稿。未变插件只进入离线包，不重发其独立 ZIP。
+  let offlineAsset;
+  const offlinePrepared = Boolean(run.offline);
+  if (offlinePrepared || marketCandidate?.name === OFFLINE_MARKETPLACE) {
+    const selection = JSON.stringify(marketCandidate);
+    if (offlinePrepared && run.offline.selection !== selection) return fail('offline_candidate_mismatch');
+    if (!offlinePrepared && !prepareOffline) return fail('offline_preparer_required');
+    if (!offlinePrepared) {
+      run.offline = { selection, asset: await prepareOffline({ marketCandidate, zips, download }) };
+      await persistState?.(run);
+    }
+    offlineAsset = run.offline.asset;
+    report.zips.push(offlineAsset.fileName);
+  }
+  const assets = offlineAsset ? [...zips, offlineAsset] : zips;
+
   // 阶段一：读取现状，不存在同名才建草稿。
   let release = await githubApi.getReleaseByTag(releaseTag);
-  if (!release) release = await githubApi.createDraftRelease({ tag: releaseTag, commit: candidateCommit });
-  if (!tagCommit && release.target_commitish !== candidateCommit) return fail('draft_commit_mismatch');
+  // 下载与组包可能持续数分钟；写草稿、资产之前不能沿用制包前的远端 tag。
+  const writeTagCommit = offlineAsset ? await githubApi.getTagCommit(releaseTag) : tagCommit;
+  if (writeTagCommit && writeTagCommit !== candidateCommit) return fail('tag_commit_mismatch');
+  if (!release) release = await githubApi.createDraftRelease({ ...releaseMetadata, tag: releaseTag, commit: candidateCommit });
+  if (!writeTagCommit && release.target_commitish !== candidateCommit) return fail('draft_commit_mismatch');
   run.releaseId = release.id;
   if (reached(run.stage ?? 'draft') < reached('draft')) run.stage = 'draft';
 
   // 阶段二：逐资产核对/上传；已确认的不重传，未知内容不覆盖。
   const remoteAssets = await githubApi.listAssets(release);
-  for (const zip of zips) {
+  if (offlineAsset && !release.draft) {
+    const missing = [offlineAsset, ...zips].find(zip => !remoteAssets.some(asset => asset.name === zip.fileName));
+    if (missing) {
+      report.missingAsset = missing.fileName;
+      return fail(missing === offlineAsset ? 'offline_asset_missing_after_publish' : 'asset_missing_after_publish');
+    }
+  }
+  for (const zip of assets) {
     const existing = remoteAssets.find(asset => asset.name === zip.fileName);
     if (existing) {
       const digest = await githubApi.getAssetDigest(existing);
@@ -52,6 +87,10 @@ export async function runReleasePipeline({ state, githubApi, download, zips, rel
       if (digest !== zip.sha256) return fail('asset_conflict');
       run.assets[zip.fileName] = { uploaded: true, sha256: zip.sha256, reused: true };
       continue;
+    }
+    if (offlinePrepared && zip === offlineAsset) {
+      const digest = createHash('sha256').update(await readFile(zip.zipPath)).digest('hex');
+      if (digest !== zip.sha256) return fail('offline_asset_changed');
     }
     try {
       await githubApi.uploadAsset(release, { name: zip.fileName, zipPath: zip.zipPath, sha256: zip.sha256, bytes: zip.bytes });
@@ -86,14 +125,13 @@ export async function runReleasePipeline({ state, githubApi, download, zips, rel
   run.stage = 'publish';
 
   // 阶段四：公开后匿名下载；任何失败阻断市场就绪，不删除或替换已公开资产。
-  const pendingDownloads = zips.filter(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok
+  const pendingDownloads = assets.filter(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok
     && record.sha256 === zip.sha256 && record.url === githubApi.assetDownloadUrl(release, { name: zip.fileName })));
   for (const zip of pendingDownloads) {
     const url = githubApi.assetDownloadUrl(release, { name: zip.fileName });
     run.downloads = run.downloads.filter(record => record.fileName !== zip.fileName);
     try {
       const bytes = await download(url);
-      const { createHash } = await import('node:crypto');
       const digest = createHash('sha256').update(bytes).digest('hex');
       if (digest !== zip.sha256) {
         run.downloads.push({ fileName: zip.fileName, ok: false, reason: 'digest_mismatch' });
@@ -103,9 +141,10 @@ export async function runReleasePipeline({ state, githubApi, download, zips, rel
     } catch (error) {
       run.downloads.push({ fileName: zip.fileName, ok: false, reason: error.httpStatus ? `HTTP ${error.httpStatus}` : String(error.message ?? error) });
     }
+    await persistState?.(run);
   }
   if (reached(run.stage) < reached('verify-download')) run.stage = 'verify-download';
-  if (zips.some(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok && record.sha256 === zip.sha256))) return fail('download_failed');
+  if (assets.some(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok && record.sha256 === zip.sha256))) return fail('download_failed');
 
   // 下载核验全部通过：预发布转正式版。转正与草稿公开共用 publish 授权——
   // 未授权（含省略）时保持预发布、保留核验结果并标记待转正，不替调用方改变正式发布状态；
@@ -186,8 +225,14 @@ export function createGithubRestApi({ owner, repo, token, fetchImpl = fetch }) {
       try {
         return await request(`/releases/tags/${encodeURIComponent(tag)}`);
       } catch (error) {
-        if (error.httpStatus === 404) return null;
-        throw error;
+        if (error.httpStatus !== 404) throw error;
+      }
+      // 按 tag 接口查已公开版本，未公开草稿通过有写权限的 Release 列表查找。
+      for (let page = 1; ; page += 1) {
+        const releases = await request(`/releases?per_page=100&page=${page}`);
+        const match = releases.find(release => release.tag_name === tag);
+        if (match) return match;
+        if (releases.length < 100) return null;
       }
     },
     async createDraftRelease({ tag, commit, name = tag, body = '' }) {

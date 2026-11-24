@@ -29,9 +29,19 @@
    帮我配置已安装的 suian 插件
    ```
 
-安装任一业务插件会自动安装 common，已有的停用状态会保留。市场安装交付自带全部运行文件的发布目录，安装后无需 npm 或包链接；网关等服务初始化由 Agent 按各插件的 setup 技能完成。文本编辑不需要启动网关；选区评论需要已有网关和桌面端远控连接，已测环境与边界见[开发验证记录](./suian-zcode-app-mcp/docs/local-only/07-editor-acceptance-evidence.md)。评论的已知限制见[编辑器说明](./suian-side-editor/README.md#临时选区评论)。
+安装任一业务插件会自动安装 common，已有的停用状态会保留。普通市场包已带齐插件代码和 JavaScript 依赖，安装后无需 npm 或包链接，但不含 Node.js 本体。
+
+**运行条件**：在 Windows 上，ZCode 的启动环境和执行 setup 的 Shell 都应能从 `PATH` 找到 Node.js 24+。可以只给启动 ZCode 的进程加便携版 Node 的目录，不必改全局 `PATH`；MCP 能启动不代表 Hook 能找到 Node。自动命名另需 `sqlite3` 命令行工具，可以配置绝对路径。
+
+网关等服务由 Agent 按各插件的 setup 技能配置。文本编辑不需要启动网关；选区评论需要已有网关和桌面端远控连接，已测环境与边界见[开发验证记录](./suian-zcode-app-mcp/docs/local-only/07-editor-acceptance-evidence.md)。评论的已知限制见[编辑器说明](./suian-side-editor/README.md#临时选区评论)。
 
 个人配置与状态保存在插件版本缓存之外。迁移旧源码安装时，Agent 只清理对应的旧注册，保留其他配置。具体步骤见各插件的 setup 技能。
+
+### 离线安装（Windows x64）
+
+从包含 `zcode-plugins-offline-windows-x64.zip` 的 [Release](https://github.com/ONEGAYI/ZCode-Plugins/releases) 下载该资产，转移到离线机器，解压到会长期保留的目录。用已安装的 ZCode Desktop 打开解压目录，对 Agent 说：「按 AGENTS.md 离线安装全套 ZCode Plugins。」也可以点名只装所需插件。
+
+离线包自带四个插件的发布文件、本地市场清单、Node.js 和 `sqlite3`。包内 [AGENTS.md](./offline/AGENTS.md) 说明如何从本地市场安装并用随包 Node 启动 Hook。插件安装可离线完成；模型、登录和远控按各自的可用条件验证。
 
 ### 旧源码安装迁移
 
