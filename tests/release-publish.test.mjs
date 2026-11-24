@@ -60,11 +60,14 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     sourceInputs: { [common]: await scanSourceInputs(join(repoRoot, common)) },
   }));
   const args = ['--out', outDir, '--title', title, '--notes-file', join(outDir, 'notes.md')];
+  const finalize = ['--out', outDir, '--finalize'];
   const offlineName = 'zcode-plugins-offline-windows-x64.zip';
   let release, prepared = 0, draftCheckpoint;
   let tagTarget = commit, moveTagDuringDownload = false;
+  let masterMarketplace = marketplace, moveTagDuringMasterCheck = false;
   const stored = new Map();
   const requests = [];
+  const releasePatches = [];
   const response = (data, status = 200) => ({ ok: status < 400, status, text: async () => String(data), json: async () => data });
   const fetchImpl = async (url, options = {}) => {
     const parsed = new URL(url), path = parsed.pathname;
@@ -78,6 +81,12 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     assert.equal(options.headers.authorization, 'Bearer fixture-token');
     if (path.includes('/git/ref/tags/')) {
       return release && !release.draft ? response({ object: { type: 'commit', sha: tagTarget } }) : response('not found', 404);
+    }
+    if (path.endsWith('/contents/marketplace.json') && method === 'GET') {
+      assert.equal(parsed.searchParams.get('ref'), 'master');
+      assert.equal(options.headers.accept, 'application/vnd.github.raw+json');
+      if (moveTagDuringMasterCheck) tagTarget = 'b'.repeat(40);
+      return response(masterMarketplace);
     }
     if (path.endsWith('/releases/tags/' + tag)) return release && !release.draft ? response(release) : response('not found', 404);
     if (path.endsWith('/releases') && method === 'GET') return response(release ? [release] : []);
@@ -99,7 +108,9 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
       return response({}, 201);
     }
     if (path.endsWith('/releases/1') && method === 'PATCH') {
-      Object.assign(release, JSON.parse(options.body));
+      const patch = JSON.parse(options.body);
+      releasePatches.push(patch);
+      Object.assign(release, patch);
       return response(release);
     }
     assert.fail(`unexpected request: ${method} ${url}`);
@@ -130,6 +141,10 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
   assert.equal(draft.state.publishPending, true);
   assert.equal(prepared, 1);
   assert.deepEqual([...stored.keys()], [fileName, offlineName]);
+  await t.test('尚未完成公开下载验证的草稿不能转正', async () => {
+    await assert.rejects(main([...finalize, '--host-verified'], options), /未完成.*下载核验/);
+    assert.deepEqual(releasePatches, []);
+  });
   await t.test('匿名下载期间 tag 改指其他提交，不转正或交付市场候选', async () => {
     moveTagDuringDownload = true;
     try {
@@ -149,7 +164,12 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
   assert.equal(published.error, undefined);
   assert.equal(published.state.stage, 'market-ready');
   assert.equal(release.draft, false);
-  assert.equal(release.prerelease, false);
+  await t.test('--publish 交付市场候选但保留预发布', () => {
+    assert.equal(release.prerelease, true);
+    assert.equal(published.state.finalizePending, true);
+    assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }]);
+    assert.ok(!requests.some(([, path]) => path.endsWith('/contents/marketplace.json')));
+  });
   assert.deepEqual(published.state.downloads.map(record => record.fileName), [fileName, offlineName]);
   await t.test('首次写入草稿前已保存离线产物的候选凭证', () => {
     assert.equal(draftCheckpoint?.candidateCommit, commit);
@@ -161,5 +181,59 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     const verified = JSON.parse(await readFile(published.report.marketCandidate, 'utf8'));
     assert.equal(verified.plugins[0].source.url, `${baseUrl}/${tag}/${fileName}`);
     assert.deepEqual(JSON.parse(await readFile(staleCandidate,'utf8')), marketplace);
+  });
+  await t.test('缺少宿主验收确认或远端 master 仍旧时不得转正', async () => {
+    const before = requests.length;
+    await assert.rejects(main(finalize, options), /宿主验收/);
+    assert.equal(requests.length, before, '缺少宿主确认时不访问 GitHub');
+    await assert.rejects(main([...finalize, '--host-verified'], options), /master.*common/);
+    assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }]);
+  });
+  masterMarketplace = JSON.parse(await readFile(published.report.marketCandidate, 'utf8'));
+  await t.test('master 版本和 URL 相同但摘要不符，仍不得转正', async () => {
+    const source = masterMarketplace.plugins[0].source;
+    const correct = source.sha256;
+    source.sha256 = 'f'.repeat(64);
+    try {
+      await assert.rejects(main([...finalize, '--host-verified'], options), /master.*common/);
+      assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }]);
+    } finally {
+      source.sha256 = correct;
+    }
+  });
+  await t.test('已核验的公开离线资产不再存在时不得转正', async () => {
+    const bytes = stored.get(offlineName);
+    stored.delete(offlineName);
+    try {
+      await assert.rejects(main([...finalize, '--host-verified'], options), /公开资产缺失.*offline/);
+      assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }]);
+    } finally {
+      stored.set(offlineName, bytes);
+    }
+  });
+  await t.test('核对 master 期间 tag 改指其他提交时不得转正', async () => {
+    moveTagDuringMasterCheck = true;
+    try {
+      await assert.rejects(main([...finalize, '--host-verified'], options), /tag.*候选/);
+      assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }]);
+    } finally {
+      moveTagDuringMasterCheck = false;
+      tagTarget = commit;
+    }
+  });
+  await t.test('宿主已验且 master 匹配后可单独转正，只改元数据', async () => {
+    await rm(zipPath);
+    await rm(join(outDir, 'zips', offlineName));
+    const start = requests.length;
+    const result = await main([...finalize, '--host-verified'], options);
+    assert.equal(result.report.finalized, true);
+    assert.equal(result.state.finalizePending, undefined);
+    assert.equal(result.state.marketSwitchPending, undefined);
+    assert.equal(release.prerelease, false);
+    assert.equal(prepared, 1);
+    assert.ok(requests.slice(start).every(([method, path]) => method !== 'POST' && !path.includes('/releases/download/')));
+    assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }, { prerelease: false }]);
+    await main([...finalize, '--host-verified'], options);
+    assert.equal(releasePatches.length, 2, '已经转正的 Release 不重复更新');
   });
 });

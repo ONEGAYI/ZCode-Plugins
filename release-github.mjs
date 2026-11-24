@@ -1,8 +1,8 @@
 // PKG-07：GitHub Release 发布流水线编排。GitHub API 与匿名下载全部依赖注入：
 // 测试使用内存桩，不触真实网络写操作；真实 REST 适配器由 createGithubRestApi 提供，
 // 仅在另行授权的正式发布中由人显式调用。
-// 顺序强制（规格 9.3）：草稿资产齐全 -> 授权公开（先预发布）-> 匿名公开下载核验 ->
-// 核验全部通过按授权转正式版 -> 市场就绪报告；下载核验失败不得转正，也不得切换市场。已发布资产不删除重传；
+// 本仓正式发行（规格 9.3）：草稿资产齐全 -> 授权公开为预发布 -> 匿名下载核验 -> 交接市场候选。
+// 正式转正由 release-publish.mjs 的独立路径处理；无离线资产的通用调用保留原有转正语义。已发布资产不删除重传；
 // 上传结果未知时先读取远端现状再续作，不盲重传；不能覆盖现有未知内容。
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -20,7 +20,7 @@ const reached = stage => stageOrder.get(stage) ?? -1;
  * githubApi：{ getTagCommit, getReleaseByTag, createDraftRelease, listAssets, getAssetDigest,
  *              uploadAsset, updateRelease, assetDownloadUrl }
  * download(url)：匿名下载，成功返回 Buffer，失败抛错
- * authorize：{ publish: boolean }——publish 为 false 时停留在核验完成态
+ * authorize：{ publish: boolean }——授权公开草稿；本仓离线发行公开后保持预发布
  * marketCandidate：候选市场清单；本仓正式发布须传全量候选，用于生成离线资产，
  *                  publish 后核对本轮插件条目的 URL/摘要（离线资产不进入市场清单）
  * prepareOffline：本仓正式入口提供已绑定候选提交的离线制包函数；通用调用方不需要
@@ -152,16 +152,17 @@ export async function runReleasePipeline({
     return fail('tag_commit_mismatch');
   }
 
-  // 下载核验全部通过：预发布转正式版。转正与草稿公开共用 publish 授权——
-  // 未授权（含省略）时保持预发布、保留核验结果并标记待转正，不替调用方改变正式发布状态；
-  // 幂等——已正式（含人工先行转正）不再发补丁并清理残留标记；转正不等待市场清单切换授权。
+  // 离线发行先交接候选；宿主验收和 master 核对完成后才可另行转正。
+  // 不改变无离线资产的通用调用方此前的 publish 授权语义。
   if (release.prerelease) {
-    if (authorize.publish) {
+    if (authorize.publish && !offlineAsset) {
       release = await githubApi.updateRelease(release, { prerelease: false });
       delete run.finalizePending;
     } else {
       run.finalizePending = true;
-      report.pending = '下载核验通过/待授权转正式：Release 保持预发布，市场清单保持原正式版本';
+      report.pending = offlineAsset
+        ? '下载核验通过：Release 保持预发布，待宿主验收、master 集成和转正授权'
+        : '下载核验通过/待授权转正式：Release 保持预发布，市场清单保持原正式版本';
     }
   } else {
     delete run.finalizePending;
@@ -240,6 +241,9 @@ export function createGithubRestApi({ owner, repo, token, fetchImpl = fetch }) {
         if (match) return match;
         if (releases.length < 100) return null;
       }
+    },
+    async getMasterMarketplace() {
+      return request('/contents/marketplace.json?ref=master', { headers: { accept: 'application/vnd.github.raw+json' } });
     },
     async createDraftRelease({ tag, commit, name = tag, body = '' }) {
       if (!/^[0-9a-f]{40}$/.test(commit ?? '')) throw new Error('创建 Release 必须指定候选提交 SHA');

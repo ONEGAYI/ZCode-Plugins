@@ -43,8 +43,8 @@ ZCode-Plugins/
 ├── release-marketplace.mjs # 市场条目形状校验、候选生成（只改受影响条目）、版本统一检查（只报告）与回退候选
 ├── release-offline.mjs     # 从完整市场候选对应的正式 ZIP 汇总本地市场，另附固定的 Windows x64 Node 与 sqlite3
 ├── offline/AGENTS.md      # 离线包根目录的安装指南；独立于源码 Agent 规则
-├── release-publish.mjs    # 正式发布命令：核对提交与发布记录，绑定离线指南，保存草稿／公开核验的续作状态
-├── release-github.mjs      # Release 发布编排（离线包随本轮 ZIP 上传到草稿；先预发布，下载核验通过后转正式；真实写操作须另行授权）
+├── release-publish.mjs    # 正式发布命令：绑定提交与离线指南，交接已核验市场候选；宿主验收和 master 核对后独立转正
+├── release-github.mjs      # Release 发布编排（离线包随本轮 ZIP 上传到草稿；预发布、下载核验和续作；真实写操作须另行授权）
 ├── tests/                  # 根级发布工具契约测试（release-*.test.mjs，含外部边界桩与 loopback HTTP fixture）
 │
 ├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 命名决策 + 通知文案；公共导入经客户端契约定位）

@@ -183,7 +183,7 @@ test('局部发行自动汇总四个正式版本；离线包与本轮 ZIP 一起
   assert.equal(result.state.stage, 'market-ready');
   assert.deepEqual(uploads.map(asset => asset.name), [zips[0].fileName, offlineName]);
   assert.deepEqual(result.state.downloads.map(item => item.fileName), [zips[0].fileName, offlineName]);
-  assert.equal(release.prerelease, false);
+  assert.equal(release.prerelease, true);
   assert.deepEqual(marketCandidate, originalMarket);
 
   const zipPath = uploads[1].zipPath;

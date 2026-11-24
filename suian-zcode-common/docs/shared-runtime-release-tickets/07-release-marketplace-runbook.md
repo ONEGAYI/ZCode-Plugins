@@ -63,7 +63,21 @@ node release-orchestrate.mjs marketplace --tag <tag> --base-url <base-url> --out
 node release-publish.mjs --out .scratch/release --title "{{Release 标题}}" --notes-file "{{发布说明文件}}"
 ```
 
-命令读取 `release-record.json` 中的目标仓库、tag 与本轮 ZIP，核对门禁并从最终候选提交读取市场基线和离线指南，不重跑构建或测试。标题和说明由发布人提供，仅用于新建草稿。获得公开授权后，以原参数加 `--publish` 续作：公开为预发布，匿名下载核验通过后转正式。下载失败保留已公开资产并阻断转正式与市场切换；续作只重验未通过的下载。状态到达 `market-ready` 后，按回执的 `report.marketCandidate` 获取本次已核验的 `marketplace.verified-<tag>.json`；命令不修改正式市场清单。
+命令读取 `release-record.json` 中的目标仓库、tag 与本轮 ZIP，核对门禁并从最终候选提交读取市场基线和离线指南，不重跑构建或测试。标题和说明由发布人提供，仅用于新建草稿。
+
+获得公开授权后，以原参数加 `--publish` 续作。命令把已上传全部资产的同一条 Release 公开为**预发布**，匿名下载核对本轮资产，再复查 tag 是否仍指向候选提交。两项均通过才返回 `market-ready`，并通过 `report.marketCandidate` 交付 `marketplace.verified-<tag>.json`。下载失败时保留已公开资产，续作只重验未通过的下载；tag 改指时停止交接。此阶段不转正，也不修改正式市场清单。
+
+### 宿主验收并核对 master 后转正
+
+先用已核验的资产解包并在目标宿主完成安装验收，记录验收结果。获得正式集成授权后，将已核验的本轮市场条目随变更合入 `master`。这些步骤完成前，Release 保持预发布。
+
+另行获得转正授权后，在**同一候选提交及输出目录**运行：
+
+```powershell
+node release-publish.mjs --out .scratch/release --finalize --host-verified
+```
+
+`--host-verified` 是对已完成宿主验收的人工确认。命令复用同一候选的匿名下载凭证，通过 GitHub 读取 `master` 市场清单并核对本轮条目的版本、URL 和 SHA-256，再确认公开资产与 tag 未变。通过后只解除同一条 Release 的预发布标记，不重新制包、下载或上传资产。`--publish` 与 `--finalize` 不可同时执行。
 
 ### 每轮发布都生成 Windows x64 离线包
 
@@ -72,8 +86,6 @@ node release-publish.mjs --out .scratch/release --title "{{Release 标题}}" --n
 离线包包含四个插件目录、本地市场清单、包根 `AGENTS.md` 和一份官方便携 Node.js、`sqlite3`。发布机需能匿名访问 GitHub、Node.js 和 SQLite 的资产地址；运行时版本与上游摘要固定在 `release-offline.mjs`，升级时同步更新。离线 ZIP 落在本轮 `zips/offline-*/` 的独立目录，首次写入远端草稿前即记录凭证。保留输出目录内的 `publish-<tag>.json` 及记录指向的 ZIP，用原参数续作，不重复制包。已公开版本缺任何本轮资产时停止，不补传或覆盖。
 
 真实 GitHub 操作使用 `createGithubRestApi({owner, repo, token})`；**创建/发布 Release、推送 tag、切换正式市场清单均须另行发布授权**。自动化测试的 GitHub 写操作均使用模拟 API。仓库 Release 不可变性设置须在实际发布前人工读取确认，脚本不擅自修改仓库设置。已发布资产不删除重传：字节需变更时使用新版本与新 tag。
-
-市场切换时机：资产公开且匿名下载核验通过、正式集成获授权后，候选清单随 dev 已验证内容合入 master（推送与合并遵循仓库授权边界）。在此之前清单保持原正式版本，状态为"资产已备/待集成"。
 
 ## 5. 回退
 
