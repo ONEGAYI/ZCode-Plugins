@@ -146,6 +146,12 @@ export async function runReleasePipeline({
   if (reached(run.stage) < reached('verify-download')) run.stage = 'verify-download';
   if (assets.some(zip => !run.downloads.some(record => record.fileName === zip.fileName && record.ok && record.sha256 === zip.sha256))) return fail('download_failed');
 
+  // 离线发行的公开下载可能耗时；摘要一致不能代替交接前重新核对 tag。
+  if (offlineAsset && await githubApi.getTagCommit(releaseTag) !== candidateCommit) {
+    delete run.marketSwitchPending;
+    return fail('tag_commit_mismatch');
+  }
+
   // 下载核验全部通过：预发布转正式版。转正与草稿公开共用 publish 授权——
   // 未授权（含省略）时保持预发布、保留核验结果并标记待转正，不替调用方改变正式发布状态；
   // 幂等——已正式（含人工先行转正）不再发补丁并清理残留标记；转正不等待市场清单切换授权。

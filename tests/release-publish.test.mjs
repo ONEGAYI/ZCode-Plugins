@@ -62,6 +62,7 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
   const args = ['--out', outDir, '--title', title, '--notes-file', join(outDir, 'notes.md')];
   const offlineName = 'zcode-plugins-offline-windows-x64.zip';
   let release, prepared = 0, draftCheckpoint;
+  let tagTarget = commit, moveTagDuringDownload = false;
   const stored = new Map();
   const requests = [];
   const response = (data, status = 200) => ({ ok: status < 400, status, text: async () => String(data), json: async () => data });
@@ -71,11 +72,12 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     requests.push([method, path]);
     if (parsed.hostname === 'github.com') {
       assert.equal(options.headers, undefined, '公开下载不能附加 Token');
+      if (moveTagDuringDownload) tagTarget = 'b'.repeat(40);
       return { ok: true, arrayBuffer: async () => stored.get(path.split('/').at(-1)) };
     }
     assert.equal(options.headers.authorization, 'Bearer fixture-token');
     if (path.includes('/git/ref/tags/')) {
-      return release && !release.draft ? response({ object: { type: 'commit', sha: commit } }) : response('not found', 404);
+      return release && !release.draft ? response({ object: { type: 'commit', sha: tagTarget } }) : response('not found', 404);
     }
     if (path.endsWith('/releases/tags/' + tag)) return release && !release.draft ? response(release) : response('not found', 404);
     if (path.endsWith('/releases') && method === 'GET') return response(release ? [release] : []);
@@ -128,6 +130,20 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
   assert.equal(draft.state.publishPending, true);
   assert.equal(prepared, 1);
   assert.deepEqual([...stored.keys()], [fileName, offlineName]);
+  await t.test('匿名下载期间 tag 改指其他提交，不转正或交付市场候选', async () => {
+    moveTagDuringDownload = true;
+    try {
+      const result = await main([...args, '--publish'], options);
+      assert.equal(result.error?.code, 'tag_commit_mismatch');
+      assert.equal(result.state.stage, 'verify-download');
+      assert.equal(release.prerelease, true);
+      assert.equal(result.report.marketCandidate, undefined);
+      await assert.rejects(readFile(join(outDir, `marketplace.verified-${tag}.json`)), { code: 'ENOENT' });
+    } finally {
+      moveTagDuringDownload = false;
+      tagTarget = commit;
+    }
+  });
   const published = await main([...args, '--publish'], options);
   assert.equal(prepared, 1, '续作必须使用已生成的凭证');
   assert.equal(published.error, undefined);
