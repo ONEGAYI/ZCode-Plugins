@@ -1,3 +1,5 @@
+import {sameSourceTask} from "./backend.mjs";
+
 const unsafe=/https?:\/\/|\b(?:(?:device_)?(?:sid|hash|mid)|control_token|api[_-]?key|access[_-]?token)["']?\s*[=:]|\bsk-|[A-Za-z]:[\\/]|\\\\|\/(?:Users|home|root)\/|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 function invalid(message) {return Object.assign(new Error(message),{code:"invalid_model_output"});}
 function candidateFrom(result,currentTitle) {
@@ -48,16 +50,18 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
   const deadline=Date.now()+timeoutMs;
   const controller=new AbortController();
   let generated,candidate,feedback,usage;
+  const staleWorkspace=title=>({status:"stale_result",staleReason:"workspace_identity",title,usage});
   for(let attempt=0;attempt<3;attempt++) {
     const remaining=deadline-Date.now();
     if(remaining<=0)throw Object.assign(new Error("命名模型生成预算已耗尽，本轮失败"),{stage:"model_generation",reasonCode:"naming_model_timeout",usage});
     let timer;
     try {
       generated=await Promise.race([
-        backend.generate(feedback?{...before.context,title_format_feedback:feedback}:before.context,selection,{timeoutMs:remaining,deadline,signal:controller.signal}),
+        backend.generate(feedback?{...before.context,title_format_feedback:feedback}:before.context,selection,{timeoutMs:remaining,deadline,signal:controller.signal,sourceTask:before.sourceTask}),
         new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Object.assign(new Error("命名模型生成预算已耗尽，本轮失败"),{stage:"model_generation",reasonCode:"naming_model_timeout"}));},remaining);})
       ]);
     } catch(error) {
+      if(error?.reasonCode==="source_task_changed")return staleWorkspace(before.title);
       const safe=error instanceof Error?error:Object.assign(new Error("公共网关 RPC 调用失败"),{stage:"gateway",reasonCode:"gateway_rpc_failed"});
       if(usage)safe.usage=usage;throw safe;
     }
@@ -78,6 +82,7 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
   if(!apply)return result;
   const fresh=await backend.read();
   if(fresh.sourceTaskMissing)return{status:"skipped_unindexed",title:fresh.title,usage:generated.usage};
+  if(!sameSourceTask(before.sourceTask,fresh.sourceTask))return staleWorkspace(fresh.title);
   if(fresh.titlePolicy?.locked)return{status:"locked",title:fresh.title,usage:generated.usage};
   if(fresh.archived||fresh.deleted)return{status:"archived",title:fresh.title,usage:generated.usage};
   // 宿主自动命名只改变标题时可继续 rename；keep 仍基于原标题，不能沿用。
@@ -86,13 +91,19 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
   if(staleReason)return{status:"stale_result",staleReason,title:fresh.title,usage:generated.usage};
   if(candidate.action==="rename"&&candidate.title!==fresh.title) {
     await backend.saveState({...state,pendingTitle:candidate.title,pendingFingerprint:before.fingerprint});
-    await backend.rename(candidate.title);
+    try {
+      await backend.rename(candidate.title,before.sourceTask);
+    } catch(error) {
+      if(error?.reasonCode!=="source_task_changed")throw error;
+      // 发送前已拒绝，撤回本轮待确认状态；在途错误仍走既有读回恢复。
+      await backend.saveState(state);
+      return staleWorkspace(fresh.title);
+    }
     const verified=await backend.read();
-    if(verified.sourceTaskMissing||verified.title!==candidate.title)throw new Error("原 Host 改名后读回不一致");
+    if(verified.sourceTaskMissing||!sameSourceTask(before.sourceTask,verified.sourceTask)||verified.title!==candidate.title)
+      throw new Error("原 Host 改名后读回不一致");
     result.status="renamed";
   }else result.status="kept";
   await backend.saveState({...state,lastFingerprint:before.fingerprint,lastTitle:candidate.title,lastUserId:before.latestUserId,updatedAt:new Date().toISOString()});
   return result;
 }
-
-

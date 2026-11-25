@@ -30,6 +30,10 @@ export function namingModelIssue(view,selection) {
   return null;
 }
 
+export function sameSourceTask(left,right) {
+  return left?.taskId===right?.taskId&&left?.workspacePath===right?.workspacePath&&left?.workspaceIdentity===right?.workspaceIdentity;
+}
+
 export function createBackend({event,config,saveState,prompt,connect=connectNamingHost,readTitlePolicy=defaultReadTitlePolicy}) {
   const sessionId=event.session_id;
   if(!SESSION_ID_RE.test(sessionId??""))throw new Error("输入需要有效 session_id");
@@ -54,6 +58,9 @@ export function createBackend({event,config,saveState,prompt,connect=connectNami
     }
     catch(error){if(sourceServer)throw error;return null;}
   };
+  // Source Server 查任务用索引主键，兼容投影列 workspace_identity 可能为空或陈旧。
+  const sourceTaskFromRow=row=>row?.workspace_path&&row.workspace_key?.startsWith("remote:")
+    ?{taskId:sessionId,workspacePath:row.workspace_path,workspaceIdentity:row.workspace_key}:null;
   // 宿主在会话内 CronCreate 成功后会把会话标题冻结为任务标题（setCustomSessionTitle），
   // 该路径只写会话库不同步任务索引；冻结证据取会话历史中 CronCreate 调用记录的 input.title，
   // 只认 create 成功（宿主只在创建成功后冻结），不含 CronUpdate 的事后改名。查询失败按无证据处理，维持护栏。
@@ -75,18 +82,18 @@ export function createBackend({event,config,saveState,prompt,connect=connectNami
       throw new Error("受管工作树缺少有效的原 Host 归属目录");
     cwd ||= (managed?row.root_path:row?.workspace_path) || (event.workspace_path??event.cwd);
     if(!cwd)throw new Error("任务索引与 CLI 库中都没有目标会话，且事件未携带工作区");
-    // Source Server 查任务用索引主键，兼容投影列 workspace_identity 可能为空或陈旧。
-    const workspaceKey=row?.workspace_key;
     const task=sourceServer
-      ?(row?.workspace_path&&workspaceKey?.startsWith("remote:")?{taskId:sessionId,workspacePath:row.workspace_path,workspaceIdentity:workspaceKey}:null)
+      ?sourceTaskFromRow(row)
       :{taskId:sessionId,workspacePath:managed?row.workspace_path:cwd};
     resolvedWorkspace={cwd,task};
     return resolvedWorkspace;
   };
-  const requireTask=async()=>{
-    const {task}=await resolveWorkspace();
-    if(!task)throw Object.assign(new Error("会话尚未登记 Source Server 工作区身份"),{reasonCode:"source_task_unindexed"});
-    return task;
+  const requireTask=async expected=>{
+    if(!sourceServer)return (await resolveWorkspace()).task;
+    const current=sourceTaskFromRow(await loadIndexRow());
+    if(!expected||!sameSourceTask(expected,current))
+      throw Object.assign(new Error("远端任务工作区身份已变化"),{reasonCode:"source_task_changed"});
+    return expected;
   };
   const attach=async(signal,deadline)=>{
     checkGeneration(signal,deadline);
@@ -120,7 +127,8 @@ export function createBackend({event,config,saveState,prompt,connect=connectNami
         // 冻结分裂下宿主任务元（索引/overlay）仍是旧标题属预期状态，与 generate 的漂移校验同口径
         if(meta?.taskId!==sessionId||meta.workspacePath!==task.workspacePath||meta.title!==history.session.title&&!freezeTitles.includes(history.session.title)){const mismatch=new Error("原 Host 与持久化标题不一致");mismatch.reasonCode="host_title_mismatch";throw mismatch;}
       }
-      return{...recentSnapshot(history,cwd,config),freezeTitles,titleSource:history.session.titleSource??null,titlePolicy:await readTitlePolicy({sessionId}),archived:!!row?.archived,deleted:!!row?.deleted,running:row?.task_status==="running",...(!task?{sourceTaskMissing:true}:{})};
+      return{...recentSnapshot(history,cwd,config),freezeTitles,titleSource:history.session.titleSource??null,titlePolicy:await readTitlePolicy({sessionId}),archived:!!row?.archived,deleted:!!row?.deleted,running:row?.task_status==="running",
+        ...(sourceServer?(task?{sourceTask:task}:{sourceTaskMissing:true}):{})};
     },
     // 存在性校验与 resolveWorkspace 的容错链不同：查询异常不吞、不兜底，避免把"查不了"静默当"不存在"
     async sessionExists() {
@@ -129,7 +137,7 @@ export function createBackend({event,config,saveState,prompt,connect=connectNami
       return (await queryJson(config.indexDb,`SELECT task_id FROM tasks WHERE task_id='${sessionId}' LIMIT 1;`)).length>0;
     },
     async models() {return(await attach()).call("model-selection","getView",[]);},
-    async generate(context,selection,{timeoutMs=config.timeoutMs??120000,deadline=Date.now()+timeoutMs,signal}={}) {
+    async generate(context,selection,{timeoutMs=config.timeoutMs??120000,deadline=Date.now()+timeoutMs,signal,sourceTask}={}) {
       const abort=Promise.withResolvers();
       const onAbort=()=>{closed=true;if(releaseGeneration)abort.reject(timeoutError());else disconnect();};
       signal?.addEventListener("abort",onAbort,{once:true});
@@ -143,7 +151,7 @@ export function createBackend({event,config,saveState,prompt,connect=connectNami
         const error=new Error(issue);
         error.stage="model_selection";error.reasonCode="naming_model_unavailable";throw error;
       }
-      const task=await requireTask();
+      const task=await requireTask(sourceTask);
       const ws=task.workspacePath;
       checkGeneration(signal,deadline);
       const meta=await connection.call("zcode-task","getTaskMeta",[task]);
@@ -169,9 +177,10 @@ export function createBackend({event,config,saveState,prompt,connect=connectNami
       }
       } finally {signal?.removeEventListener("abort",onAbort);}
     },
-    async rename(title) {
-      const task=await requireTask();
-      const result=await(await attach()).call("zcode-task","renameTask",[{...task,title}]);
+    async rename(title,sourceTask) {
+      const connection=await attach();
+      const task=await requireTask(sourceTask);
+      const result=await connection.call("zcode-task","renameTask",[{...task,title}]);
       if(result.taskId&&result.taskId!==sessionId)throw new Error("改名返回了不同会话");
       if(result.title!==title)throw new Error("原 Host 改名响应不一致");
     },

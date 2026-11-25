@@ -27,26 +27,35 @@ test("显式 Source Server 模式只按已登记的远端工作区身份改名�
     "INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','remote:server:fixture:/srv/project','remote:server:obsolete:/srv/project','原名',0,0,'completed');"
   ].join("\n")]);
   const calls=[];
-  let title="原名";
+  let title="原名",registered=target,moveAt,savedState;
+  const moveTask=()=>{
+    execFileSync(sqliteBin,[indexDb,"UPDATE tasks SET workspace_key='remote:server:moved:/srv/project';"]);
+    registered={...target,workspaceIdentity:"remote:server:moved:/srv/project"};
+    moveAt=undefined;
+  };
   const create=()=>createBackend({event:{session_id:taskId,cwd},config:{transport:"source-server",sessionDb,indexDb,sqliteBin},
-    prompt:"命名规则",saveState:async()=>{},readTitlePolicy:async()=>null,
+    prompt:"命名规则",saveState:async state=>{
+      savedState=state;
+      if(moveAt==="pending"&&state.pendingTitle)moveTask();
+    },readTitlePolicy:async()=>null,
     connect:async ({transport})=>{
       assert.equal(transport,"source-server");
       return {call:async (_channel,method,[arg]=[])=>{
         calls.push(method);
         if(method==="getView")return {providers:[{providerId:"fixture",models:[{modelId:"model",config:{optionSpecs:{reasoningLevel:{values:["low"]}}}}]}]};
-        if(method==="getTaskMeta"){assert.deepEqual(arg,target);return {...target,title};}
+        if(method==="getTaskMeta"){assert.deepEqual(arg,registered);return {...registered,title};}
         if(method==="generateWorkspaceText"){
           assert.equal(arg.workspacePath,workspacePath);
           assert.equal(arg.workspaceIdentity,"suian-zcode-title:/srv/project");
+          if(moveAt==="generation")moveTask();
           return {text:JSON.stringify({action:"rename",title:"新名称",reason:"新目标"}),finishReason:"stop"};
         }
         if(method==="disposeWorkspace"){assert.deepEqual(arg,{workspacePath,workspaceIdentity:"suian-zcode-title:/srv/project"});return;}
         if(method==="renameTask"){
-          assert.deepEqual(arg,{...target,title:"新名称"});
+          assert.deepEqual(arg,{...registered,title:"新名称"});
           execFileSync(sqliteBin,[sessionDb,"UPDATE session SET title='新名称';"]);
           execFileSync(sqliteBin,[indexDb,"UPDATE tasks SET title='新名称';"]);
-          title="新名称";return {...target,title};
+          title="新名称";return {...registered,title};
         }
         throw new Error(method);
       },close:()=>{}};
@@ -57,6 +66,28 @@ test("显式 Source Server 模式只按已登记的远端工作区身份改名�
     assert.equal((await runNaming({backend,selection,apply:true})).status,"renamed");
     assert.equal(calls.filter(method=>method==="getTaskMeta").length,3);
   } finally {await backend.close();}
+  for(const [phase,description] of [["generation","生成期间"],["pending","写入待确认状态时"]]) {
+    await t.test(description+"任务换工作区身份，丢弃旧候选，新一轮才能改名",async()=>{
+      execFileSync(sqliteBin,[sessionDb,"UPDATE session SET title='原名';"]);
+      execFileSync(sqliteBin,[indexDb,"UPDATE tasks SET workspace_key='remote:server:fixture:/srv/project',title='原名';"]);
+      calls.length=0;
+      title="原名";registered=target;moveAt=phase;savedState={};
+      const inflight=create();
+      try {
+        const result=await runNaming({backend:inflight,selection,apply:true});
+        assert.equal(result.status,"stale_result");
+        assert.equal(result.staleReason,"workspace_identity");
+        assert.equal(calls.includes("renameTask"),false);
+        assert.equal(title,"原名");
+        assert.equal(savedState.pendingTitle,undefined);
+      } finally {await inflight.close();}
+      const next=create();
+      try {
+        assert.equal((await runNaming({backend:next,selection,apply:true,state:savedState})).status,"renamed");
+        assert.equal(calls.filter(x=>x==="renameTask").length,1);
+      } finally {await next.close();}
+    });
+  }
   calls.length=0;
   execFileSync(sqliteBin,[indexDb,"INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','remote:ssh:fixture:22:user:/srv/project',NULL,'新名称',0,0,'completed');"]);
   await assert.rejects(create().read(),{reasonCode:"source_task_ambiguous"});
