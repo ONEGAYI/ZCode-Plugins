@@ -84,11 +84,13 @@ export async function buildRelease({ root = defaultRoot, outDir } = {}) {
   await cp(join(root, ".zcode-plugin"), join(outDir, ".zcode-plugin"), { recursive: true });
   await mkdir(join(outDir, "hooks"), { recursive: true });
   const hooksSpec = JSON.parse(await readFile(join(root, "hooks", "hooks.json"), "utf8"));
-  const stopHook = hooksSpec.hooks?.Stop?.[0]?.hooks?.[0];
-  if (!stopHook || !String(stopHook.command).includes("${ZCODE_PLUGIN_ROOT}/hook.mjs")) {
-    throw new Error("源码 Hook 清单缺少预期的 Stop 命令形态，改写发布版前先人工核对");
+  for (const event of ["Stop", "UserPromptSubmit"]) {
+    const hook = hooksSpec.hooks?.[event]?.[0]?.hooks?.[0];
+    if (!hook || !hook.command.includes("${ZCODE_PLUGIN_ROOT}/hook.mjs")) {
+      throw new Error("源码 Hook 清单缺少预期的 " + event + " 命令形态，改写发布版前先人工核对");
+    }
+    hook.command = hook.command.replace("${ZCODE_PLUGIN_ROOT}/hook.mjs", "${ZCODE_PLUGIN_ROOT}/dist/hook.mjs");
   }
-  stopHook.command = stopHook.command.replace("${ZCODE_PLUGIN_ROOT}/hook.mjs", "${ZCODE_PLUGIN_ROOT}/dist/hook.mjs");
   await writeFile(join(outDir, "hooks", "hooks.json"), `${JSON.stringify(hooksSpec, null, 2)}\n`);
   await cp(await findLicense(root), join(outDir, "LICENSE"));
 

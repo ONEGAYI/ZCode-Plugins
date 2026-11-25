@@ -7,7 +7,11 @@ description: 安装、升级、仅检查、迁移或移除 ZCode 公共运行时
 
 原生根为 `${ZCODE_SKILL_DIR}/../..`，使用前规范化绝对路径。先读[路径与数据](../paths.md)。
 
-发布形态的安装与升级**不执行 npm、不建立目录链接**：原生市场安装/更新交付的发布目录自带全部运行文件，公共层由宿主安装记录定位（PKG-01 契约）。npm 与 link.mjs 仅用于源码开发，见文末[源码开发](#源码开发npm-与-link-仅源码)。
+发布形态的安装与升级**不执行 npm、不建立目录链接**：原生发布目录自带插件代码和 JavaScript 依赖，不含 Node.js 本体。公共层由宿主安装记录定位（PKG-01 契约）。npm 与 link.mjs 仅用于源码开发，见文末[源码开发](#源码开发npm-与-link-仅源码)。
+
+ZCode 的启动环境和运行本技能命令的 Shell 都要能从 `PATH` 找到 Node.js 24+；MCP 的宿主回退不覆盖 Hook。使用便携版时可只在启动 ZCode 的进程中设置 `PATH`。若从离线包安装，优先按包根的 AGENTS.md 使用随包 Node，不走下文联网市场更新步骤。
+
+如果当前是在 Linux Source Server 上配置自动命名，只需在远端安装并启用配套 common；网关部署与 Windows 配置不适用。按命名插件的 setup 选择 Source Server 连接。
 
 ## 确认 ZCode 版本
 
@@ -79,7 +83,7 @@ Install 把网关运行文件部署到缓存外 `~/.zcode/tools/suian-zcode-comm
 
 原生插件通过原生管理器更新，不能在版本缓存里 git pull。更新后重新执行 zcode plugins list --json，以新的 rootPath、dataPath 读取并执行 setup，不沿用当前会话加载的旧缓存路径。源码安装先确认干净工作树和基线，再 fast-forward 更新，不覆盖本地修改。公共层和已选择业务插件使用配套版本。
 
-由 Agent 代为更新原生插件时，更新对象是市场副本仓库 suian-zcode-plugins，不是版本缓存：先核对来源分支并拉取远端最新 HEAD，本地修改或分叉时说明原因，不强制覆盖；副本不含 Git 元数据时改用 CLI 的 `plugins marketplace update suian-zcode-plugins` 刷新。CLI 不依赖 PATH：定位用户实际安装的 Desktop 目录，用随应用提供的 zcode CLI（如 `resources/glm/zcode.cjs`，由 Node.js 24+ 执行相同参数），不下载另一份。更新顺序为先 common 后业务插件，命令形如 `zcode plugins update suian-zcode-common@suian-zcode-plugins`，只对实际已安装的插件执行。
+由 Agent 代为更新原生插件时，更新对象是市场副本仓库 suian-zcode-plugins，不是版本缓存：先核对来源分支并拉取远端最新 HEAD，本地修改或分叉时说明原因，不强制覆盖；副本不含 Git 元数据时改用 CLI 的 `plugins marketplace update suian-zcode-plugins` 刷新。若 `zcode` 命令不在 `PATH`，定位用户实际安装的 Desktop 目录，用 Node.js 24+ 运行随应用提供的 `resources/glm/zcode.cjs`，参数不变，不下载另一份 CLI。更新顺序为先 common 后业务插件，命令形如 `zcode plugins update suian-zcode-common@suian-zcode-plugins`，只对实际已安装的插件执行。
 
 更新后**不再重装依赖或修链接**：重跑第 2 步发布完整性检查确认新缓存就绪，再从新公共根执行 Status -ZcodeAppVersion {{app_version}}，核对 code_status、candidate_pending_activation、gateway_path_matches、protocol_update_required、upstream_update_required 与 gateway_restart_required。0.8.0 起另核 keepalive_trigger_ok：false 表示任务仍是旧形状（仅登录触发），重跑 Install/Restart 会按触发器形状比对自动重注册为登录 + 周期看护双触发器，keepalive_interval_min 为生效间隔（默认 30，`-KeepaliveIntervalMin` 可配 5-1440）。代码已变化、候选待激活（candidate_build_id 与 active_build_id 不同）、目录不匹配、协议待升级或旧进程没有指纹时安排安全重载；不要用 health.version 或仅有的连接正常来判断已加载新代码。只修改文档或 skill 时，代码指纹不变；是否重开 Desktop 看环境变更与实际连接，不能仅凭 restart_required 汇总标志决定。
 

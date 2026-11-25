@@ -1,5 +1,16 @@
 # 更新日志
 
+## [0.11.0] - 2026-11-25
+
+为 Linux Source Server 提供同机连接，让 SSH 远程项目不经 Windows 桌面网关也能自动命名。
+
+### 新增
+
+**Linux Source Server 原生通道（#226、#228）**
+
+- 命名插件可在远端读取模型目录、生成标题，并通过原 Host 写回对应会话。
+- 只有显式使用 Source Server 的命名流程走新通道；本地 Windows 和其他业务插件的连接方式不变。
+
 ## [0.10.8] - 2026-11-23
 
 local-only 新增 Windows x64 ZCode `4.0.0.10870` 适配，并在隔离宿主验证了无登录本地链路和网关重连。
@@ -290,6 +301,7 @@ local-only 新增 Windows ZCode `3.18.1.10376` 适配，setup 可为这一发行
 > **联网边界**：local-only 免除官方远控连接，模型服务与套餐查询仍需相应服务可达。日常安装与在线 relay 的实际用户验收独立于隔离开发验证。
 
 <!-- 变更链接 -->
+[0.11.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.23...plugins-2026.11.25
 [0.10.8]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.21...plugins-2026.11.23
 [0.10.7]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.19...plugins-2026.11.21
 [0.10.6]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.2...plugins-2026.11.19

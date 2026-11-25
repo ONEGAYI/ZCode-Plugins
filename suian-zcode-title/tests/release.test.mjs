@@ -137,15 +137,21 @@ test("发布目录组装：四命令入口、提示词、技能、Hook 清单、
   }
 });
 
-test("发布 Hook 清单指向 dist 内 worker，异步语义与配置参数保留", async t => {
+test("发布 Hook 清单指向 dist 入口，Stop 保持异步，配置提醒随当前轮发送", async t => {
   const { out, releaseDir } = await buildTo("pkg02-hooks-");
   t.after(() => rm(out, { recursive: true, force: true }));
-  const spec = JSON.parse(await readFile(join(releaseDir, "hooks", "hooks.json"), "utf8")).hooks.Stop[0].hooks[0];
+  const hooks = JSON.parse(await readFile(join(releaseDir, "hooks", "hooks.json"), "utf8")).hooks;
+  const spec = hooks.Stop[0].hooks[0];
   assert.equal(spec.type, "command");
   assert.equal(spec.async, true, "Stop 必须后台执行不阻塞对话");
   assert.equal(spec.timeoutMs, 30000);
   assert.match(spec.command, /\$\{ZCODE_PLUGIN_ROOT\}\/dist\/hook\.mjs/);
   assert.match(spec.command, /--config "\$\{ZCODE_PLUGIN_DATA\}\/config\.json"/);
+  const notice = hooks.UserPromptSubmit[0].hooks[0];
+  assert.equal(notice.type, "command");
+  assert.notEqual(notice.async, true, "宿主必须消费配置提醒的 additionalContext");
+  assert.ok(notice.timeoutMs <= 3000, "即时读检查不能使用命名任务的超时");
+  assert.match(notice.command, /\$\{ZCODE_PLUGIN_ROOT\}\/dist\/hook\.mjs" --setup-notice --config "\$\{ZCODE_PLUGIN_DATA\}\/config\.json"/);
 });
 
 test("构建输入只允许薄定位器来自 common：不内联 common 实现或公共 vendor", async t => {
@@ -233,12 +239,27 @@ test("隔离世界：Hook 派发的是包内 worker，参数携带会话元数�
     "syncBuiltinESMExports();",
   ].join("\n"));
   const config = join(world.dataDir, "config.json");
-  await writeFile(config, JSON.stringify({ registration: "native", enabled: true }));
-  const result = spawnSync(nodeBin, ["--import", pathToFileURL(preload).href, join(world.titleInstall, "dist", "hook.mjs"), "--config", config], {
+  const nativeConfig = { registration: "native", enabled: true };
+  const runStop = () => spawnSync(nodeBin, ["--import", pathToFileURL(preload).href, join(world.titleInstall, "dist", "hook.mjs"), "--config", config], {
     encoding: "utf8", windowsHide: true,
     input: JSON.stringify({ session_id: "sess_release_worker", cwd: world.base }),
     env: consumerEnv({ ZCODE_PLUGIN_DATA: world.dataDir, PKG02_SPAWN_RECORD: recordFile }),
   });
+  if (process.platform === "linux") {
+    await t.test("Linux 原生发布 Hook 未配置 Source Server 时不派发", async () => {
+      await writeFile(config, JSON.stringify(nativeConfig));
+      const skipped = runStop();
+      assert.equal(skipped.status, 0, skipped.stderr);
+      assert.match(skipped.stdout, /"action":"not_configured"/);
+      await assert.rejects(stat(recordFile), { code: "ENOENT" });
+    });
+    Object.assign(nativeConfig, {
+      transport: "source-server",
+      selection: { providerId: "fixture", modelId: "fixture", options: { reasoningLevel: "low" } },
+    });
+  }
+  await writeFile(config, JSON.stringify(nativeConfig));
+  const result = runStop();
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /dispatched/);
   let record = null;

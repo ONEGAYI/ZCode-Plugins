@@ -7,6 +7,22 @@ description: 初始化、升级或卸载 ZCode 自动命名，配置外置数据
 
 原生根为 `${ZCODE_SKILL_DIR}/../..`；源码模式沿用已确定的根。先读[路径与数据](../paths.md)。
 
+## Linux Source Server
+
+如果 ZCode Desktop 打开的是运行在 Linux Source Server 上的远程项目，在**远端**核对 title 和配套 common 的原生安装记录与启用状态。确保 Stop Hook 能在远端 PATH 找到 Node.js 24+ 和支持 `-readonly -json` 的 sqlite3。不要在远端配置桌面网关或 Windows 通知。
+
+用以下命令检查依赖，再去掉 `--check-only` 初始化；命令从实际的远端安装记录取路径：
+
+```sh
+node "{{command_dir}}/install.mjs" "{{state_dir}}" --native-plugin --source-server --config "{{data_path}}/config.json" --installed-plugins "{{installed_plugins_json}}" --check-only
+```
+
+首次未选模型时不派发命名任务。原生插件启用后，新会话里的 Agent 会收到在当前回复末尾附上配置提示的指令，提醒无需另配；主动暂停不提醒。
+
+初始化写入 `transport: "source-server"`，保留已有启停状态与模型选择。用 `models` 核对远端模型、用 `probe` 检查 Source Server 直连，再按 [configuration](../configuration/SKILL.md) 启用。新建一个远程项目会话，完成一轮，核对 `hook.log.jsonl` 的 `dispatched`、`runner.log.jsonl` 的 `renamed` 或 `kept`，以及 Desktop 的标题。卸载使用宿主的原生插件卸载。
+
+## Windows 桌面网关
+
 1. 原生模式核对 common 与命名插件已启用。命令入口按[路径与数据](../paths.md)区分形态：发布目录（含 release.json）的 common 能力经安装记录直接定位，不需要公共包链接或 npm 安装；源码目录形态仍按公共 setup 建立锁定依赖与公共包链接，并用 --common-root 指向 common 构建产物目录调试。
 2. 确认 Node.js 24+ 和 sqlite3 CLI。安装器验证只读 JSON 查询；sqliteBin → SQLITE_BIN → PATH，不把 npm 同名包当 CLI。绝对路径适合后台进程，显式无效路径不回退。
 3. 原生数据来自插件清单。按 paths.md 确定实际状态目录 {{state_dir}}，首次默认 {{data_path}}/state；已有有效外部自定义目录沿用。已有源码安装按下方迁移步骤转存配置和状态；首次配置保持暂停，不采用示例模型。仅检查通过后初始化：
@@ -33,7 +49,7 @@ node "{{command_dir}}/install.mjs" "{{state_dir}}" --native-plugin --config "{{d
 
 ## 升级与卸载
 
-命名提示词在状态目录 `naming-prompt.md`，不放插件版本缓存；下次命名运行按版本部署或升级。负 `version` 锁定本地修改，镜像版本更高时会先备份旧文件再覆盖；需要重置时按 [configuration](../configuration/SKILL.md) 将本地版本改低。损坏的本地文件恢复时同目录保留备份并弹通知，可从通知定位恢复稿。
+命名提示词在运行命名任务一端的状态目录中，文件名是 `naming-prompt.md`，不放插件版本缓存。下次命名运行按版本部署或升级；负 `version` 保留自定义版本，镜像版本更高时会先备份旧稿再替换。重置与损坏恢复规则见 [configuration](../configuration/SKILL.md)。
 
 原生安装按公共 setup 通过原生管理器更新，再从插件清单获取新路径；源码安装才更新原仓库。原生更新无需重装依赖或修链，以实际状态目录、配置和 `--installed-plugins` 重跑同一安装命令，更新共享 Toast 执行器并将实际安装清单路径保存到 title 外置身份。旧身份缺少清单锚点时也按此补齐；只做 `--check-only` 不更新身份。保留配置、状态、授权和原暂停状态；若升级需要临时暂停，记录原开关并按第 4、5 步恢复。常驻网关升级只按公共 setup 处理。
 

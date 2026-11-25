@@ -1,10 +1,105 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createBackend} from "../backend.mjs";
+import {runNaming} from "../naming.mjs";
 import {execFileSync} from "node:child_process";
 import {mkdtempSync,rmSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
+test("显式 Source Server 模式只按已登记的远端工作区身份改名，保持辅助生成隔离",async t=>{
+  const dir=mkdtempSync(join(tmpdir(),"z-title-source-server-"));
+  t.after(()=>rmSync(dir,{recursive:true}));
+  const sessionDb=join(dir,"session.sqlite"),indexDb=join(dir,"index.sqlite"),sqliteBin=process.env.SQLITE_BIN??"sqlite3";
+  const taskId="sess_source_fixture",workspacePath="/srv/project",cwd="/srv/project/nested";
+  const workspaceIdentity="remote:server:fixture:/srv/project";
+  const target={taskId,workspacePath,workspaceIdentity};
+  const selection={providerId:"fixture",modelId:"model",options:{reasoningLevel:"low"}};
+  execFileSync(sqliteBin,[sessionDb,[
+    "CREATE TABLE session(id,title,directory,path,revert,title_source,task_type,parent_id);",
+    "CREATE TABLE message(id,session_id,time_created,time_updated,data,sequence);",
+    "CREATE TABLE part(id,message_id,session_id,time_created,time_updated,data,sequence);",
+    "INSERT INTO session VALUES('sess_source_fixture','原名','/srv/project/nested',NULL,NULL,'first_input','fork','sess_parent');",
+    "INSERT INTO message VALUES('u1','sess_source_fixture',1,1,json_object('role','user'),1);",
+    "INSERT INTO part VALUES('p1','u1','sess_source_fixture',1,1,json_object('type','text','text','改进编辑体验'),1);"
+  ].join("\n")]);
+  execFileSync(sqliteBin,[indexDb,[
+    "CREATE TABLE tasks(task_id,workspace_path,workspace_key,workspace_identity,title,archived,deleted,task_status);",
+    "INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','remote:server:fixture:/srv/project','remote:server:obsolete:/srv/project','原名',0,0,'completed');"
+  ].join("\n")]);
+  const calls=[];
+  let title="原名",registered=target,moveAt,savedState;
+  const moveTask=()=>{
+    execFileSync(sqliteBin,[indexDb,"UPDATE tasks SET workspace_key='remote:server:moved:/srv/project';"]);
+    registered={...target,workspaceIdentity:"remote:server:moved:/srv/project"};
+    moveAt=undefined;
+  };
+  const create=()=>createBackend({event:{session_id:taskId,cwd},config:{transport:"source-server",sessionDb,indexDb,sqliteBin},
+    prompt:"命名规则",saveState:async state=>{
+      savedState=state;
+      if(moveAt==="pending"&&state.pendingTitle)moveTask();
+    },readTitlePolicy:async()=>null,
+    connect:async ({transport})=>{
+      assert.equal(transport,"source-server");
+      return {call:async (_channel,method,[arg]=[])=>{
+        calls.push(method);
+        if(method==="getView")return {providers:[{providerId:"fixture",models:[{modelId:"model",config:{optionSpecs:{reasoningLevel:{values:["low"]}}}}]}]};
+        if(method==="getTaskMeta"){assert.deepEqual(arg,registered);return {...registered,title};}
+        if(method==="generateWorkspaceText"){
+          assert.equal(arg.workspacePath,workspacePath);
+          assert.equal(arg.workspaceIdentity,"suian-zcode-title:/srv/project");
+          if(moveAt==="generation")moveTask();
+          return {text:JSON.stringify({action:"rename",title:"新名称",reason:"新目标"}),finishReason:"stop"};
+        }
+        if(method==="disposeWorkspace"){assert.deepEqual(arg,{workspacePath,workspaceIdentity:"suian-zcode-title:/srv/project"});return;}
+        if(method==="renameTask"){
+          assert.deepEqual(arg,{...registered,title:"新名称"});
+          execFileSync(sqliteBin,[sessionDb,"UPDATE session SET title='新名称';"]);
+          execFileSync(sqliteBin,[indexDb,"UPDATE tasks SET title='新名称';"]);
+          title="新名称";return {...registered,title};
+        }
+        throw new Error(method);
+      },close:()=>{}};
+    }
+  });
+  const backend=create();
+  try {
+    assert.equal((await runNaming({backend,selection,apply:true})).status,"renamed");
+    assert.equal(calls.filter(method=>method==="getTaskMeta").length,3);
+  } finally {await backend.close();}
+  for(const [phase,description] of [["generation","生成期间"],["pending","写入待确认状态时"]]) {
+    await t.test(description+"任务换工作区身份，丢弃旧候选，新一轮才能改名",async()=>{
+      execFileSync(sqliteBin,[sessionDb,"UPDATE session SET title='原名';"]);
+      execFileSync(sqliteBin,[indexDb,"UPDATE tasks SET workspace_key='remote:server:fixture:/srv/project',title='原名';"]);
+      calls.length=0;
+      title="原名";registered=target;moveAt=phase;savedState={};
+      const inflight=create();
+      try {
+        const result=await runNaming({backend:inflight,selection,apply:true});
+        assert.equal(result.status,"stale_result");
+        assert.equal(result.staleReason,"workspace_identity");
+        assert.equal(calls.includes("renameTask"),false);
+        assert.equal(title,"原名");
+        assert.equal(savedState.pendingTitle,undefined);
+      } finally {await inflight.close();}
+      const next=create();
+      try {
+        assert.equal((await runNaming({backend:next,selection,apply:true,state:savedState})).status,"renamed");
+        assert.equal(calls.filter(x=>x==="renameTask").length,1);
+      } finally {await next.close();}
+    });
+  }
+  calls.length=0;
+  execFileSync(sqliteBin,[indexDb,"INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','remote:ssh:fixture:22:user:/srv/project',NULL,'新名称',0,0,'completed');"]);
+  await assert.rejects(create().read(),{reasonCode:"source_task_ambiguous"});
+  assert.deepEqual(calls,[]);
+  execFileSync(sqliteBin,[indexDb,"DELETE FROM tasks;"]);
+  const unindexed=create();
+  assert.equal((await runNaming({backend:unindexed,selection,apply:true})).status,"skipped_unindexed");
+  assert.deepEqual(calls,[]);
+  execFileSync(sqliteBin,[indexDb,"INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','/srv/project','remote:server:obsolete:/srv/project','新名称',0,0,'completed');"]);
+  assert.equal((await runNaming({backend:create(),selection,apply:true})).status,"skipped_unindexed","裸路径主键不能用陈旧的投影列补成远端身份");
+  assert.deepEqual(calls,[]);
+});
 test("超时后迟到连接必须关闭，不能继续发模型或查询请求",async()=>{
   let connected,started;const reached=new Promise(resolve=>{started=resolve;});
   const calls=[],remote={call:async(_channel,method)=>{calls.push(method);return{};},close:()=>calls.push("close")};

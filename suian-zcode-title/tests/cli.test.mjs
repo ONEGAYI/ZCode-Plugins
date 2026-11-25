@@ -9,6 +9,46 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
 const cli=fileURLToPath(new URL("../cli.mjs",import.meta.url));
+test("Source Server 原生安装区分尚未配置与主动暂停，不安装 Windows 通知",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-source-install-")),config=join(root,"config.json"),state=join(root,"state");
+  const install=fileURLToPath(new URL("../install.mjs",import.meta.url));
+  try {
+    const args=[install,state,"--native-plugin","--source-server","--config",config];
+    const checked=spawnSync(process.execPath,[...args,"--check-only"],{encoding:"utf8",windowsHide:true});
+    assert.equal(checked.status,0,checked.stdout+checked.stderr);
+    assert.equal(existsSync(config),false,"仅检查不写配置");
+    assert.equal(Object.hasOwn(JSON.parse(checked.stdout),"toast"),false);
+    const initialized=spawnSync(process.execPath,args,{encoding:"utf8",windowsHide:true});
+    assert.equal(initialized.status,0,initialized.stdout+initialized.stderr);
+    assert.deepEqual(JSON.parse(initialized.stdout).actions,{hook:"plugin_managed",skill:"plugin_managed"});
+    const actual=JSON.parse(readFileSync(config,"utf8"));
+    assert.equal(actual.transport,"source-server");
+    assert.equal(Object.hasOwn(actual,"enabled"),false,"首次待配置不是用户暂停");
+    assert.equal(actual.registration,"native");
+    writeFileSync(config,JSON.stringify({...actual,enabled:false}));
+    const upgraded=spawnSync(process.execPath,args,{encoding:"utf8",windowsHide:true});
+    assert.equal(upgraded.status,0,upgraded.stdout+upgraded.stderr);
+    assert.equal(JSON.parse(readFileSync(config,"utf8")).enabled,false);
+  } finally {rmSync(root,{recursive:true});}
+});
+test("Source Server 的 status 与 probe 不访问桌面网关或通知",()=>{
+  const root=mkdtempSync(join(tmpdir(),"z-title-source-cli-")),config=join(root,"config.json");
+  const invoke=command=>spawnSync(process.execPath,[cli,command,"--config",config],{
+    encoding:"utf8",input:JSON.stringify({session_id:"sess_fixture"}),windowsHide:true,
+    env:{...process.env,ZCODE_DATA_BASE_DIR:root}
+  });
+  try {
+    writeFileSync(config,JSON.stringify({dataDir:join(root,"state"),transport:"source-server",gatewayConfigPath:join(root,"missing-gateway.json")}));
+    const status=invoke("status");
+    assert.equal(status.status,0,status.stdout+status.stderr);
+    const result=JSON.parse(status.stdout);
+    assert.equal(result.transport,"source-server");
+    assert.equal(Object.hasOwn(result,"toast"),false);
+    const probe=invoke("probe");
+    assert.equal(probe.status,0,probe.stdout+probe.stderr);
+    assert.equal(JSON.parse(probe.stdout).reasonCode,"source_server_not_ready");
+  } finally {rmSync(root,{recursive:true});}
+});
 test("非命名命令不读取损坏提示词，run 在锁内恢复并保留备份",()=>{
   const root=mkdtempSync(join(tmpdir(),"z-title-prompt-cli-")),state=join(root,"state"),config=join(root,"config.json"),db=join(root,"session.sqlite"),index=join(root,"index.sqlite");
   const sqliteBin=process.env.SQLITE_BIN||"sqlite3",env={...process.env,OIL_ZCODE_TITLE_DISABLE_TOAST:"1"},input=JSON.stringify({session_id:"sess_fixture",cwd:"D:\\fixture"});
