@@ -239,12 +239,27 @@ test("隔离世界：Hook 派发的是包内 worker，参数携带会话元数�
     "syncBuiltinESMExports();",
   ].join("\n"));
   const config = join(world.dataDir, "config.json");
-  await writeFile(config, JSON.stringify({ registration: "native", enabled: true }));
-  const result = spawnSync(nodeBin, ["--import", pathToFileURL(preload).href, join(world.titleInstall, "dist", "hook.mjs"), "--config", config], {
+  const nativeConfig = { registration: "native", enabled: true };
+  const runStop = () => spawnSync(nodeBin, ["--import", pathToFileURL(preload).href, join(world.titleInstall, "dist", "hook.mjs"), "--config", config], {
     encoding: "utf8", windowsHide: true,
     input: JSON.stringify({ session_id: "sess_release_worker", cwd: world.base }),
     env: consumerEnv({ ZCODE_PLUGIN_DATA: world.dataDir, PKG02_SPAWN_RECORD: recordFile }),
   });
+  if (process.platform === "linux") {
+    await t.test("Linux 原生发布 Hook 未配置 Source Server 时不派发", async () => {
+      await writeFile(config, JSON.stringify(nativeConfig));
+      const skipped = runStop();
+      assert.equal(skipped.status, 0, skipped.stderr);
+      assert.match(skipped.stdout, /"action":"not_configured"/);
+      await assert.rejects(stat(recordFile), { code: "ENOENT" });
+    });
+    Object.assign(nativeConfig, {
+      transport: "source-server",
+      selection: { providerId: "fixture", modelId: "fixture", options: { reasoningLevel: "low" } },
+    });
+  }
+  await writeFile(config, JSON.stringify(nativeConfig));
+  const result = runStop();
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /dispatched/);
   let record = null;
