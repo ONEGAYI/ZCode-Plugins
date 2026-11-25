@@ -47,6 +47,7 @@ local-only 按随包档案自动路由，历史记录兼容与新增档案流程
 | rpc-broker.mjs | 单一 Host 桥、RPC 编号与 v4 握手身份映射、手机虚拟桥与本地客户端分流；最后使用者退出后释放物理桥并消费退役通知 |
 | rpc-diagnostics.mjs | RPC 失败诊断白名单、跨网关／调用方诊断 ID、受控帧元数据；不记录正文、凭据或会话标识 |
 | gateway-client.mjs | 插件默认 connectHost/probeHost，本地配置与鉴权、RPC call／listen 附着、原事件参数与释放语义及明确失败；保留网关诊断和客户端失败阶段 |
+| source-server-client.mjs | Linux Source Server 的显式同机连接；使用宿主自有鉴权和分帧，复用公共 ChannelClient，不经桌面网关 |
 | setup.ps1 / run.ps1 / run.vbs | 用户任务、变量、公共 skill；按 Desktop 版本选择 V1/V2，保留协议与迁移官方地址；任务注册登录 + 周期看护双触发器（`-KeepaliveIntervalMin` 默认 30、可配 5-1440、写入 config.json，重跑未传参沿用已装值；触发器形状不符自动重注册自愈，Status 报 keepalive_interval_min 与 keepalive_trigger_ok，0.8.0 起）；setup 按六步顺序部署候选、忙退避安全切换（升级事务锁互斥、空闲闪断或超时报 remote_busy）与失败回退；run.ps1/run.vbs 保留为源码开发直启链。LO-04 起 `-Mode local-only`（V2）按 `-ZcodeInstallDir` 补丁预检放行（仅受支持包，Invoke-PatchCli 守卫式定义供测试桩替换），准备候选后生成外部 apply/restore 命令（数据目录 `local-only/`）——setup 不执行 apply、不强退进程；local-only 默认端口 17331；切回 relay（Restart -Mode relay）删模式标志且不重写应用包 |
 | remote.mjs | 官方 relay 鉴权、workspace bridge、Channel RPC 与分层探活 |
 | auth-store.mjs | 调用方数据目录内的当前用户 DPAPI 授权存取 |

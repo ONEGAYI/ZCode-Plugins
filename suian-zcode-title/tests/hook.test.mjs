@@ -116,3 +116,27 @@ test('原生 Stop 命令沿用外置配置的自定义状态目录',()=>{
     assert.equal(existsSync(join(root,'state')),false);
   } finally {rmSync(root,{recursive:true});}
 });
+
+test('远端尚未配置时，让主 Agent 在本轮回复末尾提醒；主动暂停和 Windows 不提醒',()=>{
+  const root=mkdtempSync(join(tmpdir(),'z-title-setup-notice-'));
+  const config=join(root,'config.json'),hook=fileURLToPath(new URL('../hook.mjs',import.meta.url));
+  const invoke=(platform='linux')=>spawnSync(process.execPath,[
+    '--import',`data:text/javascript,Object.defineProperty(process,'platform',{value:'${platform}'})`,
+    hook,'--setup-notice','--config',config
+  ],{encoding:'utf8',windowsHide:true,input:JSON.stringify({hook_event_name:'UserPromptSubmit',session_id:'sess_fixture',cwd:root,prompt:'private-prompt-fixture'}),env:{...process.env,OIL_ZCODE_TITLE_DATA:undefined,ZCODE_PLUGIN_DATA:root}});
+  try {
+    for(const value of [undefined,{transport:'source-server'},{transport:'source-server',selection:{providerId:'private-provider-fixture',modelId:'model'}}]) {
+      if(value)writeFileSync(config,JSON.stringify(value));
+      const result=invoke();
+      assert.equal(result.status,0,result.stderr);
+      const {hookSpecificOutput:notice}=JSON.parse(result.stdout);
+      assert.equal(notice.hookEventName,'UserPromptSubmit');
+      assert.match(notice.additionalContext,/远端还没配置自动命名/);
+      assert.doesNotMatch(result.stdout,/private-(prompt|provider)-fixture/);
+    }
+    writeFileSync(config,JSON.stringify({transport:'source-server',enabled:false}));
+    assert.equal(invoke().stdout,'');
+    writeFileSync(config,'{}');
+    assert.equal(invoke('win32').stdout,'');
+  } finally {rmSync(root,{recursive:true});}
+});

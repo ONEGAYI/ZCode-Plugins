@@ -18,6 +18,7 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
   const before=await backend.read();
   // 辅助对话有 Stop 和会话记录，但不进宿主任务索引；不发起命名 RPC。
   if(before.taskType==="selection_side_chat")return{status:"skipped_side_chat",title:before.title};
+  if(before.sourceTaskMissing)return{status:"skipped_unindexed",title:before.title};
   if(before.archived||before.deleted)return{status:"archived",title:before.title};
   if(before.running)return{status:"running",title:before.title};
   if(!before.turnCount)return{status:"empty",title:before.title};
@@ -76,6 +77,7 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
   const result={status:"preview",action:candidate.action,title:candidate.title,reason:candidate.reason,usage:generated.usage,selectedTurns:before.context.recent_turns.length};
   if(!apply)return result;
   const fresh=await backend.read();
+  if(fresh.sourceTaskMissing)return{status:"skipped_unindexed",title:fresh.title,usage:generated.usage};
   if(fresh.titlePolicy?.locked)return{status:"locked",title:fresh.title,usage:generated.usage};
   if(fresh.archived||fresh.deleted)return{status:"archived",title:fresh.title,usage:generated.usage};
   // 宿主自动命名只改变标题时可继续 rename；keep 仍基于原标题，不能沿用。
@@ -86,7 +88,7 @@ export async function runNaming({backend,selection,state={},apply=false,eventUse
     await backend.saveState({...state,pendingTitle:candidate.title,pendingFingerprint:before.fingerprint});
     await backend.rename(candidate.title);
     const verified=await backend.read();
-    if(verified.title!==candidate.title)throw new Error("原 Host 改名后读回不一致");
+    if(verified.sourceTaskMissing||verified.title!==candidate.title)throw new Error("原 Host 改名后读回不一致");
     result.status="renamed";
   }else result.status="kept";
   await backend.saveState({...state,lastFingerprint:before.fingerprint,lastTitle:candidate.title,lastUserId:before.latestUserId,updatedAt:new Date().toISOString()});

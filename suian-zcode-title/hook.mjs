@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// ZCode Stop Hook 派发器：宿主 Stop 事件 → 静默校验 → 后台启动网关命名 worker。
-// 约定（源码核实）：用户级 config.json 的 Stop hook 无信任门槛；async:true 后台执行不阻塞对话；
-// stop_hook_active=true 表示本轮由 Stop 续跑产生，跳过以防重复命名；stdout 不得以 { 开头。
+// Stop 后台派发命名；原生 UserPromptSubmit 仅为 Linux 远端的配置问题提供本轮回复提示。
+// Stop 的诊断不能以 { 开头；UserPromptSubmit 的提示通过 additionalContext 交给宿主。
 import {spawn} from "node:child_process";
 import {join,dirname,resolve} from "node:path";
 import {homedir} from "node:os";
 import {readFile,appendFile} from "node:fs/promises";
 import {fileURLToPath,pathToFileURL} from "node:url";
 import {resolvePluginLayout} from "./release-layout.mjs";
+import {commonAnchorOptions,commonRuntime} from "./common-access.mjs";
+import {connectNamingHost,namingModelIssue,namingSelectionConfigured} from "./backend.mjs";
 
 const pluginRoot=dirname(fileURLToPath(import.meta.url));
 const layout=resolvePluginLayout();
@@ -42,13 +43,29 @@ function defaultSpawnWorker({script,args,event,dataDir}) {
   child.unref();
 }
 
+async function sourceSetupNotice(config) {
+  if(config.enabled===false)return null;
+  if(config.transport!=="source-server"||!namingSelectionConfigured(config.selection))
+    return {action:"not_configured",message:"远端还没配置自动命名。可在当前会话说「配置自动命名」。"};
+  // 只读同机宿主目录，不生成文本，也不使用后台命名的长超时。
+  await commonRuntime(commonAnchorOptions({config}));
+  const host=await connectNamingHost({transport:"source-server",handshakeTimeoutMs:900,timeoutMs:900});
+  try {
+    if(namingModelIssue(await host.call("model-selection","getView",[]),config.selection))
+      return {action:"naming_model_unavailable",message:"所选命名模型或思考档位在远端不可用。可在当前会话说「更换自动命名模型」。"};
+    return null;
+  } finally {host.close();}
+}
+
 const isMain=process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href;
 if(isMain) {
-  let configPath=null,dataDirArg=null;
+  let configPath=null,dataDirArg=null,setupNotice=false;
   for(let i=2;i<process.argv.length;i++) {
     if(process.argv[i]==="--config"&&process.argv[i+1])configPath=resolve(process.argv[++i]);
     else if(process.argv[i]==="--data-dir"&&process.argv[i+1])dataDirArg=resolve(process.argv[++i]);
+    else if(process.argv[i]==="--setup-notice")setupNotice=true;
   }
+  if(setupNotice&&process.platform!=="linux")process.exit(0);
   if(!configPath) {
     // 源码模式的本地配置探测；发布模式配置由 Hook 命令的 --config 显式提供。
     const candidate=join(layout.root,"config.local.json");
@@ -76,17 +93,27 @@ if(isMain) {
   try {
     if(eventError)throw eventError;
     if(configError)throw configError;
-    let result;
-    if(configPath&&payload?.stop_hook_active!==true) {
-      if(configMissing)result={action:"not_configured"};
-      if(config?.enabled===false)result={action:"disabled"};
+    if(setupNotice) {
+      const notice=await sourceSetupNotice(config);
+      if(notice) {
+        await logHook({event:"UserPromptSubmit",action:notice.action,sessionId:payload?.session_id??null,error:null});
+        console.log(JSON.stringify({hookSpecificOutput:{hookEventName:"UserPromptSubmit",
+          additionalContext:"正常回答用户。完成本轮回复后另起一行，原样附上下面的提示。不要因此执行工具或修改设置。\n\n> 自动命名提示："+notice.message
+        }}));
+      }
+    } else {
+      let result;
+      if(configPath&&payload?.stop_hook_active!==true) {
+        if(config.enabled===false)result={action:"disabled"};
+        else if(configMissing||config.transport==="source-server"&&!namingSelectionConfigured(config.selection))
+          result={action:"not_configured"};
+      }
+      result??=await dispatchStopEvent({payload,dataDir,pluginRoot,configPath});
+      console.log("suian-zcode-title:",JSON.stringify(result));
+      await logHook({event:payload?.hook_event_name??"Stop",action:result.action,sessionId:payload?.session_id??null,cwd:payload?.cwd??payload?.workspace_path??null,stopHookActive:payload?.stop_hook_active===true,error:null});
     }
-    result??=await dispatchStopEvent({payload,dataDir,pluginRoot,configPath});
-    console.log("suian-zcode-title:",JSON.stringify(result));
-    await logHook({event:payload?.hook_event_name??"Stop",action:result.action,sessionId:payload?.session_id??null,cwd:payload?.cwd??payload?.workspace_path??null,stopHookActive:payload?.stop_hook_active===true,error:null});
   } catch(error) {
     console.log("suian-zcode-title: hook-error",error.message);
     await logHook({event:payload?.hook_event_name??"Stop",action:"error",sessionId:payload?.session_id??null,cwd:payload?.cwd??payload?.workspace_path??null,error:String(error.message).slice(0,200)});
   }
-  process.exit(0);
 }

@@ -2,6 +2,7 @@
 // 不读取凭据、不扫描源码指纹。导出集合以三个业务消费者的实际使用为准。
 export const COMMON_API_VERSION = 1;
 export { connectHost, probeHost } from './gateway-client.mjs';
+export { connectSourceServer } from './source-server-client.mjs';
 export { saveAuthorization, clearAuthorization } from './auth-store.mjs';
 export { readTitlePolicy, writeTitlePolicy } from './title-policy.mjs';
 export { readProjectContext } from './project-context.mjs';
