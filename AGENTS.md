@@ -49,7 +49,7 @@ ZCode-Plugins/
 │
 ├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 命名决策 + 通知文案；公共导入经客户端契约定位）
 │   ├── .zcode-plugin/      # 原生插件元信息
-│   ├── hooks/             # 原生异步 Stop 注册（发布构建将命令改指 dist 入口）
+│   ├── hooks/             # 原生异步 Stop 与远端配置提醒（发布构建将命令改指 dist 入口）
 │   ├── skills/            # setup / configuration / control / debug
 │   ├── common-access.mjs / release-layout.mjs / installer.mjs / build-release.mjs
 │   │                       # 公共薄适配与锚点解析、源码/发布双模式布局、安装共享实现、发布目录构建
@@ -88,6 +88,7 @@ ZCode-Plugins/
 │   ├── hooks/              # 原生 Stop 注册（async 触发 depcheck-hook.mjs）
 │   ├── link.mjs            # 源码开发用公共入口与业务端 Node 包链接；正式安装与诊断不依赖
 │   ├── client.mjs / client-install.mjs  # 公共客户端运行期/安装期入口（PKG-01 契约，commonApiVersion 1）
+│   ├── source-server-client.mjs # Linux Source Server 原生回环 RPC；由命名插件显式选用
 │   ├── rpc-broker.mjs / rpc-diagnostics.mjs # Host 桥生命周期与多客户端分流、跨网关和消费者的安全失败诊断
 │   ├── locate.mjs         # 薄定位器：安装记录定位 common，单一源码分发业务包
 │   ├── build-release.mjs  # 发布目录构建：esbuild 打包、release.json、buildId 与构建输入记录

@@ -11,6 +11,8 @@ description: 安装、升级、仅检查、迁移或移除 ZCode 公共运行时
 
 ZCode 的启动环境和运行本技能命令的 Shell 都要能从 `PATH` 找到 Node.js 24+；MCP 的宿主回退不覆盖 Hook。使用便携版时可只在启动 ZCode 的进程中设置 `PATH`。若从离线包安装，优先按包根的 AGENTS.md 使用随包 Node，不走下文联网市场更新步骤。
 
+如果当前是在 Linux Source Server 上配置自动命名，只需在远端安装并启用配套 common；网关部署与 Windows 配置不适用。按命名插件的 setup 选择 Source Server 连接。
+
 ## 确认 ZCode 版本
 
 先从桌面端的应用信息或实际启动程序确认 ZCode 应用版本，随包 CLI 的版本不能代替应用版本。

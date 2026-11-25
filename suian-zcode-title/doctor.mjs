@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { buildHookCommand } from './installer.mjs';
 import { resolvePluginLayout } from './release-layout.mjs';
+import { namingModelIssue, namingSelectionConfigured } from './backend.mjs';
 
 // pluginRoot 默认取布局解析的插件根：源码模式为源码目录，发布模式为发布根（hooks 清单所在处）。
 export async function runDoctor({ backend, event, config, pluginRoot = resolvePluginLayout().root, configFile = join(homedir(), '.zcode', 'cli', 'config.json') }) {
@@ -23,8 +24,15 @@ export async function runDoctor({ backend, event, config, pluginRoot = resolvePl
   const background = hooks.some(hook => hook.enabled !== false && hook.async === true);
   const snapshot = await backend.read();
   const view = await backend.models();
+  let reasonCode;
+  if (config.transport === 'source-server') {
+    if (!namingSelectionConfigured(config.selection)) reasonCode = 'naming_selection_missing';
+    else if (snapshot.sourceTaskMissing) reasonCode = 'source_task_unindexed';
+    else if (namingModelIssue(view, config.selection)) reasonCode = 'naming_model_unavailable';
+  }
   return {
-    status: config.enabled !== false && enabled && background ? 'ready' : 'not_ready',
+    status: config.enabled !== false && enabled && background && !reasonCode ? 'ready' : 'not_ready',
+    ...(reasonCode ? { reasonCode } : {}),
     sessionId: event.session_id, title: snapshot.title, turnCount: snapshot.turnCount,
     selectedTurns: snapshot.context.recent_turns.length, configuredModel: config.selection,
     providerCount: view.providers.length,

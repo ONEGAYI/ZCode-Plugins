@@ -6,7 +6,7 @@
 import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { readFile } from "node:fs/promises";
-import { commonInstaller, commonAnchorOptions, registryPathFromDataPath } from "./common-access.mjs";
+import { commonInstaller, commonRuntime, commonAnchorOptions, registryPathFromDataPath } from "./common-access.mjs";
 import { deployToastTemplate, removeToastTemplate, TOAST_TEMPLATE_FILE } from "./toast.mjs";
 
 export const PROTOCOL="suian-zcode-title";
@@ -91,17 +91,24 @@ export async function removeStopHook({pluginRoot,entrySubdir="",configFile,shell
   return{action:"removed"};
 }
 
-export async function installPlugin({pluginRoot,entrySubdir="",dataDir,configPath,checkOnly=false,nativePlugin=false,legacyRoot,shell=defaultShell,commonRoot,installedPlugins,homeDir=homedir()}) {
+export async function installPlugin({pluginRoot,entrySubdir="",dataDir,configPath,checkOnly=false,nativePlugin=false,sourceServer=false,legacyRoot,shell=defaultShell,commonRoot,installedPlugins,homeDir=homedir()}) {
   const activeConfigPath=configPath??(nativePlugin?join(dirname(dataDir),"config.json"):join(pluginRoot,"config.local.json"));
-  let config=nativePlugin?{enabled:false}:{};
+  // 远端尚未选模型时不派发 worker，需要提醒；enabled:false 保留给主动暂停。
+  let config=nativePlugin&&!sourceServer?{enabled:false}:{};
   // 配置本身可能提供 common 锚点，读取它之前不能先加载依赖 common 的默认 shell。
   try {config=JSON.parse(await (shell===defaultShell?readFile(activeConfigPath,"utf8"):shell.readText(activeConfigPath)));}
   catch(error) {if(error.code!=="ENOENT"||(!nativePlugin&&configPath))throw error;}
+  if(sourceServer)config={...config,transport:"source-server"};
+  const headless=config.transport==="source-server";
+  if(headless&&!nativePlugin)throw new Error("Source Server 安装需要 --native-plugin");
   // 安装期公共函数经客户端契约加载：显式位置优先，其次宿主注入，最后外置配置里的安装记录路径。
   const anchor=commonAnchorOptions({commonRoot,installedPlugins,config});
   const {checkRuntime}=await commonInstaller(anchor);
   const dependencies=await checkRuntime({sqliteBin:config.sqliteBin??process.env.SQLITE_BIN??"sqlite3",run:shell.run});
+  if(headless&&typeof (await commonRuntime(anchor)).connectSourceServer!=="function")
+    throw new Error("当前公共插件尚不支持 Source Server；请更新 common");
   if(checkOnly) {
+    if(headless)return{ok:true,action:"checked",dependencies};
     // 安装检查报告 Toast 稳定部署、外置模板与实际协议目标，不凭 AppID 缓存判定健康。
     const {checkToastRuntime}=await commonInstaller(anchor);
     const toast=await checkToastRuntime({homeDir,protocols:[PROTOCOL],shell});
@@ -115,12 +122,15 @@ export async function installPlugin({pluginRoot,entrySubdir="",dataDir,configPat
     await shell.mkdir(dirname(activeConfigPath));
     await shell.writeText(activeConfigPath,JSON.stringify(config,null,2)+"\n");
   }
-  const toastDataDir=nativePlugin?resolve(dirname(activeConfigPath),process.env.OIL_ZCODE_TITLE_DATA??config.dataDir):dataDir;
-  // Toast 桥与快捷方式落在命令入口目录：发布模式下 bundle 位于发布根的 dist/。
-  const toast=await installToastAssets({dataDir:toastDataDir,pluginsFile:registryPath,shell,homeDir});
-  // 排障提示词模板部署到 title 外置数据目录：公共执行器点击时读取，不依赖版本缓存。
-  const template=await deployToastTemplate({dataDir:toastDataDir,shell});
-  const configFile=join(homedir(),".zcode","cli","config.json"),skillFile=join(homedir(),".zcode","skills",PROTOCOL,"SKILL.md");
+  let notifications={};
+  if(!headless) {
+    const toastDataDir=nativePlugin?resolve(dirname(activeConfigPath),process.env.OIL_ZCODE_TITLE_DATA??config.dataDir):dataDir;
+    const toast=await installToastAssets({dataDir:toastDataDir,pluginsFile:registryPath,shell,homeDir});
+    const template=await deployToastTemplate({dataDir:toastDataDir,shell});
+    notifications={appId:toast.appId,actions:{...toast.actions,template:template.action}};
+  }
+  const zcodeHome=headless?(process.env.ZCODE_DATA_BASE_DIR?.trim()||homeDir):homedir();
+  const configFile=join(zcodeHome,".zcode","cli","config.json"),skillFile=join(zcodeHome,".zcode","skills",PROTOCOL,"SKILL.md");
   if(nativePlugin&&legacyRoot) {
     await removeStopHook({pluginRoot:legacyRoot,configFile,shell});
     let previous;
@@ -129,5 +139,5 @@ export async function installPlugin({pluginRoot,entrySubdir="",dataDir,configPat
   }
   const hook=nativePlugin?{action:"plugin_managed"}:await installStopHook({pluginRoot,entrySubdir,configFile,shell});
   const skill=nativePlugin?{action:"plugin_managed"}:await installSkill({pluginRoot,skillFile,shell});
-  return{ok:true,appId:toast.appId,dependencies,actions:{...toast.actions,template:template.action,hook:hook.action,skill:skill.action}};
+  return{ok:true,...notifications,dependencies,actions:{...notifications.actions,hook:hook.action,skill:skill.action}};
 }

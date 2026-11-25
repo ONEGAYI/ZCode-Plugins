@@ -129,6 +129,8 @@ git -C "{{repo_dir}}" sparse-checkout set suian-zcode-title suian-zcode-common
 
 它通过 ZCode 官方的 Web 远控通道连接当前窗口，用你自己账号里的模型生成标题，不往对话里插消息，也不直接改数据库；标题会跟随工作主线缓慢更新，手动改过的标题不会再被覆盖。安装时把一段话粘给 ZCode 就行，详见 [suian-zcode-title/README.md](./suian-zcode-title/README.md)。
 
+用 Desktop 打开 Linux 远程开发项目时，可以在运行会话的服务器上按 [Source Server setup](./suian-zcode-title/skills/setup/SKILL.md#linux-source-server) 配置命名。远端插件不依赖桌面网关；缺少命名配置或所选模型不可用时，插件会请 Agent 在本轮回复末尾提示，无需另外配置通知。
+
 ## suian-zcode-app-mcp — 会话 MCP
 
 检索本机会话、聊天历史、置顶项与定时任务，也能更名、创建会话、发信、压缩上下文、归档、复原和置顶。会话操作通过公共网关连接当前 ZCode 窗口，可以与手机共用。另提供 GLM 套餐额度和重置卡查询；消耗重置卡前，需要本次用户许可及客户端确认。接入与边界见 [suian-zcode-app-mcp](./suian-zcode-app-mcp/)。

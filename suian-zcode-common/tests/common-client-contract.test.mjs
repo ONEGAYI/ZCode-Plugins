@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const commonRoot = resolve(here, '..');
 const nodeBin = process.execPath;
 const RUNTIME_EXPORTS = [
-  'COMMON_API_VERSION', 'connectHost', 'probeHost', 'saveAuthorization', 'clearAuthorization',
+  'COMMON_API_VERSION', 'connectHost', 'probeHost', 'connectSourceServer', 'saveAuthorization', 'clearAuthorization',
   'readTitlePolicy', 'writeTitlePolicy', 'readProjectContext', 'MCP_APP_MIME_TYPE',
   'supportsZcodeMcpApps', 'notifyOnce', 'checkPromptRecoveryToast', 'shouldNotify', 'copyPromptAndOpenWorkspace',
   'getConversationMessageProjectionPolicy', 'TopicWireFrameAssembler', 'conversationTopicFrameSchema',

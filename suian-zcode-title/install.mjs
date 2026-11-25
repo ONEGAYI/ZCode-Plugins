@@ -15,8 +15,9 @@ const isMain=process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).h
 if(isMain) {
   const layout=resolvePluginLayout();
   const pluginRoot=layout.root;
-  const {values,positionals}=parseArgs({allowPositionals:true,options:{remove:{type:"boolean"},config:{type:"string"},"check-only":{type:"boolean"},"native-plugin":{type:"boolean"},"legacy-root":{type:"string"},"common-root":{type:"string"},"installed-plugins":{type:"string"}}});
+  const {values,positionals}=parseArgs({allowPositionals:true,options:{remove:{type:"boolean"},config:{type:"string"},"check-only":{type:"boolean"},"native-plugin":{type:"boolean"},"source-server":{type:"boolean"},"legacy-root":{type:"string"},"common-root":{type:"string"},"installed-plugins":{type:"string"}}});
   if(values.remove&&values["check-only"]) {console.error("--remove 与 --check-only 不能同时使用");process.exit(2);}
+  if(values["source-server"]&&(!values["native-plugin"]||values.remove)) {console.error("--source-server 仅用于原生安装和检查；卸载由宿主管理");process.exit(2);}
   const dataDir=positionals[0];
   const remove=values.remove;
   const configFile=join(homedir(),".zcode","cli","config.json");
@@ -32,7 +33,7 @@ if(isMain) {
       const skill=values["native-plugin"]?{action:"plugin_managed"}:await removeSkill({skillFile:join(homedir(),".zcode","skills",PROTOCOL,"SKILL.md")});
       return{ok:true,actions:{hook:hook.action,toast:"removed",template:"removed",skill:skill.action}};
     }
-    :()=>installPlugin({pluginRoot,entrySubdir:layout.entrySubdir,dataDir,configPath:values.config?resolve(values.config):undefined,checkOnly:values["check-only"],nativePlugin:values["native-plugin"],legacyRoot:values["legacy-root"]?resolve(values["legacy-root"]):undefined,commonRoot:values["common-root"]?resolve(values["common-root"]):undefined,installedPlugins:values["installed-plugins"]?resolve(values["installed-plugins"]):undefined});
+    :()=>installPlugin({pluginRoot,entrySubdir:layout.entrySubdir,dataDir,configPath:values.config?resolve(values.config):undefined,checkOnly:values["check-only"],nativePlugin:values["native-plugin"],sourceServer:values["source-server"],legacyRoot:values["legacy-root"]?resolve(values["legacy-root"]):undefined,commonRoot:values["common-root"]?resolve(values["common-root"]):undefined,installedPlugins:values["installed-plugins"]?resolve(values["installed-plugins"]):undefined});
   run()
     .then(result=>{console.log(JSON.stringify(result));})
     .catch(error=>{console.log(JSON.stringify({ok:false,error:error.name==="SyntaxError"?"配置 JSON 格式无效":error.message}));process.exit(1);});

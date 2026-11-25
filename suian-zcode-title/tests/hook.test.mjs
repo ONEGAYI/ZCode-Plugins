@@ -116,3 +116,46 @@ test('原生 Stop 命令沿用外置配置的自定义状态目录',()=>{
     assert.equal(existsSync(join(root,'state')),false);
   } finally {rmSync(root,{recursive:true});}
 });
+
+test('远端尚未配置时，让主 Agent 在本轮回复末尾提醒；主动暂停和 Windows 不提醒',()=>{
+  const root=mkdtempSync(join(tmpdir(),'z-title-setup-notice-'));
+  const config=join(root,'config.json'),hook=fileURLToPath(new URL('../hook.mjs',import.meta.url));
+  const invoke=(platform='linux')=>spawnSync(process.execPath,[
+    '--import',`data:text/javascript,Object.defineProperty(process,'platform',{value:'${platform}'})`,
+    hook,'--setup-notice','--config',config
+  ],{encoding:'utf8',windowsHide:true,input:JSON.stringify({hook_event_name:'UserPromptSubmit',session_id:'sess_fixture',cwd:root,prompt:'private-prompt-fixture'}),env:{...process.env,OIL_ZCODE_TITLE_DATA:undefined,ZCODE_PLUGIN_DATA:root}});
+  try {
+    for(const value of [undefined,{transport:'source-server'},{transport:'source-server',selection:{providerId:'private-provider-fixture',modelId:'model'}}]) {
+      if(value)writeFileSync(config,JSON.stringify(value));
+      const result=invoke();
+      assert.equal(result.status,0,result.stderr);
+      const {hookSpecificOutput:notice}=JSON.parse(result.stdout);
+      assert.equal(notice.hookEventName,'UserPromptSubmit');
+      assert.match(notice.additionalContext,/远端还没配置自动命名/);
+      assert.doesNotMatch(result.stdout,/private-(prompt|provider)-fixture/);
+    }
+    writeFileSync(config,JSON.stringify({transport:'source-server',enabled:false}));
+    assert.equal(invoke().stdout,'');
+    writeFileSync(config,'{}');
+    assert.equal(invoke('win32').stdout,'');
+  } finally {rmSync(root,{recursive:true});}
+});
+
+test('Linux 原生 Stop 与本轮提醒一致：空配置和桌面网关配置都不派发 worker',()=>{
+  const root=mkdtempSync(join(tmpdir(),'z-title-source-stop-'));
+  try {
+    const preload=join(root,'linux-no-worker.mjs'),config=join(root,'config.json');
+    writeFileSync(preload,"Object.defineProperty(process,'platform',{value:'linux'});global.setTimeout=()=>{throw new Error('UNEXPECTED_DELAY');};");
+    const hookPath=fileURLToPath(new URL('../hook.mjs',import.meta.url));
+    for(const configValue of [{},{transport:'gateway',selection:{providerId:'fixture',modelId:'fixture',options:{reasoningLevel:'low'}}}]) {
+      writeFileSync(config,JSON.stringify(configValue));
+      const result=spawnSync(process.execPath,['--import',pathToFileURL(preload).href,hookPath,'--config',config],{
+        encoding:'utf8',windowsHide:true,input:JSON.stringify({hook_event_name:'Stop',session_id:'sess_fixture',cwd:root}),
+        env:{...process.env,OIL_ZCODE_TITLE_DATA:undefined,ZCODE_PLUGIN_DATA:root},
+      });
+      assert.equal(result.status,0,result.stderr);
+      assert.match(result.stdout,/"action":"not_configured"/);
+      assert.doesNotMatch(result.stdout,/UNEXPECTED_DELAY/);
+    }
+  } finally {rmSync(root,{recursive:true});}
+});

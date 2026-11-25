@@ -1,11 +1,22 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${ZCODE_PLUGIN_ROOT}/hook.mjs\" --setup-notice --config \"${ZCODE_PLUGIN_DATA}/config.json\"",
+            "timeoutMs": 2500
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-          "command": "node \"${ZCODE_PLUGIN_ROOT}/hook.mjs\" --config \"${ZCODE_PLUGIN_DATA}/config.json\"",
+            "command": "node \"${ZCODE_PLUGIN_ROOT}/hook.mjs\" --config \"${ZCODE_PLUGIN_DATA}/config.json\"",
             "async": true,
             "timeoutMs": 30000
           }

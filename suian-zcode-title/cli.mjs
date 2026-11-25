@@ -17,9 +17,9 @@ import {runDoctor} from "./doctor.mjs";
 
 const args=process.argv.slice(2);
 if(args.includes("--help")||!args.length) {
-   console.log("用法：node cli.mjs run [--apply] [--config 文件]\n      node cli.mjs doctor|models|probe|status|enable|disable|auth|unauth [--config 文件]\n      node cli.mjs lock|unlock|policy [--config 文件]（固定/解除固定/查询会话标题策略；先校验目标会话存在）\nstdin JSON：session_id、workspace_path（或 cwd）、可选 user_message_id。\n原 Host 调用统一走公共网关；请先按公共 skill 安装或重载。auth / unauth 保留为旧凭据管理入口，不参与网关调用。\n网关类失败弹原生 Toast（2 小时冷却），设 OIL_ZCODE_TITLE_DISABLE_TOAST=1 静音。");
+   console.log("用法：node cli.mjs run [--apply] [--config 文件]\n      node cli.mjs doctor|models|probe|status|enable|disable|auth|unauth [--config 文件]\n      node cli.mjs lock|unlock|policy [--config 文件]（固定/解除固定/查询会话标题策略；先校验目标会话存在）\nstdin JSON：session_id、workspace_path（或 cwd）、可选 user_message_id。\n默认通过公共网关；远端原生安装用 transport: source-server 直连同机 Source Server。auth / unauth 只管理旧凭据。\n网关类失败弹原生 Toast（2 小时冷却），设 OIL_ZCODE_TITLE_DISABLE_TOAST=1 静音。");
 } else {
-  let backend,lease,leasePath,dataDir,command,event;
+  let backend,lease,leasePath,dataDir,command,event,sourceServer=false;
   const startedAt=Date.now();
   try {
     command=args[0];
@@ -38,9 +38,13 @@ if(args.includes("--help")||!args.length) {
     let supplied={};
     if(configPath) {const configText=await readFile(configPath,"utf8");try {supplied=JSON.parse(configText);} catch {throw new Error("配置 JSON 格式无效");}}
     if(!supplied||typeof supplied!=="object"||Array.isArray(supplied))throw new Error("配置 JSON 必须为对象");
+    const transport=supplied.transport===undefined?"gateway":supplied.transport;
+    if(!["gateway","source-server"].includes(transport))throw new Error("transport 应为 gateway 或 source-server");
+    sourceServer=transport==="source-server";
+    const zcodeHome=sourceServer?(process.env.ZCODE_DATA_BASE_DIR?.trim()||homedir()):homedir();
     const config={
-      sessionDb:join(homedir(),".zcode","cli","db","db.sqlite"),
-      indexDb:join(homedir(),".zcode","v2","tasks-index.sqlite"),
+      sessionDb:join(zcodeHome,".zcode","cli","db","db.sqlite"),
+      indexDb:join(zcodeHome,".zcode","v2","tasks-index.sqlite"),
       timeoutMs:120000,maxOutputTokens:2048,
       ...supplied,
       sqliteBin:supplied.sqliteBin??process.env.SQLITE_BIN??"sqlite3"
@@ -61,16 +65,17 @@ if(args.includes("--help")||!args.length) {
       await lease.writeFile(JSON.stringify({pid:process.pid,startedAt:new Date().toISOString()}));
       let prompt;
       if(command==="run") {
+        const toastDisabled=sourceServer||process.env.OIL_ZCODE_TITLE_DISABLE_TOAST==="1";
         const limits=snapshotLimits(config);
         if(limits.reason)await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),event:"snapshot_config_fallback",reason:limits.reason})+"\n","utf8");
         const deployed=await deployNamingPrompt({dataDir,mirror:join(resolvePluginLayout().root,"prompt.md"),requireRecoveryCapability:async()=>{
           const common=await commonRuntime();
-          await requirePromptRecoveryToast({common,dataDir,appId:AUMID,disabled:process.env.OIL_ZCODE_TITLE_DISABLE_TOAST==="1"});
+          await requirePromptRecoveryToast({common,dataDir,appId:AUMID,disabled:toastDisabled});
         }});
         prompt=deployed.prompt;
         if(deployed.action==="restored") {
           await appendFile(join(dataDir,"runner.log.jsonl"),JSON.stringify({at:new Date().toISOString(),event:"naming_prompt_restored",backupPath:deployed.backupPath})+"\n","utf8");
-          if(process.env.OIL_ZCODE_TITLE_DISABLE_TOAST!=="1") {
+          if(!toastDisabled) {
             await reportPromptRecoveryToast({display:async()=>{
               const appId=await ensureToastAppId({dataDir});
               const {notifyOnce}=await commonRuntime();
@@ -81,7 +86,7 @@ if(args.includes("--help")||!args.length) {
           }
         }
       }
-      backend=createBackend({event,config,prompt,saveState:async state=>{
+      backend=createBackend({event,config:sourceServer&&command==="probe"?{...config,timeoutMs:config.probeTimeoutMs??8000}:config,prompt,saveState:async state=>{
         const temporary=statePath+".tmp-"+randomUUID();
         await writeFile(temporary,JSON.stringify(state,null,2)+"\n","utf8");
         await rename(temporary,statePath);
@@ -103,22 +108,23 @@ if(args.includes("--help")||!args.length) {
         await clearAuthorization({dataDir});
         result={status:"auth_cleared"};
       } else if(command==="status") {
-        const legacyAuthorizationFilePresent=await stat(join(dataDir,"remote.blob")).then(info=>info.isFile(),error=>{if(error.code==="ENOENT")return false;throw error;});
-        const vbsInstalled=await stat(join(dataDir,"toast-launch.vbs")).then(()=>true,()=>false);
-        let protocolRegistered=false;
-        try {protocolRegistered=(await promisify(execFile)("reg.exe",["query",`HKCU\\Software\\Classes\\${PROTOCOL}\\shell\\open\\command`,"/ve"],{windowsHide:true})).stdout.includes("wscript.exe");}
-        catch {}
-        const {shouldNotify}=await commonRuntime();
-        const cooldown=await shouldNotify({dataDir});
         let lastUsage=null;
         try {
           const lines=(await readFile(join(dataDir,"usage.jsonl"),"utf8")).trim().split("\n");
           if(lines.length)lastUsage=JSON.parse(lines[lines.length-1]);
         }catch{}
-        result={status:"status",enabled:config.enabled!==false,selection:config.selection??null,dataDir,transport:"gateway",
-          legacyAuthorizationFilePresent,
-          toast:{appId:await ensureToastAppId({dataDir}).catch(()=>null),vbsInstalled,protocolRegistered,cooldownActive:!cooldown.allowed,cooldownUntil:cooldown.nextAllowedAt?new Date(cooldown.nextAllowedAt).toISOString():null},
+        result={status:"status",enabled:config.enabled!==false,selection:config.selection??null,dataDir,transport,
           lastUsage:{status:lastUsage?.status??null,at:lastUsage?.at??null,title:lastUsage?.title??null}};
+        if(!sourceServer) {
+          result.legacyAuthorizationFilePresent=await stat(join(dataDir,"remote.blob")).then(info=>info.isFile(),error=>{if(error.code==="ENOENT")return false;throw error;});
+          const vbsInstalled=await stat(join(dataDir,"toast-launch.vbs")).then(()=>true,()=>false);
+          let protocolRegistered=false;
+          try {protocolRegistered=(await promisify(execFile)("reg.exe",["query",`HKCU\\Software\\Classes\\${PROTOCOL}\\shell\\open\\command`,"/ve"],{windowsHide:true})).stdout.includes("wscript.exe");}
+          catch {}
+          const {shouldNotify}=await commonRuntime();
+          const cooldown=await shouldNotify({dataDir});
+          result.toast={appId:await ensureToastAppId({dataDir}).catch(()=>null),vbsInstalled,protocolRegistered,cooldownActive:!cooldown.allowed,cooldownUntil:cooldown.nextAllowedAt?new Date(cooldown.nextAllowedAt).toISOString():null};
+        }
       } else if(command==="enable"||command==="disable") {
         if(!configPath)throw new Error("enable/disable 需要 --config 指定配置文件");
         const current=JSON.parse(await readFile(configPath,"utf8"));
@@ -128,11 +134,20 @@ if(args.includes("--help")||!args.length) {
         await rename(temporary,configPath);
         result={status:command==="enable"?"enabled_writing":"disabled_writing",enabled:current.enabled};
       } else if(command==="probe") {
-        const {probeHost}=await commonRuntime();
-        const probed=await probeHost({workspacePath:event.workspace_path??event.cwd,sessionId:event.session_id,gatewayConfigPath:config.gatewayConfigPath,timeoutMs:config.probeTimeoutMs??8000});
-        result={status:probed.ok?"probe_ok":"probe_failed",...probed};
+        if(sourceServer) {
+          try {
+            await backend.models();
+            result={status:"probe_ok",ok:true,stage:"source_server"};
+          } catch(error) {
+            result={status:"probe_failed",ok:false,stage:error?.stage??"source_server",reasonCode:error?.reasonCode??"source_server_rpc_failed",message:error?.message??"Source Server RPC 调用失败"};
+          }
+        } else {
+          const {probeHost}=await commonRuntime();
+          const probed=await probeHost({workspacePath:event.workspace_path??event.cwd,sessionId:event.session_id,gatewayConfigPath:config.gatewayConfigPath,timeoutMs:config.probeTimeoutMs??8000});
+          result={status:probed.ok?"probe_ok":"probe_failed",...probed};
+        }
       } else if(command==="doctor") {
-        result=await runDoctor({backend,event,config});
+        result=await runDoctor({backend,event,config,...(sourceServer?{configFile:join(zcodeHome,".zcode","cli","config.json")}:{})});
       } else if(command==="lock"||command==="unlock"||command==="policy") {
         const {readTitlePolicy,writeTitlePolicy}=await commonRuntime();
         if(!await backend.sessionExists())throw new Error("目标会话在索引与会话库中均不存在");
@@ -174,7 +189,7 @@ if(args.includes("--help")||!args.length) {
       if(error.reasonCode==="auth_link_rejected"&&dataDir) {
         try {await (await commonRuntime()).clearAuthorization({dataDir});failure.authCleared=true;}catch{}
       }
-      if(command==="run"&&dataDir) {
+      if(command==="run"&&dataDir&&!sourceServer) {
         if(process.env.OIL_ZCODE_TITLE_DISABLE_TOAST==="1")failure.toast="disabled";
         else {
           try {
