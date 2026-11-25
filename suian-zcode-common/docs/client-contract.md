@@ -27,7 +27,7 @@
 
 对已有原生工作树会话，`readProjectContext` 额外返回 `hostWorkspacePath`，用于 `connectHost` 和会话 RPC；`workspacePath` 与 `additionalDirectories` 仍是执行目录和冻结附加目录，不从原项目扩大文件范围。普通会话的返回不增加该字段。
 
-`connectSourceServer()` 是运行期入口的可选能力，仅供显式选用 Source Server 的调用方。它读取同一用户的 Source Server 运行状态（`ZCODE_DATA_BASE_DIR` 或当前用户主目录下的 `.zcode/server/run`），仅连接 `127.0.0.1` 上宿主声明的 `/ws`，以请求头携带宿主鉴权，不记录凭据。等待 Channel 初始化后返回 `call(channel, method, args)` 和 `close()`。连接失败不切换到桌面网关，不重试已提交的操作。旧 common 没有该导出，原有 `connectHost` 消费者不受影响。
+`connectSourceServer()` 是运行期入口的可选能力，仅供显式选用 Source Server 的调用方。它读取同一用户的 Source Server 运行状态（`ZCODE_DATA_BASE_DIR` 或当前用户主目录下的 `.zcode/server/run`），仅连接 `127.0.0.1` 上宿主声明的 `/ws`，以请求头携带宿主鉴权，不记录凭据。等待 Channel 初始化后返回 `call(channel, method, args)` 和 `close()`。超时或连接失败后不再发送新请求，已提交的操作可能已经生效；不重试，也不切换到桌面网关。旧 common 没有该导出，原有 `connectHost` 消费者不受影响。
 
 ## release.json 与构建
 

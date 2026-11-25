@@ -50,14 +50,20 @@ export async function connectSourceServer({
     drain: () => Promise.resolve(),
   });
   let incoming = Buffer.alloc(0);
-  let timer = setTimeout(() => fault.reject(failure('source_server_timeout', 'Source Server RPC 初始化超时')), handshakeTimeoutMs);
-  const close = () => {
+  let timer, terminalError;
+  const finish = error => {
+    if (terminalError) return;
+    terminalError = error;
     clearTimeout(timer);
-    socket.close();
-    client.dispose();
+    fault.reject(error);
+    client.dispose(error);
     emitter.dispose();
+    socket.terminate();
   };
+  const connectionClosed = () => failure('source_server_connection_closed', 'Source Server RPC 已断开，已提交的操作结果可能未知');
+  timer = setTimeout(() => finish(failure('source_server_timeout', 'Source Server RPC 初始化超时')), handshakeTimeoutMs);
   socket.on('message', (chunk, binary) => {
+    if (terminalError) return;
     try {
       if (!binary) throw new Error('Expected a binary RPC message');
       incoming = Buffer.concat([incoming, chunk]);
@@ -68,22 +74,19 @@ export async function connectSourceServer({
         incoming = incoming.subarray(end);
       }
     } catch {
-      fault.reject(failure('source_server_protocol_error', 'Source Server 返回无效 RPC 数据，已提交的操作结果可能未知'));
-      close();
+      finish(failure('source_server_protocol_error', 'Source Server 返回无效 RPC 数据，已提交的操作结果可能未知'));
     }
   });
-  socket.on('error', () => fault.reject(failure('source_server_connection_failed', 'Source Server RPC 握手或连接失败')));
-  socket.on('close', () => fault.reject(failure('source_server_connection_closed', 'Source Server RPC 已断开，已提交的操作结果可能未知')));
-  try {
-    await Promise.race([client.whenInitialized(), fault.promise]);
-    clearTimeout(timer);
-    timer = setTimeout(() => fault.reject(failure('source_server_timeout', 'Source Server RPC 超时，已提交的操作结果可能未知')), timeoutMs);
-    return {
-      call: (channel, method, args = []) => Promise.race([client.getChannel(channel).call(method, args), fault.promise]),
-      close,
-    };
-  } catch (error) {
-    close();
-    throw error;
-  }
+  socket.on('error', () => finish(failure('source_server_connection_failed', 'Source Server RPC 握手或连接失败')));
+  socket.on('close', () => finish(connectionClosed()));
+  await Promise.race([client.whenInitialized(), fault.promise]);
+  if (terminalError) throw terminalError;
+  clearTimeout(timer);
+  timer = setTimeout(() => finish(failure('source_server_timeout', 'Source Server RPC 超时，已提交的操作结果可能未知')), timeoutMs);
+  return {
+    call: (channel, method, args = []) => terminalError
+      ? Promise.reject(terminalError)
+      : client.getChannel(channel).call(method, args),
+    close: () => finish(connectionClosed()),
+  };
 }

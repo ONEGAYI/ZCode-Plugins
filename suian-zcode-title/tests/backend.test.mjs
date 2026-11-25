@@ -23,8 +23,8 @@ test("显式 Source Server 模式只按已登记的远端工作区身份改名�
     "INSERT INTO part VALUES('p1','u1','sess_source_fixture',1,1,json_object('type','text','text','改进编辑体验'),1);"
   ].join("\n")]);
   execFileSync(sqliteBin,[indexDb,[
-    "CREATE TABLE tasks(task_id,workspace_path,workspace_identity,title,archived,deleted,task_status);",
-    "INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','remote:server:fixture:/srv/project','原名',0,0,'completed');"
+    "CREATE TABLE tasks(task_id,workspace_path,workspace_key,workspace_identity,title,archived,deleted,task_status);",
+    "INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','remote:server:fixture:/srv/project','remote:server:obsolete:/srv/project','原名',0,0,'completed');"
   ].join("\n")]);
   const calls=[];
   let title="原名";
@@ -58,12 +58,15 @@ test("显式 Source Server 模式只按已登记的远端工作区身份改名�
     assert.equal(calls.filter(method=>method==="getTaskMeta").length,3);
   } finally {await backend.close();}
   calls.length=0;
-  execFileSync(sqliteBin,[indexDb,"INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','remote:ssh:fixture:22:user:/srv/project','新名称',0,0,'completed');"]);
+  execFileSync(sqliteBin,[indexDb,"INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','remote:ssh:fixture:22:user:/srv/project',NULL,'新名称',0,0,'completed');"]);
   await assert.rejects(create().read(),{reasonCode:"source_task_ambiguous"});
   assert.deepEqual(calls,[]);
   execFileSync(sqliteBin,[indexDb,"DELETE FROM tasks;"]);
   const unindexed=create();
   assert.equal((await runNaming({backend:unindexed,selection,apply:true})).status,"skipped_unindexed");
+  assert.deepEqual(calls,[]);
+  execFileSync(sqliteBin,[indexDb,"INSERT INTO tasks VALUES('sess_source_fixture','/srv/project','/srv/project','remote:server:obsolete:/srv/project','新名称',0,0,'completed');"]);
+  assert.equal((await runNaming({backend:create(),selection,apply:true})).status,"skipped_unindexed","裸路径主键不能用陈旧的投影列补成远端身份");
   assert.deepEqual(calls,[]);
 });
 test("超时后迟到连接必须关闭，不能继续发模型或查询请求",async()=>{

@@ -22,7 +22,8 @@ Linux 远端的本轮提示走 `UserPromptSubmit`：查 `hook.log.jsonl` 中此�
 | gateway_upgrade_required | 文件已新、进程仍旧，按公共 setup 安全重载 |
 | source_server_common_upgrade_required | 远端 common 尚无直连入口，更新配套包 |
 | source_server_not_ready / source_server_auth_unavailable | 在远端核对同一用户的 Source Server 运行状态和鉴权文件权限，不打印凭据、不改走桌面网关 |
-| skipped_unindexed | 远端任务尚未登记工作区身份，本轮未连宿主、未调用模型；项目正常打开后看下一轮 |
+| naming_selection_missing / naming_model_unavailable | 远端 doctor 检出未选模型，或所选模型／思考档位不在宿主目录；按 configuration 核对后再启用 |
+| source_task_unindexed / skipped_unindexed | 远端任务尚无可用的工作区身份主键；命名 worker 不连宿主、不调用模型，项目正常打开后看下一轮 |
 | source_task_ambiguous | 同一个会话 ID 对应多条任务索引；先由 ZCode 打开远端项目以归并工作区身份，不手改数据库 |
 | unreachable / connection_failed / desktop_offline | 公共 debug 分别检查任务、健康、连接与模式 |
 | remote_workspace_busy | 手机远端工作区占用，等用户主动切回 |

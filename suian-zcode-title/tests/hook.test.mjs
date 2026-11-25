@@ -140,3 +140,22 @@ test('远端尚未配置时，让主 Agent 在本轮回复末尾提醒；主动�
     assert.equal(invoke('win32').stdout,'');
   } finally {rmSync(root,{recursive:true});}
 });
+
+test('Linux 原生 Stop 与本轮提醒一致：空配置和桌面网关配置都不派发 worker',()=>{
+  const root=mkdtempSync(join(tmpdir(),'z-title-source-stop-'));
+  try {
+    const preload=join(root,'linux-no-worker.mjs'),config=join(root,'config.json');
+    writeFileSync(preload,"Object.defineProperty(process,'platform',{value:'linux'});global.setTimeout=()=>{throw new Error('UNEXPECTED_DELAY');};");
+    const hookPath=fileURLToPath(new URL('../hook.mjs',import.meta.url));
+    for(const configValue of [{},{transport:'gateway',selection:{providerId:'fixture',modelId:'fixture',options:{reasoningLevel:'low'}}}]) {
+      writeFileSync(config,JSON.stringify(configValue));
+      const result=spawnSync(process.execPath,['--import',pathToFileURL(preload).href,hookPath,'--config',config],{
+        encoding:'utf8',windowsHide:true,input:JSON.stringify({hook_event_name:'Stop',session_id:'sess_fixture',cwd:root}),
+        env:{...process.env,OIL_ZCODE_TITLE_DATA:undefined,ZCODE_PLUGIN_DATA:root},
+      });
+      assert.equal(result.status,0,result.stderr);
+      assert.match(result.stdout,/"action":"not_configured"/);
+      assert.doesNotMatch(result.stdout,/UNEXPECTED_DELAY/);
+    }
+  } finally {rmSync(root,{recursive:true});}
+});

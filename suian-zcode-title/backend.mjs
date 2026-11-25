@@ -75,8 +75,10 @@ export function createBackend({event,config,saveState,prompt,connect=connectNami
       throw new Error("受管工作树缺少有效的原 Host 归属目录");
     cwd ||= (managed?row.root_path:row?.workspace_path) || (event.workspace_path??event.cwd);
     if(!cwd)throw new Error("任务索引与 CLI 库中都没有目标会话，且事件未携带工作区");
+    // Source Server 查任务用索引主键，兼容投影列 workspace_identity 可能为空或陈旧。
+    const workspaceKey=row?.workspace_key;
     const task=sourceServer
-      ?(row?.workspace_path&&row.workspace_identity?{taskId:sessionId,workspacePath:row.workspace_path,workspaceIdentity:row.workspace_identity}:null)
+      ?(row?.workspace_path&&workspaceKey?.startsWith("remote:")?{taskId:sessionId,workspacePath:row.workspace_path,workspaceIdentity:workspaceKey}:null)
       :{taskId:sessionId,workspacePath:managed?row.workspace_path:cwd};
     resolvedWorkspace={cwd,task};
     return resolvedWorkspace;

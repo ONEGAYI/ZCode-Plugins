@@ -43,9 +43,11 @@ function defaultSpawnWorker({script,args,event,dataDir}) {
   child.unref();
 }
 
+const sourceNamingConfigured=config=>config.transport==="source-server"&&namingSelectionConfigured(config.selection);
+
 async function sourceSetupNotice(config) {
   if(config.enabled===false)return null;
-  if(config.transport!=="source-server"||!namingSelectionConfigured(config.selection))
+  if(!sourceNamingConfigured(config))
     return {action:"not_configured",message:"远端还没配置自动命名。可在当前会话说「配置自动命名」。"};
   // 只读同机宿主目录，不生成文本，也不使用后台命名的长超时。
   await commonRuntime(commonAnchorOptions({config}));
@@ -104,8 +106,9 @@ if(isMain) {
     } else {
       let result;
       if(configPath&&payload?.stop_hook_active!==true) {
+        const sourceSetup=config.transport==="source-server"||(process.platform==="linux"&&process.env.ZCODE_PLUGIN_DATA);
         if(config.enabled===false)result={action:"disabled"};
-        else if(configMissing||config.transport==="source-server"&&!namingSelectionConfigured(config.selection))
+        else if(configMissing||sourceSetup&&!sourceNamingConfigured(config))
           result={action:"not_configured"};
       }
       result??=await dispatchStopEvent({payload,dataDir,pluginRoot,configPath});

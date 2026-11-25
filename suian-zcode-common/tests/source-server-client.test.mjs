@@ -35,8 +35,9 @@ test('Source Server 经带鉴权的 /ws 收发现有 Channel RPC，无需网关�
     socket.send(frame);
     socket.send(body);
   };
-  let malformed = false;
+  let malformed = false, holdReply = false, calls = 0, peer;
   server.on('connection', (socket, request) => {
+    peer = socket;
     assert.equal(request.url, '/ws');
     assert.equal(request.headers.authorization, 'Bearer ' + token);
     if (malformed) {
@@ -48,14 +49,15 @@ test('Source Server 经带鉴权的 /ws 收发现有 Channel RPC，无需网关�
       return;
     }
     send(socket, [200]);
-    socket.once('message', (frame, binary) => {
+    socket.on('message', (frame, binary) => {
       assert.equal(binary, true);
       assert.equal(frame[0], 1);
       assert.equal(frame.readUInt32BE(9), frame.length - 13);
       const reader = new BufferReader(VSBuffer.wrap(frame.subarray(13)));
       const [kind, id, channel, method] = deserialize(reader);
       assert.deepEqual([kind, channel, method, deserialize(reader)], [100, 'model-selection', 'getView', []]);
-      send(socket, [201, id], { providers: [] });
+      calls++;
+      if (!holdReply) send(socket, [201, id], { providers: [] });
     });
   });
   assert.equal(typeof client.connectSourceServer, 'function');
@@ -65,6 +67,20 @@ test('Source Server 经带鉴权的 /ws 收发现有 Channel RPC，无需网关�
   } finally {
     connection.close();
   }
+  await t.test('超时终止连接，后续调用不会送至宿主', async () => {
+    holdReply = true;
+    const expired = await client.connectSourceServer({ dataBaseDir, handshakeTimeoutMs: 1000, timeoutMs: 60 });
+    const ended = once(peer, 'close', { signal: AbortSignal.timeout(1000) });
+    try {
+      const timeout = { stage: 'source_server', reasonCode: 'source_server_timeout' };
+      await assert.rejects(expired.call('model-selection', 'getView'), timeout);
+      await assert.rejects(expired.call('model-selection', 'getView'), timeout);
+      await ended;
+      assert.equal(calls, 2, '只有正常调用和截止前的在途调用应到达宿主');
+    } finally {
+      expired.close();
+    }
+  });
   malformed = true;
   await assert.rejects(client.connectSourceServer({ dataBaseDir, handshakeTimeoutMs: 1000 }),
     { stage: 'source_server', reasonCode: 'source_server_protocol_error' });

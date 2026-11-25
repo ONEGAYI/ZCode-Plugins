@@ -72,3 +72,31 @@ test('原生 doctor 检查插件 Hook 定义，区分静态配置和实际加载
   await writeFile(configFile,'{"plugins":{"enabled":false}}');
   assert.equal((await runDoctor({backend,event:{session_id:'sess_fixture'},config:{registration:'native'},pluginRoot,configFile})).status,'not_ready');
 });
+
+test('远端 doctor 只有可用的模型档位和已登记的会话才静态就绪',async t=>{
+  const pluginRoot=await mkdtemp(join(tmpdir(),'z-title-source-doctor-'));
+  t.after(()=>rm(pluginRoot,{recursive:true}));
+  const configFile=join(pluginRoot,'user.json');
+  await mkdir(join(pluginRoot,'hooks'));
+  await writeFile(configFile,'{}');
+  await writeFile(join(pluginRoot,'hooks','hooks.json'),JSON.stringify({hooks:{Stop:[{hooks:[{type:'command',async:true}]}]}}));
+  const selection={providerId:'fixture',modelId:'naming',options:{reasoningLevel:'low'}};
+  const view={providers:[{providerId:'fixture',models:[{modelId:'naming',config:{optionSpecs:{reasoningLevel:{values:['low']}}}}]}]};
+  const check=(selected,sourceTaskMissing=false)=>runDoctor({
+    pluginRoot,configFile,event:{session_id:'sess_fixture'},config:{registration:'native',transport:'source-server',selection:selected},
+    backend:{read:async()=>({title:'fixture',turnCount:1,context:{recent_turns:[]},sourceTaskMissing}),models:async()=>view},
+  });
+  for(const [selected,missing,expected] of [
+    [undefined,false,'naming_selection_missing'],
+    [{...selection,modelId:'removed'},false,'naming_model_unavailable'],
+    [{...selection,options:{reasoningLevel:'removed'}},false,'naming_model_unavailable'],
+    [selection,true,'source_task_unindexed'],
+  ]) {
+    const result=await check(selected,missing);
+    assert.equal(result.status,'not_ready',expected);
+    assert.equal(result.reasonCode,expected);
+  }
+  const ready=await check(selection);
+  assert.equal(ready.status,'ready');
+  assert.equal(ready.hookDetails.execution,'not_verified');
+});

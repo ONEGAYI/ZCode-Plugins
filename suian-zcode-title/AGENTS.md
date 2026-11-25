@@ -9,7 +9,7 @@
 - 公共 vendor 是固定来源的协议与投影库；版本信息见 ../suian-zcode-common/vendor/NOTICE.md，不自动更新。
 - 新行为先写契约测试，记录红绿验证日志（docs/ 下按功能分卷，现有 round2-evidence.json 与 title-lock-evidence.json）；不添加无关功能。
 - 会话 ID 同时接受旧版 `sess_` 与 3.16 的 `session_` 前缀；其余字符仍限制为字母、数字、下划线与连字符。前缀兼容测试不代表真实 3.16 Stop Hook 与自动命名已验收。
-- Linux Source Server 的命名任务显式选用 `transport: "source-server"`。只读两库、用索引的 `workspace_identity` 限定任务 RPC，生成与释放仍使用独立工作区身份；未登记的远端任务不调用模型。原生 `UserPromptSubmit` 检查命名配置和当前模型目录，缺配置或选项已失效时请主 Agent 在本轮回复末尾附上提示；不新增模型调用。主动暂停保持静默。远端不部署或调用 Windows 通知。
+- Linux Source Server 的命名任务显式选用 `transport: "source-server"`。只读两库，以任务索引主键 `workspace_key` 的远端身份限定任务 RPC，生成与释放仍使用独立工作区身份；未登记的远端任务不调用模型。原生 `UserPromptSubmit` 检查命名配置和当前模型目录，缺配置或选项已失效时请主 Agent 在本轮回复末尾附上提示；不新增模型调用。主动暂停保持静默。远端不部署或调用 Windows 通知。
 - MCP 创建会话的公共命名策略优先：locked:true 不生成；false 不推断手动保护，模型根据本地提示词决定保留或改名。既有无策略会话保留原手动标题保护。
 
 ## 技术参考（面向维护者）
