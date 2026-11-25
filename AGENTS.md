@@ -20,6 +20,7 @@
 - **版本范围**：正式集成前，对照 `dev` 与正式分支的差异，确定受影响的插件并更新其版本；未受影响的插件不联动升版。公共层有变化时，按实际影响核对依赖它的业务插件。
 - **版本清单**：同步受影响插件的 `.zcode-plugin/plugin.json`；已有版本字段的 `package.json`、锁文件根包与运行时自报版本也必须一致，已有 CHANGELOG 按发布范围更新。修改任一插件清单的 `version` 时，必须在同一变更中同步根 `marketplace.json` 对应条目的 `version`；提交前核对一致，避免原生市场漏检更新。
 - **完成条件**：版本更新必须随正式集成内容一并进入 `master`；核对版本一致性、完成受影响范围的验证，并在提交或 PR 正文说明插件版本与验证结果。未完成版本同步，不得宣称正式集成完成。
+- **离线发布资产**：正式发布使用 `node release-publish.mjs`，从已验发布记录与最终候选提交自动组包。即便只升一个插件，也在草稿阶段上传四包的 Windows x64 离线 ZIP；离线 ZIP 不替代普通市场资产，不联动升版。
 - **发布命名**：仓库 Release 是四插件集总发布，标题与发布说明必须自明归属，不写裸版本号。标题固定 `ZCode Plugins · <短名> <版本>[ + <短名> <版本>…] · <主题>`，短名为 common / title / app-mcp / side-editor。发布说明的版本段标题写 `## [<短名> <版本>] - 日期`，底部变更链接键同步带短名（如 `[common 0.7.3]: <compare url>`）。各插件自身 CHANGELOG.md 保持 Keep a Changelog 原样，仅在拼入仓库级 Release 说明时补短名；标题与说明由发布执行方按此格式组装，发布脚本不内置模板。
 
 ## 文件树
@@ -40,12 +41,15 @@ ZCode-Plugins/
 ├── release-zip.mjs         # 确定性 ZIP 写入/读取/安全解压（Node 内置 zlib；排序与时间戳固定，同输入同字节）
 ├── release-verify.mjs      # 发布组装目录契约校验：身份/版本/必备资源/敏感内容/公共代码内联/文件摘要
 ├── release-marketplace.mjs # 市场条目形状校验、候选生成（只改受影响条目）、版本统一检查（只报告）与回退候选
-├── release-github.mjs      # Release 发布流水线编排（GitHub API 与下载依赖注入；先预发布公开，下载核验通过后自动转正式；真实写操作须另行发布授权）
+├── release-offline.mjs     # 从完整市场候选对应的正式 ZIP 汇总本地市场，另附固定的 Windows x64 Node 与 sqlite3
+├── offline/AGENTS.md      # 离线包根目录的安装指南；独立于源码 Agent 规则
+├── release-publish.mjs    # 正式发布命令：绑定提交与离线指南，交接已核验市场候选；宿主验收和 master 核对后独立转正
+├── release-github.mjs      # Release 发布编排（离线包随本轮 ZIP 上传到草稿；预发布、下载核验和续作；真实写操作须另行授权）
 ├── tests/                  # 根级发布工具契约测试（release-*.test.mjs，含外部边界桩与 loopback HTTP fixture）
 │
 ├── suian-zcode-title/      # ZCode 会话自动命名插件（Stop Hook + 命名决策 + 通知文案；公共导入经客户端契约定位）
 │   ├── .zcode-plugin/      # 原生插件元信息
-│   ├── hooks/             # 原生异步 Stop 注册（发布构建将命令改指 dist 入口）
+│   ├── hooks/             # 原生异步 Stop 与远端配置提醒（发布构建将命令改指 dist 入口）
 │   ├── skills/            # setup / configuration / control / debug
 │   ├── common-access.mjs / release-layout.mjs / installer.mjs / build-release.mjs
 │   │                       # 公共薄适配与锚点解析、源码/发布双模式布局、安装共享实现、发布目录构建
@@ -84,6 +88,7 @@ ZCode-Plugins/
 │   ├── hooks/              # 原生 Stop 注册（async 触发 depcheck-hook.mjs）
 │   ├── link.mjs            # 源码开发用公共入口与业务端 Node 包链接；正式安装与诊断不依赖
 │   ├── client.mjs / client-install.mjs  # 公共客户端运行期/安装期入口（PKG-01 契约，commonApiVersion 1）
+│   ├── source-server-client.mjs # Linux Source Server 原生回环 RPC；由命名插件显式选用
 │   ├── rpc-broker.mjs / rpc-diagnostics.mjs # Host 桥生命周期与多客户端分流、跨网关和消费者的安全失败诊断
 │   ├── locate.mjs         # 薄定位器：安装记录定位 common，单一源码分发业务包
 │   ├── build-release.mjs  # 发布目录构建：esbuild 打包、release.json、buildId 与构建输入记录

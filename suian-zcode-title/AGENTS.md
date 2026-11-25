@@ -9,6 +9,7 @@
 - 公共 vendor 是固定来源的协议与投影库；版本信息见 ../suian-zcode-common/vendor/NOTICE.md，不自动更新。
 - 新行为先写契约测试，记录红绿验证日志（docs/ 下按功能分卷，现有 round2-evidence.json 与 title-lock-evidence.json）；不添加无关功能。
 - 会话 ID 同时接受旧版 `sess_` 与 3.16 的 `session_` 前缀；其余字符仍限制为字母、数字、下划线与连字符。前缀兼容测试不代表真实 3.16 Stop Hook 与自动命名已验收。
+- Linux Source Server 的命名任务显式选用 `transport: "source-server"`。只读两库，以任务索引主键 `workspace_key` 的远端身份限定任务 RPC，生成与释放仍使用独立工作区身份；未登记的远端任务不调用模型。原生 `UserPromptSubmit` 检查命名配置和当前模型目录，缺配置或选项已失效时请主 Agent 在本轮回复末尾附上提示；不新增模型调用。主动暂停保持静默。远端不部署或调用 Windows 通知。
 - MCP 创建会话的公共命名策略优先：locked:true 不生成；false 不推断手动保护，模型根据本地提示词决定保留或改名。既有无策略会话保留原手动标题保护。
 
 ## 技术参考（面向维护者）
@@ -50,7 +51,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 2. 只读查询任务索引与 CLI SQLite 双库，校验工作区与标题一致。
 3. 按持久化 `session.revert` 裁剪回退分支：优先使用 `branchCutAfterMessageID` 拼接保留前缀与切点之后的新消息，兼容旧 `createdMessageID`；切点不存在时只保留已登记前缀。复用官方可见消息规则；用户文本每轮上限 1,200 字符、最初目标 800，取最近三轮。助手正文默认 2,000 字符，超额保留首尾；后台任务通知触发的可见回复归入通知前最近真人有效轮次。
 4. 经公共网关附着原 Host（握手短超时 8s，失败按 stage/reasonCode 分类），model-selection.getView 校验模型档位后调 zcode-agent.generateWorkspaceText。仅生成使用独立工作区身份，完成、失败或超时后释放辅助运行时，不把模型活动记到现有会话。真实目录、模型选择及改名目标不变。旧网关明确要求重载，不回退官方 terminal。
-5. 校验严格 JSON、字段、非空标题与安全边界；格式由本地提示词决定。输出无效时最多纠错两次，三次共享生成超时预算。写前复读，仅宿主 `generated` 标题变化且候选为 `rename` 时允许继续，是否写入以最新标题比较；`keep`、非 generated 标题变化、运行或内容变化仍返回 `stale_result`（附 `staleReason`：running/fingerprint/title）。
+5. 校验严格 JSON、字段、非空标题与安全边界；格式由本地提示词决定。输出无效时最多纠错两次，三次共享生成超时预算。写前复读，仅宿主 `generated` 标题变化且候选为 `rename` 时允许继续，是否写入以最新标题比较；`keep`、非 generated 标题变化、运行或内容变化仍返回 `stale_result`（附 `staleReason`：running/fingerprint/title）。Source Server 绑住本轮已登记的任务身份，改名前再核对索引主键；如果身份变化，丢弃候选（`workspace_identity`），下轮重新判断。
 6. `zcode-task.renameTask` 写回后三处核验（原 Host 与双库），保存指纹与用量。
 7. 远控类失败或所选命名模型／思考档位不在原 Host 可用目录时不改标题，按 7200 秒跨进程冷却弹原生 Toast；按钮可复制排障提示词或对命名插件免打扰 24 小时，协议激活由独立进程处理。`OIL_ZCODE_TITLE_DISABLE_TOAST=1` 静音。
 
@@ -71,7 +72,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 | 文件 | 职责 |
 | --- | --- |
 | cli.mjs | 命令入口：stdin 事件、配置、共享锁、结果与日志；status/enable/disable/auth/unauth/lock/unlock/policy |
-| hook.mjs | Stop Hook 派发器：续跑保护、会话元数据、8 秒延迟、后台 worker（worker 为同目录 cli 入口，源码与发布形态同构） |
+| hook.mjs | Stop 派发：续跑保护、会话元数据、8 秒延迟、同目录后台 worker；原生 UserPromptSubmit 在 Linux 远端发出配置提醒指令 |
 | naming.mjs | 命名决策、去重、手动锁定保护、写前写后复核 |
 | backend.mjs | 只读双库与原 Host 服务适配 |
 | history.mjs | 历史重建、回退分支、最近三轮整理与指纹；投影策略经公共客户端契约加载 |
@@ -81,7 +82,7 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 | install.mjs | 安装命令入口（薄）：参数解析与退出码；复用逻辑在 installer.mjs |
 | installer.mjs | 安装与通知身份共享实现：sqlite3 检查、共享 Toast 稳定运行时与外置身份登记、提示词模板部署、Hook 与技能副本（命令入口间禁止互相导入，避免 bundle 内联复制主模块判定） |
 | build-release.mjs | 发布目录构建：esbuild 四入口进 dist/、资源组装、release.json 与构建输入记录；构建期断言仅薄定位器来自 common |
-| .zcode-plugin/plugin.json / hooks/hooks.json | 原生元信息与异步 Stop；发布构建把 Stop 命令改指 dist/hook.mjs，native 初始化不重复全局注册 |
+| .zcode-plugin/plugin.json / hooks/hooks.json | 原生元信息、异步 Stop 与远端配置提醒；发布构建把 Hook 命令改指 dist/hook.mjs，native 初始化不重复全局注册 |
 | skills/ | setup / configuration / control / debug，paths.md 统一路径与数据说明 |
 | doctor.mjs | 只读双库/模型与实际用户级 Stop Hook 配置检查；明确区分配置就绪和执行待验证 |
 | prompt.md / prompt-deploy.mjs | 命名规则镜像及缓存外部署：状态目录 naming-prompt.md 为实际 system prompt，版本升级或修复前备份 |
@@ -94,4 +95,4 @@ node .\cli.mjs policy --config .\config.local.json      # 只读查询目标会�
 
 历史实测：54 项契约测试；两会话真实 Stop → 后台命名端到端（renamed）；probe 分层分类；Toast 横幅与按钮渲染、协议激活复制提示词；7200 秒冷却边界与并发单显；DPAPI 授权往返；旧独立 terminal 的并发席位实验（同授权码后连者被 KICKED，不损授权）。证据见 docs/ 两份脱敏 JSON。新版网关 RPC 的隔离验证与真实手机验收分别记录于 MCP 的共存报告。
 
-边界：本机本地工作区（`readSessionMessages` 字段校验不一致，正文走 SQLite 只读适配，非实时 V4 快照）；`transcript_path` 是宿主合成的临时文件，不作为历史来源；连接关闭不代表原 Host 的辅助模型请求已取消，ZCode 自身可能记录辅助生成的模型 I/O 与用量；`zcode://workspace/open` 对任意路径弹官方确认框，自动化测试严禁触发协议激活链路（模态框阻塞无人值守流程）。
+桌面网关的历史验证范围是本机本地工作区（`readSessionMessages` 字段校验不一致）；Linux Source Server 另见 [#226 验收记录](docs/notes/source-server-naming-evidence.md)。正文走 SQLite 只读适配，不读取宿主的临时 `transcript_path`，也不是实时 V4 快照。连接关闭不代表辅助模型请求已取消，ZCode 仍可能记录辅助生成的模型 I/O 与用量。自动化测试严禁触发 `zcode://workspace/open`（对任意路径都会弹官方确认框）。

@@ -1,5 +1,22 @@
 # 更新记录
 
+## [0.5.0] - 2026-11-25
+
+ZCode Desktop 通过 SSH 打开的 Linux Source Server 项目，现在也能在会话回复结束后自动命名。
+
+### 新功能
+
+**SSH 远程会话自动命名（#226、#228）**
+
+- 在远端安装或更新 common 和 title，选定远端模型并启用后，同一远端插件数据目录下的工作区共用配置。不需要手机远控或额外部署桌面网关。
+- 未配置，或所选模型、思考档位不再可用时，插件会请 Agent 在当前回复末尾附上配置提醒。提醒不需要另行配置，主动暂停时不提醒。
+
+### 其他改进
+
+- 补全自定义命名提示词的说明。命名在哪一端运行，就读取那一端状态目录中的 `naming-prompt.md`；远端不会自动同步本机的文件（#227、#228）。
+
+> **远端运行条件**：Stop Hook 需要在远端 PATH 找到 Node.js 24+ 和支持只读 JSON 查询的 sqlite3。更新两个插件后，按 title 的 setup 技能初始化。
+
 ## [0.4.4] - 2026-11-20
 
 侧边聊天正常回复后不再弹出自动命名的 RPC 警告。主聊天仍会自动改名。
@@ -83,6 +100,7 @@ ZCode 3.18 原生工作树会话在回复完成后也能自动命名。
 > **验证范围**：历史裁剪契约已验证，真实手机普通会话已完成命名验证；真实手机回退后继续输入的完整场景仍待验收。模型目录可用但运行时请求失败的情况沿用已有网关错误分类。
 
 <!-- 变更链接 -->
+[0.5.0]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.20...plugins-2026.11.25
 [0.4.4]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12.1...plugins-2026.11.20
 [0.4.3]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.12...plugins-2026.11.12.1
 [0.4.2]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11.1...plugins-2026.11.12
