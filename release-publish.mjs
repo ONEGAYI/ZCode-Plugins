@@ -4,7 +4,7 @@ import { readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
-import { createGithubRestApi, hasVerifiedDownload, runReleasePipeline } from './release-github.mjs';
+import { createGithubRestApi, hasVerifiedDownload, promoteRelease, runReleasePipeline } from './release-github.mjs';
 import { checkVersionConsistency, generateMarketplaceCandidate, validateMarketplaceEntry } from './release-marketplace.mjs';
 import { buildOfflineReleaseAsset, OFFLINE_MARKETPLACE } from './release-offline.mjs';
 import { gateCommitInputs, PLUGIN_ORDER, RECORD_NAME } from './release-orchestrate.mjs';
@@ -122,7 +122,7 @@ export async function main(argv = process.argv.slice(2), {
       }
     }
     if (await githubApi.getTagCommit(releaseTag) !== candidateCommit) throw new Error('Release tag 不再指向本轮候选提交');
-    if (release.prerelease) await githubApi.updateRelease(release, { prerelease: false });
+    if (release.prerelease) await promoteRelease(githubApi, release);
     delete state.finalizePending;
     delete state.marketSwitchPending;
     await persistState(state);

@@ -65,7 +65,7 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
   const offlineName = 'zcode-plugins-offline-windows-x64.zip';
   let release, prepared = 0, draftCheckpoint, anonymousUnavailable = false;
   let tagTarget = commit, moveTagDuringDownload = false;
-  let masterMarketplace = marketplace, moveTagDuringMasterCheck = false;
+  let masterMarketplace = marketplace, moveTagDuringMasterCheck = false, failLatest = false;
   const stored = new Map();
   const requests = [];
   const releasePatches = [];
@@ -113,6 +113,7 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     if (path.endsWith(releasePath) && method === 'PATCH') {
       const patch = JSON.parse(options.body);
       releasePatches.push(patch);
+      if (failLatest && patch.make_latest) return response('latest rejected', 422);
       Object.assign(release, patch);
       return response(release);
     }
@@ -276,8 +277,19 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     assert.equal(release.prerelease, false);
     assert.equal(prepared, 1);
     assert.ok(requests.slice(start).every(([method, path]) => method !== 'POST' && !path.includes('/releases/download/')));
-    assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }, { prerelease: false }]);
+    assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }, { prerelease: false }, { make_latest: 'true' }]);
     await main([...finalize, '--host-verified'], options);
-    assert.equal(releasePatches.length, 2, '已经转正的 Release 不重复更新');
+    assert.equal(releasePatches.length, 3, '已经转正的 Release 不重复更新');
+  });
+  await t.test('Latest 标记请求失败时转正命令报错，不静默完成', async () => {
+    // 转正只有一次：失败路径排在成功路径之后，先把夹具恢复成未转正。
+    release.prerelease = true;
+    failLatest = true;
+    try {
+      await assert.rejects(main([...finalize, '--host-verified'], options), /GitHub API 422/);
+      assert.equal(release.prerelease, false, '解除预发布的请求已生效，失败不回滚转正');
+    } finally {
+      failLatest = false;
+    }
   });
 });

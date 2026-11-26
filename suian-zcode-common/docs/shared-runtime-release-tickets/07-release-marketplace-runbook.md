@@ -79,7 +79,9 @@ node release-publish.mjs --out .scratch/release --title "{{Release 标题}}" --n
 node release-publish.mjs --out .scratch/release --finalize --host-verified
 ```
 
-`--host-verified` 是对已完成宿主验收的人工确认。命令要求匿名下载凭证属于同一候选和当前 Release ID，通过 GitHub 读取 `master` 市场清单并核对本轮条目的版本、URL 和 SHA-256，再确认公开资产与 tag 未变。通过后只解除同一条 Release 的预发布标记，不重新制包、下载或上传资产。`--publish` 与 `--finalize` 不可同时执行。
+`--host-verified` 是对已完成宿主验收的人工确认。命令要求匿名下载凭证属于同一候选和当前 Release ID，通过 GitHub 读取 `master` 市场清单并核对本轮条目的版本、URL 和 SHA-256，再确认公开资产与 tag 未变。通过后只改元数据：解除同一条 Release 的预发布标记，再另发一次请求把它标为仓库 Latest；不重新制包、下载或上传资产。`--publish` 与 `--finalize` 不可同时执行。
+
+Latest 标记不与解除预发布合并成一次请求：GitHub 规定草稿和预发布不能设为 Latest，合并写法是否生效未经证实，被拒绝会让转正整体失败。标记请求失败时命令报错，此时 Release 已转正但未标 Latest；重跑 `--finalize` 不会补发，需手动执行 `gh release edit <tag> --repo <owner>/<repo> --latest`。
 
 ### 每轮发布都生成 Windows x64 离线包
 

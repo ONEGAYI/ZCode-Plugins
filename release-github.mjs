@@ -2,7 +2,7 @@
 // 测试使用内存桩，不触真实网络写操作；真实 REST 适配器由 createGithubRestApi 提供，
 // 仅在另行授权的正式发布中由人显式调用。
 // 本仓正式发行（规格 9.3）：草稿资产齐全 -> 授权公开为预发布 -> 匿名下载核验 -> 交接市场候选。
-// 正式转正由 release-publish.mjs 的独立路径处理；无离线资产的通用调用保留原有转正语义。已发布资产不删除重传；
+// 正式转正由 release-publish.mjs 的独立路径处理，无离线资产的通用调用仍按 publish 授权转正；两处共用 promoteRelease，转正含 Latest 标记。已发布资产不删除重传；
 // 上传结果未知时先读取远端现状再续作，不盲重传；不能覆盖现有未知内容。
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -17,6 +17,17 @@ const reached = stage => stageOrder.get(stage) ?? -1;
 export function hasVerifiedDownload(downloads, releaseId, zip, url) {
   return downloads.some(record => record.ok && record.releaseId === releaseId
     && record.fileName === zip.fileName && record.sha256 === zip.sha256 && record.url === url);
+}
+
+/**
+ * 预发布转正式，并标记为仓库 Latest。两次请求不合并：GitHub 规定草稿和预发布不能设为 Latest，
+ * 同一请求先解除预发布再标记是否生效未经证实，被拒绝会让转正整体失败、Release 停在预发布。
+ * 标记请求失败时转正已完成；已正式的 Release 不再转正，须人工执行 gh release edit <tag> --latest 补标。
+ */
+export async function promoteRelease(githubApi, release) {
+  const promoted = await githubApi.updateRelease(release, { prerelease: false });
+  await githubApi.updateRelease(release, { make_latest: 'true' });
+  return promoted;
 }
 
 /**
@@ -173,7 +184,7 @@ export async function runReleasePipeline({
   // 不改变无离线资产的通用调用方此前的 publish 授权语义。
   if (release.prerelease) {
     if (authorize.publish && !offlineAsset) {
-      release = await githubApi.updateRelease(release, { prerelease: false });
+      release = await promoteRelease(githubApi, release);
     } else {
       run.finalizePending = true;
       report.pending = offlineAsset

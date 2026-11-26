@@ -77,7 +77,7 @@ test('新建：草稿传齐资产后按授权公开，再从匿名 URL 核验', 
   assert.equal(result.state.stage, 'verify-download', JSON.stringify(result.error ?? result.state));
   assert.equal(api.releasesCreated, 1);
   assert.equal(api.assets.length, 2, '两个 ZIP 都已上传');
-  assert.deepEqual(api.metadataUpdates, [{ draft: false, prerelease: true }, { prerelease: false }], '先预发布公开，下载核验通过后转正式');
+  assert.deepEqual(api.metadataUpdates, [{ draft: false, prerelease: true }, { prerelease: false }, { make_latest: 'true' }], '先预发布公开，下载核验通过后转正式并标记 Latest');
   assert.equal(result.state.downloads.every(item => item.ok), true);
 });
 
@@ -125,7 +125,7 @@ test('同名已发布资产：摘要匹配即复用不重传；不匹配报冲�
   const download = defaultDownload;
   const reuse = await runReleasePipeline({ state: {}, githubApi: matching, download, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize: { publish: true } });
   assert.equal(reuse.state.stage, 'verify-download');
-  assert.deepEqual(matching.metadataUpdates, [{ prerelease: false }], '续作在核验通过后补转正式，不改其他元数据');
+  assert.deepEqual(matching.metadataUpdates, [{ prerelease: false }, { make_latest: 'true' }], '续作在核验通过后补转正式并标记 Latest，不动其他元数据');
   assert.deepEqual(matching.calls.filter(call => call[0] === 'uploadAsset'), [], '不得重传已发布资产');
 
   const conflicting = new RecordingApi({
@@ -146,6 +146,23 @@ test('已正式 Release 续作幂等跳过，不重复发转正补丁', async ()
   const done = await runReleasePipeline({ state: {}, githubApi: published, download: defaultDownload, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize: { publish: true } });
   assert.equal(done.error, undefined);
   assert.deepEqual(published.metadataUpdates, [], '已正式版不重发元数据补丁');
+});
+
+test('转正后标记 Latest 的请求失败必须上抛，不吞错也不回滚已完成的转正', async () => {
+  const api = new RecordingApi({
+    release: { id: 7, draft: false, prerelease: true, tag: 't-1' },
+    assets: [{ id: 1, name: 'p.zip', size: 10 }, { id: 2, name: 'q.zip', size: 10 }],
+  });
+  const originalUpdate = api.updateRelease.bind(api);
+  api.updateRelease = async (release, patch) => {
+    if (patch.make_latest) throw Object.assign(new Error('GitHub API 422'), { httpStatus: 422 });
+    return originalUpdate(release, patch);
+  };
+  await assert.rejects(
+    runReleasePipeline({ state: {}, githubApi: api, download: defaultDownload, zips, releaseTag: 't-1', candidateCommit: COMMIT, authorize: { publish: true } }),
+    /GitHub API 422/,
+  );
+  assert.equal(api.release.prerelease, false, '解除预发布的请求已生效，失败不回滚转正');
 });
 
 test('未授权续作不得转正式：省略或 false 均保持预发布并保留核验结果', async () => {
@@ -250,7 +267,7 @@ test('市场就绪：发布完成后核对候选条目 URL/摘要与资产一致
   });
   assert.equal(result.state.stage, 'market-ready', JSON.stringify(result.error ?? result.state));
   assert.equal(result.state.marketSwitchPending, true, '市场切换须另行授权，只报告就绪');
-  assert.deepEqual(api.metadataUpdates, [{ draft: false, prerelease: true }, { prerelease: false }], '市场就绪前已转正式');
+  assert.deepEqual(api.metadataUpdates, [{ draft: false, prerelease: true }, { prerelease: false }, { make_latest: 'true' }], '市场就绪前已转正式并标记 Latest');
 });
 
 test('阶段常量暴露完整顺序，供编排器与文档引用', () => {
