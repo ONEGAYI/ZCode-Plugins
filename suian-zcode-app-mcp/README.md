@@ -160,9 +160,9 @@ npm ci --ignore-scripts --no-fund --no-audit
 
 工具结果分两部分：`structuredContent` 保存完整数据；`content` 首行是最多 160 个 Unicode 码点的数量、操作状态或错误简报。完整数据是否同时写入 `content`（简报行之后换行接一行紧凑 JSON）按宿主应用版本决定：
 
-- ZCode 3.19 及以上：写入。4.0 起宿主以 `content` 为交给模型的表示，只在它没有可见块时才回退 `structuredContent`；3.19.x 的宿主行为未核实，一并写入，判错的代价只是正文重复一次。
+- ZCode 3.19 及以上：写入。该版本起宿主以 `content` 为交给模型的表示，只在它没有可见块时才回退 `structuredContent`（3.19.0、3.19.1 与 4.0 的产物一致）。
 - ZCode 3.18 及以下：不写入，文本保持纯摘要。3.14.3 至 3.18.2 的宿主会在文本后自行追加 `structuredContent`，写入会让正文重复两次。
-- 应用版本未知（非 Desktop 客户端，未注入 `ZCODE_APP_VERSION`）：写入。
+- 应用版本未知（非 Desktop 客户端，未注入 `ZCODE_APP_VERSION`，或带预发布后缀等写法）：写入。
 
 面板专用的 `get_pr_statuses` 与 `reveal_artifact` 只由面板读取结构化数据，任何版本都保持纯摘要。
 

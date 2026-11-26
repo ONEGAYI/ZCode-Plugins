@@ -235,15 +235,14 @@ test('get_current_session 回显发起会话的本机自省信息，不接受参
   assert.equal((await client.callTool({ name: 'get_current_session', arguments: { session_id: 'sess_forged' }, _meta: { session_id: 'sess_parent' } })).isError, true);
 });
 
-test('完整数据随文本交付：4.0 起的宿主、未核实的 3.19 与应用版本未知时，模型都能从 content 读到', async t => {
+test('完整数据随文本交付：3.19 起的宿主与应用版本未知时，模型都能从 content 读到', async t => {
   const { createMcpServer } = await import('../server.mjs');
-  // 宿主 4.0 起只在 content 没有可见块时才把 structuredContent 交给模型，模型看到的就是这些文本块；
-  // 3.19 未核实但同样写入
+  // 宿主 3.19 起只在 content 没有可见块时才把 structuredContent 交给模型，模型看到的就是这些文本块
   const delivered = response => {
     const [summary, json] = response.content.map(block => block.text).join('\n').split('\n');
     return { summary, data: JSON.parse(json) };
   };
-  for (const zcodeAppVersion of ['3.19.1', '4.0.0', '4.0.0.10870', undefined]) {
+  for (const zcodeAppVersion of ['3.19.0.10774', '3.19.1', '4.0.0', '4.0.0.10870', undefined]) {
     const f = fixture(t), label = String(zcodeAppVersion);
     f.task({ id: 'sess_parent', title: '索引标题', workspace: 'D:\\work\\alpha', updated: 42 });
     f.session({ id: 'sess_parent', title: 'CLI 标题', directory: 'D:\\work\\alpha', permission: { mode: 'yolo' } });
@@ -265,6 +264,8 @@ test('完整数据随文本交付：4.0 起的宿主、未核实的 3.19 与应�
     const chat = await client.callTool({ name: 'read_session', arguments: { session_id: 'sess_parent' } });
     assert.equal(delivered(chat).summary, '已读取 1 条消息。', label);
     assert.equal(delivered(chat).data.messages[0].text, '实现只读工具', label);
+    // 正文只随 JSON 进入文本一次：简报行不含正文，宿主也不再追加 structuredContent
+    assert.equal(chat.content.map(block => block.text).join('\n').split('实现只读工具').length - 1, 1, label);
     // 工件工具与面板专用通道在同一处注册：模型可见的 set_artifacts 同样随文本交付
     const written = await client.callTool({ name: 'set_artifacts', arguments: { expected_revision: 0,
       upsert: [{ kind: 'file', ref: 'D:/fixture/规格.md', label: '规格', purpose: '核对' }] }, _meta: { session_id: 'sess_parent' } });

@@ -6,16 +6,16 @@
 
 ### Bug 修复
 
-**ZCode 4.0 起模型重新能读到工具的完整数据**
+**ZCode 3.19 起模型重新能读到工具的完整数据**
 
-- ZCode 4.0 下模型只能读到工具结果的一行简报，例如 `get_current_session` 只剩会话 ID、`list_sessions` 只剩数量。
-- 原因：0.7.2 把完整数据只放在 `structuredContent`，前提是宿主会在文本后追加它；4.0 起宿主以 `content` 为交给模型的表示，只在它没有可见块时才回退 `structuredContent`。源码与产物的取证见 [验证记录](docs/artifact-demo-verification.md#2026-11-26-zcode-40-的工具结果完整数据写入文本)。
+- ZCode 3.19 及以上，模型只能读到工具结果的一行简报，例如 `get_current_session` 只剩会话 ID、`list_sessions` 只剩数量。
+- 原因：0.7.2 把完整数据只放在 `structuredContent`，前提是宿主会在文本后追加它；3.19 起宿主以 `content` 为交给模型的表示，只在它没有可见块时才回退 `structuredContent`（3.19.0、3.19.1 与 4.0 的产物一致）。源码与产物的取证见 [验证记录](docs/artifact-demo-verification.md#2026-11-26-zcode-40-的工具结果完整数据写入文本)。
 - 完整数据是否写入 `content` 改按宿主应用版本决定：ZCode 3.19 及以上在简报行之后换行接一行紧凑 JSON；3.14.3 至 3.18.2 的宿主保持纯摘要，避免正文重复两次；应用版本未知（非 Desktop 客户端、未注入 `ZCODE_APP_VERSION`）同样写入。
 - 面板专用的 `get_pr_statuses` 与 `reveal_artifact` 只由面板读取结构化数据，任何版本都保持纯摘要。
 - 简报行仍限制 160 个 Unicode 码点并保留已提交、结果未知等重试边界；超出简报长度的错误正文改由 JSON 完整交付。
-- 应用版本取 Desktop 传入的 `ZCODE_APP_VERSION`（本机 4.0.0.10870 下实测为 `4.0.0`）。3.19.x 没有上游源码同步，产物也未留存，宿主行为未核实；它并入写入是取舍：若它其实仍会追加，只是正文重复一次。
+- 应用版本取 Desktop 传入的 `ZCODE_APP_VERSION`（本机 4.0.0.10870 下实测为 `4.0.0`），主次版本按数值比较。3.19.x 没有上游源码同步，行为依据是官方安装包中的产物。
 
-> **验证范围**：子项目全量 245 项全部通过。此前在未改动的基线上失败的 `tests/plugin-cache.test.mjs` 已删除，它验证的 title 包链接场景已由 title 自己的发布测试取代。真实 Desktop 4.0 与 3.19 的端到端验收待执行。
+> **验证范围**：子项目全量 246 项全部通过。此前在未改动的基线上失败的 `tests/plugin-cache.test.mjs` 已删除，它验证的 title 包链接场景已由 title 自己的发布测试取代。真实 Desktop 的端到端验收待执行。
 
 ## [0.11.8] - 2026-11-11
 

@@ -112,19 +112,19 @@ Chromium 加载正式 MCP resource 返回的页面，通过 `window.zcode` 服�
 
 ## 2026-11-26 ZCode 4.0 的工具结果完整数据写入文本
 
-ZCode 4.0 下，模型只能读到工具结果的一行简报。本次把“完整数据是否写入 `content`”改为按宿主应用版本决定：3.19 及以上写入，3.18 及以下保持纯摘要，面板专用的两个工具始终纯摘要。
+ZCode 3.19 及以上，模型只能读到工具结果的一行简报。本次把“完整数据是否写入 `content`”改为按宿主应用版本决定：3.19 及以上写入，3.18 及以下保持纯摘要，面板专用的两个工具始终纯摘要。
 
 **静态核查**：宿主把工具结果交给模型的函数，是上游 zai-org/ZCode 仓库 `apps/zcode-cli/packages/core/src/mcp/index.ts` 的 `formatMcpToolResult`。
 
 - v4.0.0 源码同步 [`a4b44451`](https://github.com/zai-org/ZCode/commit/a4b4445141eb7d3b3e99eada9292775383bfc44e)（2026-11-23）：第 558 行的条件是 `blocks.length === 0 && output.structuredContent !== undefined`。源码注释为“content 是服务端给模型的表示；仅在没有可见块时回退结构化结果，避免兼容双写。”
 - v4.0.0 之前含该函数的全部 10 个提交，从首次开源提交 [`872ad960`](https://github.com/zai-org/ZCode/commit/872ad960de7ec172591f7e1952f7849229f94521) 到 v3.18.2 源码同步 [`fec97590`](https://github.com/zai-org/ZCode/commit/fec975905a2abd4c07e35c40d51fa097a2258ec9)（2026-11-13）：条件都是 `hasInformativeStructuredContent(output.structuredContent)`，结构化结果有内容就追加。提交标题带版本号的有 v3.14.3、v3.15.1、v3.17.2、v3.18.0、v3.18.1、v3.18.2。
 
-0.7.2 把完整数据只放在 `structuredContent`、`content` 只留简报，依据的是后一种行为。所有工具经同一个出口返回，所以 4.0 下模型拿不到任何工具的完整数据；`read_session` 读不到聊天正文属于这一推断，未在真实会话里单独调用。
+0.7.2 把完整数据只放在 `structuredContent`、`content` 只留简报，依据的是后一种行为。所有工具经同一个出口返回，所以 3.19 及以上模型拿不到任何工具的完整数据；`read_session` 读不到聊天正文属于这一推断，未在真实会话里单独调用。
+
+**3.19.x 产物核对**：3.19.x 没有上游源码同步，改用官方安装包中的产物。从官方分发地址下载 Windows x64 的 [3.19.0](https://cdn-zcode.z.ai/zcode/electron/releases/3.19.0/windows-x64/ZCode-3.19.0-win-x64.exe) 与 [3.19.1](https://cdn-zcode.z.ai/zcode/electron/releases/3.19.1/windows-x64/ZCode-3.19.1-win-x64.exe) 安装包，提取的 `app.asar` 与 [3.19.0 适配记录](local-only/17-windows-3.19.0-candidate.md)、[3.19.1 适配记录](local-only/18-windows-3.19.1-candidate.md) 所记的原包摘要一致；两份 `resources/glm/zcode.cjs` 的 SHA-256 分别为 `6b84e928d9258fe020c6ab8c75fa2c123b0cd658fe43c0ce141a13df677fb0ea`、`4b90ae046753be9f5ba63dee14b8fd2cdb07b5540e9bfe348ba127504b8cf8da`。同一函数在两版中的条件都是 `t.length===0&&e.structuredContent!==void 0&&t.push(...)`（标识符是压缩后的名字），与本机 4.0.0.10870 的产物同构。所以宿主行为的变更发生在 3.19.0。这是对产物的静态比对，没有在 3.19 的 Desktop 会话里实际调用。
 
 **运行时验证**：本机 ZCode 4.0.0.10870 安装目录内的 CLI 产物中，同一函数的条件与 v4.0.0 源码一致。在真实 4.0 会话里调用 `get_current_session` 与 `list_sessions`，模型收到的内容分别只有一行“当前会话：<会话 ID>。”和一行数量简报。该版本下宿主启动的子进程环境里，`ZCODE_APP_VERSION` 实测为 `4.0.0`。
 
-契约测试先红后绿：新增的集成用例在修改前因 `content` 没有完整数据而失败，单元测试文件因新导出尚不存在而无法加载；修改后相关 5 个测试文件 96 项通过。阈值前移到 3.19 同样先红后绿：矩阵用例与集成用例在修改前因 3.19 仍按旧版处理而失败，修改后通过。最终内容上子项目全量 245 项全部通过、退出码 0。此前失败的 `tests/plugin-cache.test.mjs` 已删除：它验证的是 title 经 node_modules 包链接启动的场景，title 迁移到客户端契约后该前提失效；同一“分别缓存”场景由 title 的 `tests/release.test.mjs` 按当前契约覆盖。
+契约测试先红后绿：新增的集成用例在修改前因 `content` 没有完整数据而失败，单元测试文件因新导出尚不存在而无法加载；修改后相关 5 个测试文件 96 项通过。阈值前移到 3.19 同样先红后绿：矩阵用例与集成用例在修改前因 3.19 仍按旧版处理而失败，修改后通过。另补 3.19 两个实际 build 号的样本与“正文恰好出现一次”的断言；把阈值次版本临时改为 20 时，矩阵、集成与恰好一次三个用例失败，恢复后通过。最终内容上子项目全量 246 项全部通过、退出码 0。此前失败的 `tests/plugin-cache.test.mjs` 已删除：它验证的是 title 经 node_modules 包链接启动的场景，title 迁移到客户端契约后该前提失效；同一“分别缓存”场景由 title 的 `tests/release.test.mjs` 按当前契约覆盖。
 
-**3.19.x 的取舍**：上游标签从 v3.18.2（2026-11-16）直接到 v4.0.0（2026-11-23），没有 3.19 的源码或发行。仓库的适配记录显示本机在 2026-11-19 与 2026-11-21 分别装有 3.19.0 与 3.19.1（[3.19.0 适配记录](local-only/17-windows-3.19.0-candidate.md)、[3.19.1 适配记录](local-only/18-windows-3.19.1-candidate.md)）；现在安装目录与更新器缓存里只有 4.0.0，未找到 3.19.x 的安装包或产物。所以 3.19.x 的宿主行为未核实，它并入写入是取舍而非核实结论：若它其实仍会追加，只是正文重复一次；若它已是新行为而不写入，模型拿不到数据。
-
-**待验证**：以上检查没有替换用户安装缓存；真实 Desktop 4.0 与 3.19 安装新版本后的端到端验收待执行。
+**待验证**：以上检查没有替换用户安装缓存；真实 Desktop 的端到端验收待执行。

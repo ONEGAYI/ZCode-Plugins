@@ -22,8 +22,8 @@ test('业务包装 cause 后仍保留网关诊断和已提交回执，stderr 不
 
 test('完整文本策略按宿主应用版本划分：3.19 起与无法识别的版本写入文本，更早的版本保持纯摘要', () => {
   for (const [zcodeAppVersion, fullText] of [
-    // 3.19.x 的宿主行为未核实，并入写入是取舍：判错只是正文重复一次，反向判错则模型拿不到数据
-    ['3.19.0', true], ['3.19.1', true], ['3.20.0', true],
+    // 3.19 起宿主只在 content 没有可见块时才回退 structuredContent：3.19.0、3.19.1 与 4.0 的产物已核对
+    ['3.19.0', true], ['3.19.0.10774', true], ['3.19.1', true], ['3.19.1.10833', true], ['3.20.0', true],
     ['4.0.0', true], ['4.0.0.10870', true], ['4.1.2', true], ['10.0.0', true],
     ['0.18.0', false], ['3.15.1', false], ['3.18.2', false],
     // 主次版本都按数值比较：字符串比较会把 3.9 排到 3.19 之后
@@ -32,6 +32,16 @@ test('完整文本策略按宿主应用版本划分：3.19 起与无法识别的
     ['3.19.0-beta', true], ['3.19abc', true],
     [undefined, true], ['', true], ['unknown', true]
   ]) assert.equal(fullTextForHost(zcodeAppVersion), fullText, String(zcodeAppVersion));
+});
+
+test('完整正文在文本中恰好出现一次：3.18.2 不出现，3.19 的两个实际 build、其短版本号与 4.0.0 各一次', () => {
+  const marker = '正文唯一标记';
+  for (const zcodeAppVersion of ['3.18.2', '3.19.0', '3.19.0.10774', '3.19.1', '3.19.1.10833', '4.0.0']) {
+    const response = createToolResult({ zcodeAppVersion })('read_session', { messages: [{ text: marker }] });
+    // JSON 不转义中文，正文若进入文本就原样出现；简报行与面板通道都不含正文
+    const occurrences = response.content[0].text.split(marker).length - 1;
+    assert.equal(occurrences, zcodeAppVersion === '3.18.2' ? 0 : 1, zcodeAppVersion);
+  }
 });
 
 test('旧宿主的人类简报保留数量与状态，完整正文仅留在结构化结果中', () => {

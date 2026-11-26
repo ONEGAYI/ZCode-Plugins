@@ -51,12 +51,11 @@ function formatToolResult(name, data, fullText) {
   return { content: [{ type: 'text', text }], structuredContent: data };
 }
 
-// 宿主以 content 为交给模型的表示，structuredContent 只在 content 没有可见块时才回退交付（4.0 起）；
-// 3.14.3 至 3.18.2 则在文本后追加。所以完整数据从 3.19 起写入文本，取证见 docs/artifact-demo-verification.md。
-// 3.19.x 没有上游源码同步，产物也未留存，宿主行为未核实：并入写入是取舍而非核实结论。
-// 判错的代价不对称——若它其实仍会追加，只是正文重复一次；若它已是新行为而不写入，模型拿不到数据。
+// 宿主以 content 为交给模型的表示，structuredContent 只在 content 没有可见块时才回退交付（3.19 起，
+// 3.19.0、3.19.1 与 4.0 的产物一致）；3.14.3 至 3.18.2 则在文本后追加。所以完整数据从 3.19 起写入文本，
+// 取证见 docs/artifact-demo-verification.md。
 // 应用版本取 Desktop 传入的 ZCODE_APP_VERSION，主次版本号都按数值比较；无法识别的版本
-// （非 Desktop 客户端、未注入）同样写入，取舍方向与上一条一致。
+// （非 Desktop 客户端、未注入）同样写入：宁可重复一次，不让模型拿不到数据。
 // 版本解析与 common 的 supportsZcodeMcpApps（ui-capabilities.mjs）各自独立：那边未知版本不启用 UI，
 // 这里未知版本仍写入，兜底方向相反是有意为之。
 const FULL_TEXT_SINCE_MAJOR = 3, FULL_TEXT_SINCE_MINOR = 19;
