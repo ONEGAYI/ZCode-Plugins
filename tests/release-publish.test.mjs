@@ -280,18 +280,26 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
       failLatest = false;
     }
     assert.equal(release.prerelease, false, '解除预发布的请求已生效，失败不回滚转正');
-    await assert.rejects(main([...finalize, '--host-verified'], options), /未标为 Latest/);
+    await assert.rejects(main([...finalize, '--host-verified'], options), /未标为 Latest.*仓库当前 Latest：previous/);
     const pending = JSON.parse(await readFile(stateFile, 'utf8'));
     assert.equal(pending.finalizePending, true, '未确认 Latest 前保留待转正状态');
     assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }, { prerelease: false }, { make_latest: 'true' }], '续跑只读确认，不自动补发 Latest');
     latest = release; // 模拟人工执行 gh release edit --latest
     const result = await main([...finalize, '--host-verified'], options);
     assert.equal(result.report.finalized, true);
+    assert.equal(result.report.superseded, null, '本轮就是仓库 Latest');
     assert.equal(result.state.finalizePending, undefined);
     assert.equal(result.state.marketSwitchPending, undefined);
     assert.equal(prepared, 1);
     assert.ok(requests.slice(start).every(([method, path]) => method !== 'POST' && !path.includes('/releases/download/')));
     await main([...finalize, '--host-verified'], options);
     assert.equal(releasePatches.length, 3, '已经转正的 Release 不重复更新');
+  });
+  await t.test('已确认完成的旧版被新版替代后重跑：仍报已完成，不提示设回 Latest', async () => {
+    latest = { id: 77, tag_name: 'newer' }; // 旧版确认完成后，另有更新的发布成为 Latest
+    const superseded = await main([...finalize, '--host-verified'], options);
+    assert.equal(superseded.report.finalized, true, '已确认完成的历史轮次重跑仍报已完成');
+    assert.equal(superseded.report.superseded, 'newer', '报告已被替代');
+    assert.equal(releasePatches.length, 3, '不为历史轮次补发 Latest');
   });
 });
