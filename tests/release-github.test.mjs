@@ -334,3 +334,17 @@ test('真实 REST 适配器：uploadAsset 从 zipPath 读盘上传，缺载荷�
   assert.ok(Buffer.compare(seen[0].body, content) === 0, '上传体必须来自 zipPath 读盘，不得是空 Buffer');
   await assert.rejects(() => api.uploadAsset({ id: 9 }, { name: 'p.zip' }), /readBytes\/bytes\/zipPath/);
 });
+
+test('真实 REST 适配器：getLatestRelease 读取仓库 Latest，没有正式版时返回 null', async () => {
+  const seen = [];
+  const api = createGithubRestApi({
+    owner: 'o', repo: 'r', token: 't',
+    fetchImpl: async (url, init = {}) => {
+      seen.push({ url, init });
+      return seen.length === 1 ? { ok: true, status: 200, json: async () => ({ id: 9 }) } : { ok: false, status: 404, text: async () => 'not found' };
+    },
+  });
+  assert.deepEqual(await api.getLatestRelease(), { id: 9 });
+  assert.equal(await api.getLatestRelease(), null);
+  assert.ok(seen.every(({ url, init }) => url.endsWith('/releases/latest') && (init.method ?? 'GET') === 'GET'));
+});

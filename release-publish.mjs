@@ -123,6 +123,12 @@ export async function main(argv = process.argv.slice(2), {
     }
     if (await githubApi.getTagCommit(releaseTag) !== candidateCommit) throw new Error('Release tag 不再指向本轮候选提交');
     if (release.prerelease) await promoteRelease(githubApi, release);
+    // Latest 请求失败后 Release 已转正，续跑不再补发标记：读回确认已是 Latest 才清待办；
+    // 未确认则保留待转正状态并报错，待人工补标后续跑。
+    const latest = await githubApi.getLatestRelease();
+    if (latest?.id !== release.id) {
+      throw new Error(`Release 已转正但未标为 Latest：请手动执行 gh release edit ${releaseTag} --repo ${owner}/${repo} --latest 后续跑`);
+    }
     delete state.finalizePending;
     delete state.marketSwitchPending;
     await persistState(state);

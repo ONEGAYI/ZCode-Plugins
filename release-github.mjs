@@ -267,6 +267,14 @@ export function createGithubRestApi({ owner, repo, token, fetchImpl = fetch }) {
         if (releases.length < 100) return null;
       }
     },
+    async getLatestRelease() {
+      try {
+        return await request('/releases/latest');
+      } catch (error) {
+        if (error.httpStatus !== 404) throw error;
+        return null; // 仓库没有正式版时没有 Latest
+      }
+    },
     async getMasterMarketplace() {
       return request('/contents/marketplace.json?ref=master', { headers: { accept: 'application/vnd.github.raw+json' } });
     },

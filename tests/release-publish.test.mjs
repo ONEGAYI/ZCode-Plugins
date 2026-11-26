@@ -66,6 +66,7 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
   let release, prepared = 0, draftCheckpoint, anonymousUnavailable = false;
   let tagTarget = commit, moveTagDuringDownload = false;
   let masterMarketplace = marketplace, moveTagDuringMasterCheck = false, failLatest = false;
+  let latest = { id: 99, tag_name: 'previous' };
   const stored = new Map();
   const requests = [];
   const releasePatches = [];
@@ -110,11 +111,13 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
       stored.set(parsed.searchParams.get('name'), Buffer.from(options.body));
       return response({}, 201);
     }
+    if (path.endsWith('/releases/latest') && method === 'GET') return response(latest);
     if (path.endsWith(releasePath) && method === 'PATCH') {
       const patch = JSON.parse(options.body);
       releasePatches.push(patch);
       if (failLatest && patch.make_latest) return response('latest rejected', 422);
       Object.assign(release, patch);
+      if (patch.make_latest === 'true') latest = release;
       return response(release);
     }
     assert.fail(`unexpected request: ${method} ${url}`);
@@ -266,30 +269,29 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
       tagTarget = commit;
     }
   });
-  await t.test('宿主已验且 master 匹配后可单独转正，只改元数据', async () => {
+  await t.test('宿主已验且 master 匹配后可转正；Latest 标记失败时人工补标前续跑不报完成', async () => {
     await rm(zipPath);
     await rm(join(outDir, 'zips', offlineName));
     const start = requests.length;
+    failLatest = true;
+    try {
+      await assert.rejects(main([...finalize, '--host-verified'], options), /GitHub API 422/);
+    } finally {
+      failLatest = false;
+    }
+    assert.equal(release.prerelease, false, '解除预发布的请求已生效，失败不回滚转正');
+    await assert.rejects(main([...finalize, '--host-verified'], options), /未标为 Latest/);
+    const pending = JSON.parse(await readFile(stateFile, 'utf8'));
+    assert.equal(pending.finalizePending, true, '未确认 Latest 前保留待转正状态');
+    assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }, { prerelease: false }, { make_latest: 'true' }], '续跑只读确认，不自动补发 Latest');
+    latest = release; // 模拟人工执行 gh release edit --latest
     const result = await main([...finalize, '--host-verified'], options);
     assert.equal(result.report.finalized, true);
     assert.equal(result.state.finalizePending, undefined);
     assert.equal(result.state.marketSwitchPending, undefined);
-    assert.equal(release.prerelease, false);
     assert.equal(prepared, 1);
     assert.ok(requests.slice(start).every(([method, path]) => method !== 'POST' && !path.includes('/releases/download/')));
-    assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }, { prerelease: false }, { make_latest: 'true' }]);
     await main([...finalize, '--host-verified'], options);
     assert.equal(releasePatches.length, 3, '已经转正的 Release 不重复更新');
-  });
-  await t.test('Latest 标记请求失败时转正命令报错，不静默完成', async () => {
-    // 转正只有一次：失败路径排在成功路径之后，先把夹具恢复成未转正。
-    release.prerelease = true;
-    failLatest = true;
-    try {
-      await assert.rejects(main([...finalize, '--host-verified'], options), /GitHub API 422/);
-      assert.equal(release.prerelease, false, '解除预发布的请求已生效，失败不回滚转正');
-    } finally {
-      failLatest = false;
-    }
   });
 });
