@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { fixture } from './fixtures.mjs';
+import { fixture, LEGACY_ZCODE_APP_VERSION } from './fixtures.mjs';
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import packageMetadata from '../package.json' with { type: 'json' };
@@ -135,7 +135,8 @@ test('MCP 握手版本与插件元信息一致，公布十九个工具并保持�
   f.session({ id: 'sess_alpha', title: 'MCP 工具' });
   f.message({ id: 'msg_user', sequence: 0, parts: [{ type: 'text', text: '实现只读工具' }] });
   const { createMcpServer } = await import('../server.mjs');
-  const server = await createMcpServer(f);
+  // 下方“文本只报告关键数量”的断言以旧宿主为前提
+  const server = await createMcpServer({ ...f, zcodeAppVersion: LEGACY_ZCODE_APP_VERSION });
   const client = new Client({ name: 'contract-test', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await client.close(); await server.close(); });
@@ -211,7 +212,7 @@ test('get_current_session 回显发起会话的本机自省信息，不接受参
   f.task({ id: 'sess_parent', title: '索引标题', workspace: 'D:\\work\\alpha', updated: 42 });
   f.session({ id: 'sess_parent', title: 'CLI 标题', directory: 'D:\\work\\alpha', permission: { mode: 'yolo' } });
   const { createMcpServer } = await import('../server.mjs');
-  const server = await createMcpServer(f);
+  const server = await createMcpServer({ ...f, zcodeAppVersion: LEGACY_ZCODE_APP_VERSION });
   const client = new Client({ name: 'self-introspect-contract', version: '1.0.0' });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await client.close(); await server.close(); });
@@ -234,10 +235,50 @@ test('get_current_session 回显发起会话的本机自省信息，不接受参
   assert.equal((await client.callTool({ name: 'get_current_session', arguments: { session_id: 'sess_forged' }, _meta: { session_id: 'sess_parent' } })).isError, true);
 });
 
+test('完整数据随文本交付：3.19 起的宿主与应用版本未知时，模型都能从 content 读到', async t => {
+  const { createMcpServer } = await import('../server.mjs');
+  // 宿主 3.19 起只在 content 没有可见块时才把 structuredContent 交给模型，模型看到的就是这些文本块
+  const delivered = response => {
+    const [summary, json] = response.content.map(block => block.text).join('\n').split('\n');
+    return { summary, data: JSON.parse(json) };
+  };
+  for (const zcodeAppVersion of ['3.19.0.10774', '3.19.1', '4.0.0', '4.0.0.10870', undefined]) {
+    const f = fixture(t), label = String(zcodeAppVersion);
+    f.task({ id: 'sess_parent', title: '索引标题', workspace: 'D:\\work\\alpha', updated: 42 });
+    f.session({ id: 'sess_parent', title: 'CLI 标题', directory: 'D:\\work\\alpha', permission: { mode: 'yolo' } });
+    f.message({ id: 'msg_user', session: 'sess_parent', sequence: 0, parts: [{ type: 'text', text: '实现只读工具' }] });
+    const server = await createMcpServer({ ...f, zcodeAppVersion });
+    const client = new Client({ name: 'full-text-contract', version: '1.0.0' });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    t.after(async () => { await client.close(); await server.close(); });
+    await server.connect(st); await client.connect(ct);
+    const current = await client.callTool({ name: 'get_current_session', arguments: {}, _meta: { session_id: 'sess_parent' } });
+    assert.equal(current.isError, undefined, label);
+    assert.equal(delivered(current).summary, '当前会话：sess_parent。', label);
+    assert.deepEqual(delivered(current).data, current.structuredContent, label);
+    assert.equal(delivered(current).data.session_title, 'CLI 标题', label);
+    assert.equal(delivered(current).data.permission_mode, 'yolo', label);
+    const list = await client.callTool({ name: 'list_sessions', arguments: {} });
+    assert.equal(delivered(list).summary, '会话：本次 1 个，共 1 个。', label);
+    assert.deepEqual(delivered(list).data, list.structuredContent, label);
+    const chat = await client.callTool({ name: 'read_session', arguments: { session_id: 'sess_parent' } });
+    assert.equal(delivered(chat).summary, '已读取 1 条消息。', label);
+    assert.equal(delivered(chat).data.messages[0].text, '实现只读工具', label);
+    // 正文只随 JSON 进入文本一次：简报行不含正文，宿主也不再追加 structuredContent
+    assert.equal(chat.content.map(block => block.text).join('\n').split('实现只读工具').length - 1, 1, label);
+    // 工件工具与面板专用通道在同一处注册：模型可见的 set_artifacts 同样随文本交付
+    const written = await client.callTool({ name: 'set_artifacts', arguments: { expected_revision: 0,
+      upsert: [{ kind: 'file', ref: 'D:/fixture/规格.md', label: '规格', purpose: '核对' }] }, _meta: { session_id: 'sess_parent' } });
+    assert.equal(delivered(written).data.upserted, 1, label);
+    await client.close();
+  }
+});
+
 test('get_current_session 未落库时字段可空，来源未知或冲突按错误回报并给出候选', async t => {
   const f = fixture(t);
   const { createMcpServer } = await import('../server.mjs');
-  const server = await createMcpServer(f);
+  // 错误简报的长度上限只对旧宿主的纯摘要成立
+  const server = await createMcpServer({ ...f, zcodeAppVersion: LEGACY_ZCODE_APP_VERSION });
   const client = new Client({ name: 'self-introspect-degraded-contract', version: '1.0.0' });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   t.after(async () => { await client.close(); await server.close(); });
