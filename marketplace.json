@@ -33,7 +33,7 @@
     {
       "name": "suian-zcode-app-mcp",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-app-mcp.png",
-      "version": "0.11.8",
+      "version": "0.11.9",
       "source": {
         "source": "url",
         "type": "zip",
