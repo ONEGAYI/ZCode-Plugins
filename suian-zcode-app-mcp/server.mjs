@@ -4,7 +4,7 @@ import { createSessionReader } from './sessions.mjs';
 import { createSessionController } from './control.mjs';
 import { resolveCaller } from './caller.mjs';
 import { registerArtifactTools } from './artifact-tools.mjs';
-import { toolResult, toolErrorData } from './tool-result.mjs';
+import { createToolResult, toolErrorData } from './tool-result.mjs';
 import { readFile } from 'node:fs/promises';
 import { extname, isAbsolute, win32 } from 'node:path';
 import packageMetadata from './package.json' with { type: 'json' };
@@ -27,6 +27,8 @@ export async function createMcpServer(config, { controller, prStatus, reveal } =
   const server = new McpServer({ name: 'suian-zcode-app-mcp', version: packageMetadata.version },
     // 工件面板经 ZCode 扩展 resources/subscribe 订阅变更信号，写入后推送 notifications/resources/updated
     { capabilities: { resources: { subscribe: true } } });
+  // 完整数据是否写入结果文本由宿主版本决定，见 tool-result.mjs
+  const toolResult = createToolResult(config);
   const reader = createSessionReader(config);
   controller ??= createSessionController({ reader, gatewayConfigPath: config.gatewayConfigPath });
   // 注册工具前探测一次宿主索引能力：无 projects 表的旧宿主不公布项目工具，

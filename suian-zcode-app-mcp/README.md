@@ -158,9 +158,15 @@ npm ci --ignore-scripts --no-fund --no-audit
 
 默认读取当前系统用户的 `~/.zcode/v2/tasks-index.sqlite` 和 `~/.zcode/cli/db/db.sqlite`。自定义路径可在 args 追加 `--index-db {{index_db_path}} --session-db {{session_db_path}} --artifact-db {{artifact_db_path}}`，或设置对应环境变量。也可用 `--config {{config_file}}` 读取外置 JSON 的 indexDbPath、sessionDbPath、artifactDbPath、gatewayConfigPath、authDataDir。优先级为命令参数 > 对应环境变量 > 外置配置 > 默认路径。
 
-工具结果面向当前 ZCode：`structuredContent` 保存完整数据，`content` 只提供最多 160 个 Unicode 码点的数量、操作状态或错误简报，不重复正文和完整清单。
+工具结果分两部分：`structuredContent` 保存完整数据；`content` 首行是最多 160 个 Unicode 码点的数量、操作状态或错误简报。完整数据是否同时写入 `content`（简报行之后换行接一行紧凑 JSON）按宿主应用版本决定：
 
-业务错误保留 `isError:true` 与完整结构化错误；SDK 参数校验错误仍由 SDK 返回。工件侧栏继续读取结构化数据，Hook 摘要不变。仅解析文本 JSON 的旧客户端不在本次兼容范围。
+- ZCode 3.19 及以上：写入。该版本起宿主以 `content` 为交给模型的表示，只在它没有可见块时才回退 `structuredContent`（3.19.0、3.19.1 与 4.0 的产物一致）。
+- ZCode 3.18 及以下：不写入，文本保持纯摘要。3.14.3 至 3.18.2 的宿主会在文本后自行追加 `structuredContent`，写入会让正文重复两次。
+- 应用版本未知（非 Desktop 客户端，未注入 `ZCODE_APP_VERSION`，或带预发布后缀等写法）：写入。
+
+面板专用的 `get_pr_statuses` 与 `reveal_artifact` 只由面板读取结构化数据，任何版本都保持纯摘要。
+
+业务错误保留 `isError:true` 与完整结构化错误；SDK 参数校验错误仍由 SDK 返回。工件侧栏继续读取结构化数据，Hook 摘要不变。
 
 原生工件默认放在 dataPath/artifacts.sqlite；源码模式使用 ~/.zcode/tools/suian-zcode-app-mcp/artifacts.sqlite。Hook 与 MCP 读取同一外置配置。仅手动添加 stdio 服务不会加载 Hook 或侧栏，完整 demo 推荐原生插件安装。
 
