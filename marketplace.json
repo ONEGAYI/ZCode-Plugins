@@ -37,8 +37,8 @@
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.11.1/suian-zcode-app-mcp-0.11.8.zip",
-        "sha256": "ea75e4a14d59dbdbb0da3ae715f43f99cf5276e134641aabac6e1211df09d1f7",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.26/suian-zcode-app-mcp-0.11.9.zip",
+        "sha256": "0ce868357f430e9e67a83aebf0b5469d59d8f42c613118e398102d3f8b4ccfb3",
         "stripRoot": false
       },
       "description": "会话检索、历史读取、原 Host 操作与 GLM 额度 MCP",
