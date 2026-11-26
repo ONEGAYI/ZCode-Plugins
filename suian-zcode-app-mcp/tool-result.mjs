@@ -1,4 +1,4 @@
-// 当前 ZCode 会将 content 与 structuredContent 都投影给模型；文本只报告关键状态。
+// 简报文本只报告关键状态，structuredContent 保存完整数据；完整数据是否同时写入文本按宿主版本决定。
 const summaries = {
   list_sessions: data => `会话：本次 ${data.sessions.length} 个，共 ${data.total} 个。`,
   list_projects: data => `项目：共 ${data.projects.length} 个。`,
@@ -31,7 +31,8 @@ const summaries = {
   reveal_artifact: () => '已启动文件管理器定位工件。'
 };
 
-export function toolResult(name, data) {
+// fullText：完整数据写入文本，由 createToolResult 按宿主版本给出。
+function formatToolResult(name, data, fullText) {
   let text;
   if (data.error) {
     const prefix = data.delivery_status === 'accepted' ? '消息已提交，后续处理失败；勿重复发送。'
@@ -45,7 +46,28 @@ export function toolResult(name, data) {
   }
   const characters = Array.from(text.replace(/\s+/g, ' '));
   text = characters.length > 160 ? characters.slice(0, 159).join('') + '…' : characters.join('');
+  // 简报行之后换行接一行紧凑 JSON；超出简报长度的错误正文也由此完整交付
+  if (fullText) text += `\n${JSON.stringify(data)}`;
   return { content: [{ type: 'text', text }], structuredContent: data };
+}
+
+// 宿主以 content 为交给模型的表示，structuredContent 只在 content 没有可见块时才回退交付（4.0 起）；
+// 3.14.3 至 3.18.2 则在文本后追加。所以完整数据从 4.0 起写入文本，取证见 docs/artifact-demo-verification.md。
+// 应用版本取 Desktop 传入的 ZCODE_APP_VERSION，这里只比较主版本号；无法识别的版本
+// （非 Desktop 客户端、未注入）同样写入：宁可在旧宿主下重复一次，不让模型拿不到数据。
+// 3.19.x 没有可查的源码或产物，未核实，当前按 4.0 阈值归入旧版。
+// 版本解析与 common 的 supportsZcodeMcpApps（ui-capabilities.mjs）各自独立：那边未知版本不启用 UI，
+// 这里未知版本仍写入，兜底方向相反是有意为之。
+const FULL_TEXT_SINCE_MAJOR = 4;
+export function fullTextForHost(zcodeAppVersion) {
+  const major = /^(\d+)(?:\.|$)/.exec(String(zcodeAppVersion ?? '').trim());
+  return major === null || Number(major[1]) >= FULL_TEXT_SINCE_MAJOR;
+}
+
+// 按宿主版本绑定完整文本策略。appOnly 的结果只由面板读取结构化数据，任何版本都保持纯摘要。
+export function createToolResult({ zcodeAppVersion } = {}) {
+  const hostFullText = fullTextForHost(zcodeAppVersion);
+  return (name, data, { appOnly = false } = {}) => formatToolResult(name, data, hostFullText && !appOnly);
 }
 
 // 公共层已按白名单生成 diagnostic；stderr 只记阶段与诊断，不记工具参数和异常正文。

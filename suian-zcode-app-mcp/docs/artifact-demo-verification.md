@@ -109,3 +109,20 @@ Chromium 加载 MCP 正式注册返回的 HTML，通过真实 SDK/InMemoryTransp
 Chromium 加载正式 MCP resource 返回的页面，通过 `window.zcode` 服务桥调用真实 SDK 和隔离 SQLite。复用现有浏览器验收函数，覆盖分组、折叠、详情、链接、会话状态、文件存在/缺失标记与文字安全；另验证 PR 状态回执、文件定位回执、结构化错误展示与恢复，页面错误为零。
 
 上述检查没有替换用户安装缓存，没有启动新的真实 ZCode 会话或发送模型请求；Host 状态、gh 和文件定位使用服务桩。当前产物的离线重放与浏览器桥接验证，不代替实际 Desktop 更新后的端到端验收。日志首次执行即落盘并记录退出码，最终保留脱敏汇总。
+
+## 2026-11-26 ZCode 4.0 的工具结果完整数据写入文本
+
+ZCode 4.0 下，模型只能读到工具结果的一行简报。本次把“完整数据是否写入 `content`”改为按宿主应用版本决定：4.0 及以上写入，4.0 以下保持纯摘要，面板专用的两个工具始终纯摘要。
+
+**静态核查**：宿主把工具结果交给模型的函数，是上游 zai-org/ZCode 仓库 `apps/zcode-cli/packages/core/src/mcp/index.ts` 的 `formatMcpToolResult`。
+
+- v4.0.0 源码同步 [`a4b44451`](https://github.com/zai-org/ZCode/commit/a4b4445141eb7d3b3e99eada9292775383bfc44e)（2026-11-23）：第 558 行的条件是 `blocks.length === 0 && output.structuredContent !== undefined`。源码注释为“content 是服务端给模型的表示；仅在没有可见块时回退结构化结果，避免兼容双写。”
+- v4.0.0 之前含该函数的全部 10 个提交，从首次开源提交 [`872ad960`](https://github.com/zai-org/ZCode/commit/872ad960de7ec172591f7e1952f7849229f94521) 到 v3.18.2 源码同步 [`fec97590`](https://github.com/zai-org/ZCode/commit/fec975905a2abd4c07e35c40d51fa097a2258ec9)（2026-11-13）：条件都是 `hasInformativeStructuredContent(output.structuredContent)`，结构化结果有内容就追加。提交标题带版本号的有 v3.14.3、v3.15.1、v3.17.2、v3.18.0、v3.18.1、v3.18.2。
+
+0.7.2 把完整数据只放在 `structuredContent`、`content` 只留简报，依据的是后一种行为。所有工具经同一个出口返回，所以 4.0 下模型拿不到任何工具的完整数据；`read_session` 读不到聊天正文属于这一推断，未在真实会话里单独调用。
+
+**运行时验证**：本机 ZCode 4.0.0.10870 安装目录内的 CLI 产物中，同一函数的条件与 v4.0.0 源码一致。在真实 4.0 会话里调用 `get_current_session` 与 `list_sessions`，模型收到的内容分别只有一行“当前会话：<会话 ID>。”和一行数量简报。该版本下宿主启动的子进程环境里，`ZCODE_APP_VERSION` 实测为 `4.0.0`。
+
+契约测试先红后绿：新增的集成用例在修改前因 `content` 没有完整数据而失败，单元测试文件因新导出尚不存在而无法加载；修改后相关 5 个测试文件 96 项通过。子项目全量 246 项中 245 项通过；未通过的 `tests/plugin-cache.test.mjs` 在未改动的基线上同样失败，原因是 title 的公共导入已改为相对导入，该测试仍按 node_modules 链接场景验证。
+
+**待验证**：3.19.x 没有可查的源码同步，本机也没有对应产物，宿主行为未核实，当前按 4.0 阈值归入旧版。以上检查没有替换用户安装缓存；真实 Desktop 4.0 安装新版本后的端到端验收待执行。

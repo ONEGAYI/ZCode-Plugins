@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '../server.mjs';
-import { fixture, testZcodePluginData } from './fixtures.mjs';
+import { fixture, LEGACY_ZCODE_APP_VERSION, testZcodePluginData } from './fixtures.mjs';
 
 const references = items => items.map(({ kind, ref, label, purpose }) => ({ kind, ref, label, purpose }));
 
@@ -210,7 +210,8 @@ test('工件工具描述承载摘要时效、主动登记、增量维护和资�
 });
 
 test('工件工具只读空状态不建库，增量写入后 get 返回当前会话最新状态和统计', async t => {
-  const f = fixture(t), call = await connect(t, f);
+  // 旧宿主下文本不重复完整统计
+  const f = fixture(t), call = await connect(t, { ...f, zcodeAppVersion: LEGACY_ZCODE_APP_VERSION });
   const empty = await call('get_artifacts');
   assert.equal(empty.isError, undefined);
   assert.deepEqual(empty.structuredContent, { revision: 0, items: [], stats: { total: 0, by_kind: { pr: 0, issue: 0, session: 0, file: 0, link: 0 } } });
