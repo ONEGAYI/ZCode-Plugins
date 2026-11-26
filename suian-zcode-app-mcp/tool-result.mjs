@@ -52,16 +52,20 @@ function formatToolResult(name, data, fullText) {
 }
 
 // 宿主以 content 为交给模型的表示，structuredContent 只在 content 没有可见块时才回退交付（4.0 起）；
-// 3.14.3 至 3.18.2 则在文本后追加。所以完整数据从 4.0 起写入文本，取证见 docs/artifact-demo-verification.md。
-// 应用版本取 Desktop 传入的 ZCODE_APP_VERSION，这里只比较主版本号；无法识别的版本
-// （非 Desktop 客户端、未注入）同样写入：宁可在旧宿主下重复一次，不让模型拿不到数据。
-// 3.19.x 没有可查的源码或产物，未核实，当前按 4.0 阈值归入旧版。
+// 3.14.3 至 3.18.2 则在文本后追加。所以完整数据从 3.19 起写入文本，取证见 docs/artifact-demo-verification.md。
+// 3.19.x 没有上游源码同步，产物也未留存，宿主行为未核实：并入写入是取舍而非核实结论。
+// 判错的代价不对称——若它其实仍会追加，只是正文重复一次；若它已是新行为而不写入，模型拿不到数据。
+// 应用版本取 Desktop 传入的 ZCODE_APP_VERSION，主次版本号都按数值比较；无法识别的版本
+// （非 Desktop 客户端、未注入）同样写入，取舍方向与上一条一致。
 // 版本解析与 common 的 supportsZcodeMcpApps（ui-capabilities.mjs）各自独立：那边未知版本不启用 UI，
 // 这里未知版本仍写入，兜底方向相反是有意为之。
-const FULL_TEXT_SINCE_MAJOR = 4;
+const FULL_TEXT_SINCE_MAJOR = 3, FULL_TEXT_SINCE_MINOR = 19;
 export function fullTextForHost(zcodeAppVersion) {
-  const major = /^(\d+)(?:\.|$)/.exec(String(zcodeAppVersion ?? '').trim());
-  return major === null || Number(major[1]) >= FULL_TEXT_SINCE_MAJOR;
+  const text = String(zcodeAppVersion ?? '').trim();
+  // 只认点分数字；带预发布后缀等写法按无法识别处理，不会回退成更早的版本
+  if (!/^\d+(\.\d+)*\.?$/.test(text)) return true;
+  const [major, minor = 0] = text.split('.').slice(0, 2).map(Number);
+  return major > FULL_TEXT_SINCE_MAJOR || (major === FULL_TEXT_SINCE_MAJOR && minor >= FULL_TEXT_SINCE_MINOR);
 }
 
 // 按宿主版本绑定完整文本策略。appOnly 的结果只由面板读取结构化数据，任何版本都保持纯摘要。

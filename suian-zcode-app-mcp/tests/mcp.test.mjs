@@ -235,14 +235,15 @@ test('get_current_session 回显发起会话的本机自省信息，不接受参
   assert.equal((await client.callTool({ name: 'get_current_session', arguments: { session_id: 'sess_forged' }, _meta: { session_id: 'sess_parent' } })).isError, true);
 });
 
-test('ZCode 4.0 起模型只能读到 content 文本：完整数据随文本交付，应用版本未知时同样交付', async t => {
+test('完整数据随文本交付：4.0 起的宿主、未核实的 3.19 与应用版本未知时，模型都能从 content 读到', async t => {
   const { createMcpServer } = await import('../server.mjs');
-  // 宿主 4.0 起只在 content 没有可见块时才把 structuredContent 交给模型，模型看到的就是这些文本块
+  // 宿主 4.0 起只在 content 没有可见块时才把 structuredContent 交给模型，模型看到的就是这些文本块；
+  // 3.19 未核实但同样写入
   const delivered = response => {
     const [summary, json] = response.content.map(block => block.text).join('\n').split('\n');
     return { summary, data: JSON.parse(json) };
   };
-  for (const zcodeAppVersion of ['4.0.0', '4.0.0.10870', undefined]) {
+  for (const zcodeAppVersion of ['3.19.1', '4.0.0', '4.0.0.10870', undefined]) {
     const f = fixture(t), label = String(zcodeAppVersion);
     f.task({ id: 'sess_parent', title: '索引标题', workspace: 'D:\\work\\alpha', updated: 42 });
     f.session({ id: 'sess_parent', title: 'CLI 标题', directory: 'D:\\work\\alpha', permission: { mode: 'yolo' } });

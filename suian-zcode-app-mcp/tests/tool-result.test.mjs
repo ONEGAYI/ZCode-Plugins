@@ -20,12 +20,16 @@ test('业务包装 cause 后仍保留网关诊断和已提交回执，stderr 不
   assert.equal(JSON.stringify(logs).includes('private-cause-sentinel'), false);
 });
 
-test('完整文本策略按宿主应用版本划分：4.0 起与无法识别的版本写入文本，旧版保持纯摘要', () => {
+test('完整文本策略按宿主应用版本划分：3.19 起与无法识别的版本写入文本，更早的版本保持纯摘要', () => {
   for (const [zcodeAppVersion, fullText] of [
+    // 3.19.x 的宿主行为未核实，并入写入是取舍：判错只是正文重复一次，反向判错则模型拿不到数据
+    ['3.19.0', true], ['3.19.1', true], ['3.20.0', true],
     ['4.0.0', true], ['4.0.0.10870', true], ['4.1.2', true], ['10.0.0', true],
     ['0.18.0', false], ['3.15.1', false], ['3.18.2', false],
-    // 3.19.x 的宿主行为未核实，当前按 4.0 阈值归入纯摘要
-    ['3.19.1', false],
+    // 主次版本都按数值比较：字符串比较会把 3.9 排到 3.19 之后
+    ['3.9.0', false],
+    // 只认点分数字：带预发布后缀等写法按无法识别处理，不会回退成更早的版本
+    ['3.19.0-beta', true], ['3.19abc', true],
     [undefined, true], ['', true], ['unknown', true]
   ]) assert.equal(fullTextForHost(zcodeAppVersion), fullText, String(zcodeAppVersion));
 });
@@ -67,7 +71,7 @@ test('旧宿主的失败简报保留已提交与结果未知的重试边界，�
   }
 });
 
-test('ZCode 4.0 起完整数据写入文本：首行仍是简报，其后一行紧凑 JSON 可还原结构化结果', () => {
+test('写入完整文本的宿主下：首行仍是简报，其后一行紧凑 JSON 可还原结构化结果', () => {
   const data = { source: 'local_cli_databases', session_id: 'sess_parent', session_title: '父会话',
     index_matches: [{ session_id: 'sess_parent', title: '父会话' }] };
   const response = currentHost('get_current_session', data);
