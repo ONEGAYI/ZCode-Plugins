@@ -5,22 +5,24 @@ import { createArtifactStatusService } from './artifact-status.mjs';
 import { createArtifactRevealService } from './artifact-reveal.mjs';
 import { registerArtifactUi } from './artifact-ui.mjs';
 import { registerArtifactResources } from './artifact-resources.mjs';
-import { toolResult, toolErrorData } from './tool-result.mjs';
+import { createToolResult, toolErrorData } from './tool-result.mjs';
 
 export async function registerArtifactTools(server, config, { controller, prStatus, reveal }) {
   // notify 闭包先于 registry 声明：set/linkSessions 只在连接建立后经工具调用到达，届时注册表已就绪
   const store = createArtifactStore({ ...config, notify: () => registry.notifyChanged() });
   const registry = registerArtifactResources(server, config, store);
+  const toolResult = createToolResult(config);
   const text = z.string().refine(value => value.trim().length > 0, '必须是非空字符串');
-  async function run(extra, name, action) {
+  // appOnly：面板专用通道的结果只由面板读取结构化数据，文本保持纯摘要
+  async function run(extra, name, action, { appOnly = false } = {}) {
     try {
       const origin = resolveCaller({ meta: extra._meta, sessionDbPath: config.sessionDbPath, toolName: name });
       if (!origin.sessionId) throw Object.assign(new Error(origin.warning.message), { code: origin.warning.code });
       const data = await action(origin.sessionId);
-      return toolResult(name, data);
+      return toolResult(name, data, { appOnly });
     } catch (error) {
       const data = { ...error, code: error.code ?? error.message.split(':')[0], error: error.message };
-      return { ...toolResult(name, data), isError: true };
+      return { ...toolResult(name, data, { appOnly }), isError: true };
     }
   }
   const getTool = server.registerTool('get_artifacts', {
@@ -84,11 +86,11 @@ export async function registerArtifactTools(server, config, { controller, prStat
       ]);
       Object.assign(statuses, prPart, issuePart);
       const data = { statuses };
-      return toolResult('get_pr_statuses', data);
+      return toolResult('get_pr_statuses', data, { appOnly: true });
     } catch (error) {
       const requested = [...(refs ?? []), ...(issue_refs ?? [])];
       const data = { error: error.message, statuses: Object.fromEntries(requested.map(ref => [ref, { error: error.message }])) };
-      return { ...toolResult('get_pr_statuses', data), isError: true };
+      return { ...toolResult('get_pr_statuses', data, { appOnly: true }), isError: true };
     }
   });
   statusTool.disable();
@@ -107,7 +109,7 @@ export async function registerArtifactTools(server, config, { controller, prStat
     if (!item) throw Object.assign(new Error('当前会话没有该工件'), { code: 'artifact_not_found' });
     if (item.kind !== 'file') throw Object.assign(new Error('仅 file 条目支持在文件资源管理器中打开'), { code: 'artifact_not_file' });
     return { ref: item.ref, ...(await revealService.reveal(item.ref)) };
-  }));
+  }, { appOnly: true }));
   revealTool.disable();
   await registerArtifactUi(server, getTool, setTool, statusTool, revealTool, config);
   return store;

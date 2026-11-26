@@ -2,6 +2,25 @@
 
 本文件记录 suian-zcode-app-mcp 的用户可感知变化，版本独立于 common 和自动命名插件。
 
+## [0.11.9] - 2026-11-26
+
+修复 ZCode 3.19 起模型只能读到工具结果一行简报的问题：完整数据是否进入模型可见文本，现在按宿主应用版本决定。
+
+### Bug 修复
+
+**完整工具结果交付（#231）**
+
+- ZCode 3.19 及以上，模型只能读到工具结果的一行简报，例如 `get_current_session` 只剩会话 ID、`list_sessions` 只剩数量。
+- 原因：0.7.2 把完整数据只放在 `structuredContent`，前提是宿主会在文本后追加它；3.19 起宿主以 `content` 为交给模型的表示，只在它没有可见块时才回退 `structuredContent`（3.19.0、3.19.1 与 4.0 的产物一致）。源码与产物的取证见 [验证记录](docs/artifact-demo-verification.md#2026-11-26-zcode-40-的工具结果完整数据写入文本)。
+- 完整数据现在按宿主应用版本写入结果文本：ZCode 3.19 及以上在简报行之后附一行紧凑 JSON；3.14.3 至 3.18.2 保持纯摘要，因为宿主会在文本后自行追加完整数据。
+- 应用版本取自宿主 Desktop；非 Desktop 客户端取不到版本时同样写入完整数据。
+- 简报行仍最多 160 个 Unicode 码点，并保留“已提交、勿重复发送”“结果未知、先核对”等提示。
+- 面板专用的 `get_pr_statuses` 与 `reveal_artifact` 只由面板读取结构化数据，任何版本都保持纯摘要，工件侧栏不受影响。
+
+> **升级说明**：更新后需开启新的 MCP 会话，才会加载新版本的服务进程。
+
+> **验收范围**：已在隔离数据根用 ZCode 4.0 的随包 CLI 验证模型能读到完整数据；桌面窗口里的会话尚未验收。
+
 ## [0.11.8] - 2026-11-11
 
 会话 MCP 可以接手用户在 ZCode 3.18 桌面创建的原生工作树聊天。
@@ -407,6 +426,7 @@
 较早版本链接保留对应源码提交；采用 Release 分发后的新版本链接指向实际发布标签。
 
 <!-- 变更链接 -->
+[0.11.9]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11.1...plugins-2026.11.26
 [0.11.8]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.11...plugins-2026.11.11.1
 [0.11.6]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.04...plugins-2026.11.05
 [0.11.5]: https://github.com/ONEGAYI/ZCode-Plugins/compare/plugins-2026.11.02.1...plugins-2026.11.04

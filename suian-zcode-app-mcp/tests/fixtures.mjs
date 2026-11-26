@@ -49,6 +49,8 @@ if (!registryOk) {
 setCommonLocation({ installedPluginsPath });
 export const testZcodePluginData = join(anchorRoot, 'data', 'suian-zcode-app-mcp');
 export const testInstalledPluginsPath = installedPluginsPath;
+// 旧宿主样本：3.14.3 至 3.18.2 的宿主会在 content 文本后自行追加 structuredContent，工具结果文本因此保持纯摘要
+export const LEGACY_ZCODE_APP_VERSION = '3.18.2';
 
 export function fixture(t) {
   const root = fileURLToPath(new URL('../.scratch/', import.meta.url));
