@@ -270,8 +270,6 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     }
   });
   await t.test('宿主已验且 master 匹配后可转正；Latest 标记失败时人工补标前续跑不报完成', async () => {
-    await rm(zipPath);
-    await rm(join(outDir, 'zips', offlineName));
     const start = requests.length;
     failLatest = true;
     try {
@@ -284,14 +282,22 @@ test('正式发布 CLI 自动组包并记录续作，草稿使用候选提交、
     const pending = JSON.parse(await readFile(stateFile, 'utf8'));
     assert.equal(pending.finalizePending, true, '未确认 Latest 前保留待转正状态');
     assert.deepEqual(releasePatches, [{ draft: false, prerelease: true }, { prerelease: false }, { make_latest: 'true' }], '续跑只读确认，不自动补发 Latest');
+    // --publish 重跑会清掉待转正标记；没有本轮的确认凭证时仍不得报完成。
+    const republish = await main([...args, '--publish'], options);
+    assert.equal(republish.error, undefined);
+    assert.equal(republish.state.finalizePending, undefined, '重跑 --publish 后待转正标记已清');
+    await assert.rejects(main([...finalize, '--host-verified'], options), /未标为 Latest.*仓库当前 Latest：previous/);
     latest = release; // 模拟人工执行 gh release edit --latest
     const result = await main([...finalize, '--host-verified'], options);
     assert.equal(result.report.finalized, true);
     assert.equal(result.report.superseded, null, '本轮就是仓库 Latest');
+    assert.deepEqual(JSON.parse(await readFile(stateFile, 'utf8')).latestConfirmed, { releaseId: release.id, commit }, '确认后才写入绑定候选提交与 Release ID 的凭证');
     assert.equal(result.state.finalizePending, undefined);
     assert.equal(result.state.marketSwitchPending, undefined);
     assert.equal(prepared, 1);
     assert.ok(requests.slice(start).every(([method, path]) => method !== 'POST' && !path.includes('/releases/download/')));
+    await rm(zipPath);
+    await rm(join(outDir, 'zips', offlineName));
     await main([...finalize, '--host-verified'], options);
     assert.equal(releasePatches.length, 3, '已经转正的 Release 不重复更新');
   });

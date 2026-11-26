@@ -81,7 +81,7 @@ node release-publish.mjs --out .scratch/release --finalize --host-verified
 
 `--host-verified` 是对已完成宿主验收的人工确认。命令要求匿名下载凭证属于同一候选和当前 Release ID，通过 GitHub 读取 `master` 市场清单并核对本轮条目的版本、URL 和 SHA-256，再确认公开资产与 tag 未变。通过后只改元数据：解除同一条 Release 的预发布标记，再另发一次请求把它标为仓库 Latest；不重新制包、下载或上传资产。`--publish` 与 `--finalize` 不可同时执行。
 
-Latest 标记不与解除预发布合并成一次请求：GitHub 规定草稿和预发布不能设为 Latest，合并写法是否生效未经证实，被拒绝会让转正整体失败。标记请求失败时命令报错，此时 Release 已转正但未标 Latest。重跑 `--finalize` 不会补发标记，而是读回确认：未确认是 Latest 时继续报错（附仓库当前 Latest 的 tag）并保留待转正状态，确认现任 Latest 不是更新的发布后，手动执行 `gh release edit <tag> --repo <owner>/<repo> --latest` 再续跑。读回确认只针对仍待确认的本轮；已确认完成的历史轮次重跑时照常报已完成，并在报告的 `superseded` 字段给出当前 Latest 的 tag，不会提示把旧版设回 Latest。
+Latest 标记不与解除预发布合并成一次请求：GitHub 规定草稿和预发布不能设为 Latest，合并写法是否生效未经证实，被拒绝会让转正整体失败。标记请求失败时命令报错，此时 Release 已转正但未标 Latest。重跑 `--finalize` 不会补发标记，而是读回确认：未确认是 Latest 时继续报错（附仓库当前 Latest 的 tag）并保留待转正状态，确认现任 Latest 不是更新的发布后，手动执行 `gh release edit <tag> --repo <owner>/<repo> --latest` 再续跑。读回确认只针对尚无确认凭证的本轮。确认通过后，命令把绑定候选提交与 Release ID 的确认凭证（状态文件中的 `latestConfirmed`）落盘；此后的重跑凭这份凭证认定为已确认，照常报已完成，并在报告的 `superseded` 字段给出当前 Latest 的 tag，不会提示把旧版设回 Latest。待转正标记不能作为已确认的依据：`--publish` 重跑会清掉它。
 
 ### 每轮发布都生成 Windows x64 离线包
 

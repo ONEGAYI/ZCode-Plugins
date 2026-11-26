@@ -122,20 +122,23 @@ export async function main(argv = process.argv.slice(2), {
       }
     }
     if (await githubApi.getTagCommit(releaseTag) !== candidateCommit) throw new Error('Release tag 不再指向本轮候选提交');
-    // 读回确认只针对仍待确认 Latest 的本轮：进入时还是预发布，或待转正标记尚未清除。
-    const awaitingLatest = release.prerelease === true || state.finalizePending === true;
+    // 只有本轮的 Latest 确认凭证（绑定候选提交与 Release ID）才算确认过。缺少待办不能当作已确认：
+    // --publish 重跑会清掉待转正标记。
+    const confirmed = state.latestConfirmed?.releaseId === release.id && state.latestConfirmed.commit === candidateCommit;
     if (release.prerelease) await promoteRelease(githubApi, release);
-    // Latest 请求失败后 Release 已转正，续跑不再补发标记：读回确认已是 Latest 才清待办；
-    // 未确认则保留待转正状态并报错，待人工补标后续跑。
+    // Latest 请求失败后 Release 已转正，续跑不再补发标记：读回确认已是 Latest 才清待办并写入凭证；
+    // 未确认则保留现状并报错，待人工补标后续跑。
     const latest = await githubApi.getLatestRelease();
-    if (awaitingLatest && latest?.id !== release.id) {
+    const isLatest = latest?.id === release.id;
+    if (!confirmed && !isLatest) {
       throw new Error(`Release 已转正但未标为 Latest（仓库当前 Latest：${latest?.tag_name ?? '无'}）。确认它不是更新的发布后，手动执行 gh release edit ${releaseTag} --repo ${owner}/${repo} --latest 再续跑`);
     }
+    if (isLatest) state.latestConfirmed = { releaseId: release.id, commit: candidateCommit };
     delete state.finalizePending;
     delete state.marketSwitchPending;
     await persistState(state);
-    // 已确认完成的历史轮次不要求 Latest：被后来的发布替代时如实报告，不提示把旧版设回 Latest。
-    return { state, report: { releaseTag, candidateCommit, finalized: true, superseded: latest?.id === release.id ? null : (latest?.tag_name ?? 'none') } };
+    // 已确认过的历史轮次被后来的发布替代时如实报告，不提示把旧版设回 Latest。
+    return { state, report: { releaseTag, candidateCommit, finalized: true, superseded: isLatest ? null : (latest?.tag_name ?? 'none') } };
   }
 
   const agentsText = await git('show', `${candidateCommit}:offline/AGENTS.md`);
