@@ -4,12 +4,12 @@
     {
       "name": "suian-zcode-common",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-common.png",
-      "version": "0.10.8",
+      "version": "0.11.0",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.23/suian-zcode-common-0.10.8.zip",
-        "sha256": "3ed37fabeef76d6dd6966cb71cc7b3b4a97596b6ebedb9dac2b7695a73e14570",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.25/suian-zcode-common-0.11.0.zip",
+        "sha256": "b56b04fe4e2ad5527afd337b06ee3d6f787f9e71378dfeb4c7426c61eb1beab4",
         "stripRoot": false
       },
       "description": "ZCode 插件共用的网关、监听、官方 V4 协议、通知、初始化与依赖完整性检查能力"
@@ -17,12 +17,12 @@
     {
       "name": "suian-zcode-title",
       "icon": "https://raw.githubusercontent.com/ONEGAYI/ZCode-Plugins/master/assets/icons/suian-zcode-title.png",
-      "version": "0.4.4",
+      "version": "0.5.0",
       "source": {
         "source": "url",
         "type": "zip",
-        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.20/suian-zcode-title-0.4.4.zip",
-        "sha256": "4efa29cd95b147d85394e1bb89fbb9d5f41cc82b348d75de48245cc00e567a50",
+        "url": "https://github.com/ONEGAYI/ZCode-Plugins/releases/download/plugins-2026.11.25/suian-zcode-title-0.5.0.zip",
+        "sha256": "a4e36c88b586e9659c21448161797d7801b44bca751763cf2c30adf874fb5d9c",
         "stripRoot": false
       },
       "description": "会话 Stop 后自动命名、模型配置与标题保护",
